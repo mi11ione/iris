@@ -1,0 +1,67 @@
+Tests/Fixtures/CLI/bin/hello-arm64e (arm64e):
+
+__TEXT,__text:
+
+_add42:
+100000328: d10043ff  sub sp, sp, #16
+10000032c: b9000fe0  str w0, [sp, #12]
+100000330: b9400fe8  ldr w8, [sp, #12]
+100000334: 1100a900  add w0, w8, #42
+100000338: 910043ff  add sp, sp, #16
+10000033c: d65f03c0  ret
+
+_sum_to:
+100000340: d10043ff  sub sp, sp, #16
+100000344: b9000fe0  str w0, [sp, #12]
+100000348: b9000bff  str wzr, [sp, #8]
+10000034c: b90007ff  str wzr, [sp, #4]
+100000350: 14000001  b 0x100000354 ; _sum_to+0x14
+100000354: b94007e8  ldr w8, [sp, #4]
+100000358: b9400fe9  ldr w9, [sp, #12]
+10000035c: 6b090108  subs w8, w8, w9
+100000360: 5400016a  b.ge 0x10000038c ; _sum_to+0x4c
+100000364: 14000001  b 0x100000368 ; _sum_to+0x28
+100000368: b94007e9  ldr w9, [sp, #4]
+10000036c: b9400be8  ldr w8, [sp, #8]
+100000370: 0b090108  add w8, w8, w9
+100000374: b9000be8  str w8, [sp, #8]
+100000378: 14000001  b 0x10000037c ; _sum_to+0x3c
+10000037c: b94007e8  ldr w8, [sp, #4]
+100000380: 11000508  add w8, w8, #1
+100000384: b90007e8  str w8, [sp, #4]
+100000388: 17fffff3  b 0x100000354 ; _sum_to+0x14
+10000038c: b9400be0  ldr w0, [sp, #8]
+100000390: 910043ff  add sp, sp, #16
+100000394: d65f03c0  ret
+
+_helper:
+100000398: d503237f  pacibsp
+10000039c: d10083ff  sub sp, sp, #32
+1000003a0: a9017bfd  stp x29, x30, [sp, #16]
+1000003a4: 910043fd  add x29, sp, #16
+1000003a8: b81fc3a0  stur w0, [x29, #-4]
+1000003ac: b85fc3a0  ldur w0, [x29, #-4]
+1000003b0: 97ffffde  bl 0x100000328 ; _add42
+1000003b4: b9000be0  str w0, [sp, #8]
+1000003b8: b85fc3a0  ldur w0, [x29, #-4]
+1000003bc: 97ffffe1  bl 0x100000340 ; _sum_to
+1000003c0: aa0003e8  mov x8, x0
+1000003c4: b9400be0  ldr w0, [sp, #8]
+1000003c8: 0b080000  add w0, w0, w8
+1000003cc: a9417bfd  ldp x29, x30, [sp, #16]
+1000003d0: 910083ff  add sp, sp, #32
+1000003d4: d65f0fff  retab
+
+_main:
+1000003d8: d503237f  pacibsp
+1000003dc: d10083ff  sub sp, sp, #32
+1000003e0: a9017bfd  stp x29, x30, [sp, #16]
+1000003e4: 910043fd  add x29, sp, #16
+1000003e8: b81fc3bf  stur wzr, [x29, #-4]
+1000003ec: b9000be0  str w0, [sp, #8]
+1000003f0: f90003e1  str x1, [sp]
+1000003f4: b9400be0  ldr w0, [sp, #8]
+1000003f8: 97ffffe8  bl 0x100000398 ; _helper
+1000003fc: a9417bfd  ldp x29, x30, [sp, #16]
+100000400: 910083ff  add sp, sp, #32
+100000404: d65f0fff  retab

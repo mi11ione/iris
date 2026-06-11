@@ -1,0 +1,99 @@
+# Copyright (c) 2026 Roman Zhuzhgov
+# Licensed under the Apache License, Version 2.0
+#
+# Per-PR parity (trust layer 2): drive the in-repo `iris-parity`
+# tool against a live llvm-mc — full in-repo synthetic TSV corpora,
+# a seeded sampled live sweep per family at the maximal per-partition
+# -mattr, and the semantic-checker sweep. macOS gets llvm-mc from
+# Homebrew, Linux from apt.llvm.org (the distro llvm is far too old to
+# represent the families' feature sets, and `iris-parity live` fails
+# loud on a feature-blind oracle rather than silently shrinking it).
+# Known deviations (KNOWN-DEVIATIONS.md) classify; anything
+# unclassified exits non-zero and fails the job.
+
+name: Parity
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Container jobs (swift:6.1) default to sh, which rejects `set -o pipefail`.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: parity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The oracle generation evidence in KNOWN-DEVIATIONS.md is
+  # LLVM 22.x; keep apt pinned to the same major.
+  LLVM_APT_VERSION: "22"
+
+jobs:
+  macos:
+    name: Parity (macOS, brew llvm)
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install LLVM (brew)
+        # Pin the intent to the catalogue's major: prefer the versioned
+        # formula matching KNOWN-DEVIATIONS.md's evidence (LLVM
+        # 22.x), falling back to current `llvm` if no llvm@22 formula
+        # exists; the resolved version is echoed below either way.
+        run: brew install llvm@22 || brew install llvm
+      - name: Resolve llvm-mc
+        # KNOWN-DEVIATIONS.md pins its oracle evidence to Homebrew
+        # LLVM 22.1.4; the version echo here records what this run
+        # actually diffed against.
+        run: |
+          prefix="$(brew --prefix llvm@22 2>/dev/null || true)"
+          if [ ! -x "$prefix/bin/llvm-mc" ]; then prefix="$(brew --prefix llvm)"; fi
+          echo "IRIS_LLVM_MC=$prefix/bin/llvm-mc" >> "$GITHUB_ENV"
+          echo "resolved llvm-mc (known-deviations evidence: Homebrew LLVM 22.1.4):"
+          "$prefix/bin/llvm-mc" --version
+      - name: Build parity tool (release)
+        run: swift build -c release --product iris-parity
+      - name: TSV — all in-repo synthetic corpora
+        run: .build/release/iris-parity tsv --family all
+      - name: Live — sampled seeded sweep, every family
+        run: .build/release/iris-parity live --family all --count 16384
+      - name: Semantic — checker sweep, every family
+        run: .build/release/iris-parity semantic --family all
+
+  linux:
+    name: Parity (Linux, apt llvm)
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install LLVM (apt.llvm.org)
+        run: |
+          apt-get update
+          apt-get install -y wget gnupg lsb-release software-properties-common
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          /tmp/llvm.sh "$LLVM_APT_VERSION"
+      - name: Resolve llvm-mc
+        # KNOWN-DEVIATIONS.md pins its oracle evidence to Homebrew
+        # LLVM 22.1.4; apt is held at the same major ($LLVM_APT_VERSION)
+        # and the version echo here records what this run actually
+        # diffed against.
+        run: |
+          echo "IRIS_LLVM_MC=/usr/lib/llvm-$LLVM_APT_VERSION/bin/llvm-mc" >> "$GITHUB_ENV"
+          echo "resolved llvm-mc (known-deviations evidence: Homebrew LLVM 22.1.4):"
+          "/usr/lib/llvm-$LLVM_APT_VERSION/bin/llvm-mc" --version
+      - name: Build parity tool (release)
+        run: swift build -c release --product iris-parity
+      - name: TSV — all in-repo synthetic corpora
+        run: .build/release/iris-parity tsv --family all
+      - name: Live — sampled seeded sweep, every family
+        run: .build/release/iris-parity live --family all --count 16384
+      - name: Semantic — checker sweep, every family
+        run: .build/release/iris-parity semantic --family all

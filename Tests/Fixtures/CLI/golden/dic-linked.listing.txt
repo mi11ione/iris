@@ -1,0 +1,27 @@
+Tests/Fixtures/CLI/bin/dic-linked (arm64):
+
+__TEXT,__text:
+
+_main:
+100003f68: 52800000  mov w0, #0
+100003f6c: d65f03c0  ret
+
+_pick:
+100003f70: 71000c1f  cmp w0, #3
+100003f74: 540001a8  b.hi 0x100003fa8 ; _pick+0x38
+100003f78: 90000001  adrp x1, #0
+100003f7c: 913ec021  add x1, x1, #4016
+100003f80: 38604822  ldrb w2, [x1, w0, uxtw]
+100003f84: 10000063  adr x3, #12
+100003f88: 8b020863  add x3, x3, x2, lsl #2
+100003f8c: d61f0060  br x3
+100003f90: 52800140  mov w0, #10
+100003f94: d65f03c0  ret
+100003f98: 52800280  mov w0, #20
+100003f9c: d65f03c0  ret
+100003fa0: 528003c0  mov w0, #30
+100003fa4: d65f03c0  ret
+100003fa8: 52800c60  mov w0, #99
+100003fac: d65f03c0  ret
+100003fb0: 06040200  .long 0x6040200 ; data-in-code (jump-table-8)
+100003fb4: deadbeef  .long 0xdeadbeef ; data-in-code (data)

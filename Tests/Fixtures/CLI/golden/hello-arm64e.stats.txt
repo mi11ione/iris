@@ -1,0 +1,33 @@
+total words        56
+undefined          0
+data-in-code       0
+
+extension sites:
+  pointer-auth     4
+  memory-tagging   0
+  amx              0
+  crypto           0
+
+categories:
+  loadsAndStores            26
+  branchesExceptionSystem   14
+  dataProcessingImmediate   12
+  dataProcessingRegister    4
+
+mnemonics:
+  add                       10
+  ldr                       9
+  str                       9
+  b                         4
+  sub                       4
+  bl                        3
+  ldp                       2
+  ldur                      2
+  pacibsp                   2
+  ret                       2
+  retab                     2
+  stp                       2
+  stur                      2
+  b.cond                    1
+  mov                       1
+  subs                      1

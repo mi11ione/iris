@@ -1,0 +1,14 @@
+{
+  "originHash" : "9820e87b26dde1eb8d7618a93b2a0f2c867b690e5b0bfda297231bb74e501a8f",
+  "pins" : [
+    {
+      "identity" : "capstone-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/zydeco/capstone-swift",
+      "state" : {
+        "revision" : "2d2a387e7165dbc033cccfef280f69c8bc55f7c3"
+      }
+    }
+  ],
+  "version" : 3
+}

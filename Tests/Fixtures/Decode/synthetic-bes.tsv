@@ -1,0 +1,1270 @@
+# encoding_hex_be	expected_text  (-mattr=+v9.6a,+sme,+sme2,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+sve)
+14000000	b #0
+14000001	b #4
+17ffffff	b #-4
+16000000	b #-134217728
+15ffffff	b #134217724
+94000000	bl #0
+94000001	bl #4
+97ffffff	bl #-4
+96000000	bl #-134217728
+95ffffff	bl #134217724
+54000000	b.eq #0
+54000020	b.eq #4
+54ffffe0	b.eq #-4
+54800000	b.eq #-1048576
+547fffe0	b.eq #1048572
+54000001	b.ne #0
+54000021	b.ne #4
+54ffffe1	b.ne #-4
+54800001	b.ne #-1048576
+547fffe1	b.ne #1048572
+54000002	b.hs #0
+54000022	b.hs #4
+54ffffe2	b.hs #-4
+54800002	b.hs #-1048576
+547fffe2	b.hs #1048572
+54000003	b.lo #0
+54000023	b.lo #4
+54ffffe3	b.lo #-4
+54800003	b.lo #-1048576
+547fffe3	b.lo #1048572
+54000004	b.mi #0
+54000024	b.mi #4
+54ffffe4	b.mi #-4
+54800004	b.mi #-1048576
+547fffe4	b.mi #1048572
+54000005	b.pl #0
+54000025	b.pl #4
+54ffffe5	b.pl #-4
+54800005	b.pl #-1048576
+547fffe5	b.pl #1048572
+54000006	b.vs #0
+54000026	b.vs #4
+54ffffe6	b.vs #-4
+54800006	b.vs #-1048576
+547fffe6	b.vs #1048572
+54000007	b.vc #0
+54000027	b.vc #4
+54ffffe7	b.vc #-4
+54800007	b.vc #-1048576
+547fffe7	b.vc #1048572
+54000008	b.hi #0
+54000028	b.hi #4
+54ffffe8	b.hi #-4
+54800008	b.hi #-1048576
+547fffe8	b.hi #1048572
+54000009	b.ls #0
+54000029	b.ls #4
+54ffffe9	b.ls #-4
+54800009	b.ls #-1048576
+547fffe9	b.ls #1048572
+5400000a	b.ge #0
+5400002a	b.ge #4
+54ffffea	b.ge #-4
+5480000a	b.ge #-1048576
+547fffea	b.ge #1048572
+5400000b	b.lt #0
+5400002b	b.lt #4
+54ffffeb	b.lt #-4
+5480000b	b.lt #-1048576
+547fffeb	b.lt #1048572
+5400000c	b.gt #0
+5400002c	b.gt #4
+54ffffec	b.gt #-4
+5480000c	b.gt #-1048576
+547fffec	b.gt #1048572
+5400000d	b.le #0
+5400002d	b.le #4
+54ffffed	b.le #-4
+5480000d	b.le #-1048576
+547fffed	b.le #1048572
+5400000e	b.al #0
+5400002e	b.al #4
+54ffffee	b.al #-4
+5480000e	b.al #-1048576
+547fffee	b.al #1048572
+5400000f	b.nv #0
+5400002f	b.nv #4
+54ffffef	b.nv #-4
+5480000f	b.nv #-1048576
+547fffef	b.nv #1048572
+54000010	bc.eq #0
+54000011	bc.ne #0
+54000012	bc.hs #0
+54000013	bc.lo #0
+54000014	bc.mi #0
+54000015	bc.pl #0
+54000016	bc.vs #0
+54000017	bc.vc #0
+54000018	bc.hi #0
+54000019	bc.ls #0
+5400001a	bc.ge #0
+5400001b	bc.lt #0
+5400001c	bc.gt #0
+5400001d	bc.le #0
+5400001e	bc.al #0
+5400001f	bc.nv #0
+34000000	cbz w0, #0
+34000020	cbz w0, #4
+34ffffe0	cbz w0, #-4
+34800000	cbz w0, #-1048576
+347fffe0	cbz w0, #1048572
+34000001	cbz w1, #0
+34000021	cbz w1, #4
+34ffffe1	cbz w1, #-4
+34800001	cbz w1, #-1048576
+347fffe1	cbz w1, #1048572
+34000010	cbz w16, #0
+34000030	cbz w16, #4
+34fffff0	cbz w16, #-4
+34800010	cbz w16, #-1048576
+347ffff0	cbz w16, #1048572
+34000011	cbz w17, #0
+34000031	cbz w17, #4
+34fffff1	cbz w17, #-4
+34800011	cbz w17, #-1048576
+347ffff1	cbz w17, #1048572
+3400001d	cbz w29, #0
+3400003d	cbz w29, #4
+34fffffd	cbz w29, #-4
+3480001d	cbz w29, #-1048576
+347ffffd	cbz w29, #1048572
+3400001e	cbz w30, #0
+3400003e	cbz w30, #4
+34fffffe	cbz w30, #-4
+3480001e	cbz w30, #-1048576
+347ffffe	cbz w30, #1048572
+3400001f	cbz wzr, #0
+3400003f	cbz wzr, #4
+34ffffff	cbz wzr, #-4
+3480001f	cbz wzr, #-1048576
+347fffff	cbz wzr, #1048572
+35000000	cbnz w0, #0
+35000020	cbnz w0, #4
+35ffffe0	cbnz w0, #-4
+35800000	cbnz w0, #-1048576
+357fffe0	cbnz w0, #1048572
+35000001	cbnz w1, #0
+35000021	cbnz w1, #4
+35ffffe1	cbnz w1, #-4
+35800001	cbnz w1, #-1048576
+357fffe1	cbnz w1, #1048572
+35000010	cbnz w16, #0
+35000030	cbnz w16, #4
+35fffff0	cbnz w16, #-4
+35800010	cbnz w16, #-1048576
+357ffff0	cbnz w16, #1048572
+35000011	cbnz w17, #0
+35000031	cbnz w17, #4
+35fffff1	cbnz w17, #-4
+35800011	cbnz w17, #-1048576
+357ffff1	cbnz w17, #1048572
+3500001d	cbnz w29, #0
+3500003d	cbnz w29, #4
+35fffffd	cbnz w29, #-4
+3580001d	cbnz w29, #-1048576
+357ffffd	cbnz w29, #1048572
+3500001e	cbnz w30, #0
+3500003e	cbnz w30, #4
+35fffffe	cbnz w30, #-4
+3580001e	cbnz w30, #-1048576
+357ffffe	cbnz w30, #1048572
+3500001f	cbnz wzr, #0
+3500003f	cbnz wzr, #4
+35ffffff	cbnz wzr, #-4
+3580001f	cbnz wzr, #-1048576
+357fffff	cbnz wzr, #1048572
+b4000000	cbz x0, #0
+b4000020	cbz x0, #4
+b4ffffe0	cbz x0, #-4
+b4800000	cbz x0, #-1048576
+b47fffe0	cbz x0, #1048572
+b4000001	cbz x1, #0
+b4000021	cbz x1, #4
+b4ffffe1	cbz x1, #-4
+b4800001	cbz x1, #-1048576
+b47fffe1	cbz x1, #1048572
+b4000010	cbz x16, #0
+b4000030	cbz x16, #4
+b4fffff0	cbz x16, #-4
+b4800010	cbz x16, #-1048576
+b47ffff0	cbz x16, #1048572
+b4000011	cbz x17, #0
+b4000031	cbz x17, #4
+b4fffff1	cbz x17, #-4
+b4800011	cbz x17, #-1048576
+b47ffff1	cbz x17, #1048572
+b400001d	cbz x29, #0
+b400003d	cbz x29, #4
+b4fffffd	cbz x29, #-4
+b480001d	cbz x29, #-1048576
+b47ffffd	cbz x29, #1048572
+b400001e	cbz x30, #0
+b400003e	cbz x30, #4
+b4fffffe	cbz x30, #-4
+b480001e	cbz x30, #-1048576
+b47ffffe	cbz x30, #1048572
+b400001f	cbz xzr, #0
+b400003f	cbz xzr, #4
+b4ffffff	cbz xzr, #-4
+b480001f	cbz xzr, #-1048576
+b47fffff	cbz xzr, #1048572
+b5000000	cbnz x0, #0
+b5000020	cbnz x0, #4
+b5ffffe0	cbnz x0, #-4
+b5800000	cbnz x0, #-1048576
+b57fffe0	cbnz x0, #1048572
+b5000001	cbnz x1, #0
+b5000021	cbnz x1, #4
+b5ffffe1	cbnz x1, #-4
+b5800001	cbnz x1, #-1048576
+b57fffe1	cbnz x1, #1048572
+b5000010	cbnz x16, #0
+b5000030	cbnz x16, #4
+b5fffff0	cbnz x16, #-4
+b5800010	cbnz x16, #-1048576
+b57ffff0	cbnz x16, #1048572
+b5000011	cbnz x17, #0
+b5000031	cbnz x17, #4
+b5fffff1	cbnz x17, #-4
+b5800011	cbnz x17, #-1048576
+b57ffff1	cbnz x17, #1048572
+b500001d	cbnz x29, #0
+b500003d	cbnz x29, #4
+b5fffffd	cbnz x29, #-4
+b580001d	cbnz x29, #-1048576
+b57ffffd	cbnz x29, #1048572
+b500001e	cbnz x30, #0
+b500003e	cbnz x30, #4
+b5fffffe	cbnz x30, #-4
+b580001e	cbnz x30, #-1048576
+b57ffffe	cbnz x30, #1048572
+b500001f	cbnz xzr, #0
+b500003f	cbnz xzr, #4
+b5ffffff	cbnz xzr, #-4
+b580001f	cbnz xzr, #-1048576
+b57fffff	cbnz xzr, #1048572
+36000000	tbz w0, #0, #0
+36000020	tbz w0, #0, #4
+3607ffe0	tbz w0, #0, #-4
+3603ffe0	tbz w0, #0, #32764
+36040000	tbz w0, #0, #-32768
+36000001	tbz w1, #0, #0
+36000021	tbz w1, #0, #4
+3607ffe1	tbz w1, #0, #-4
+3603ffe1	tbz w1, #0, #32764
+36040001	tbz w1, #0, #-32768
+36000010	tbz w16, #0, #0
+36000030	tbz w16, #0, #4
+3607fff0	tbz w16, #0, #-4
+3603fff0	tbz w16, #0, #32764
+36040010	tbz w16, #0, #-32768
+36000011	tbz w17, #0, #0
+36000031	tbz w17, #0, #4
+3607fff1	tbz w17, #0, #-4
+3603fff1	tbz w17, #0, #32764
+36040011	tbz w17, #0, #-32768
+3600001d	tbz w29, #0, #0
+3600003d	tbz w29, #0, #4
+3607fffd	tbz w29, #0, #-4
+3603fffd	tbz w29, #0, #32764
+3604001d	tbz w29, #0, #-32768
+3600001e	tbz w30, #0, #0
+3600003e	tbz w30, #0, #4
+3607fffe	tbz w30, #0, #-4
+3603fffe	tbz w30, #0, #32764
+3604001e	tbz w30, #0, #-32768
+3600001f	tbz wzr, #0, #0
+3600003f	tbz wzr, #0, #4
+3607ffff	tbz wzr, #0, #-4
+3603ffff	tbz wzr, #0, #32764
+3604001f	tbz wzr, #0, #-32768
+36080000	tbz w0, #1, #0
+36080020	tbz w0, #1, #4
+360fffe0	tbz w0, #1, #-4
+360bffe0	tbz w0, #1, #32764
+360c0000	tbz w0, #1, #-32768
+36080001	tbz w1, #1, #0
+36080021	tbz w1, #1, #4
+360fffe1	tbz w1, #1, #-4
+360bffe1	tbz w1, #1, #32764
+360c0001	tbz w1, #1, #-32768
+36080010	tbz w16, #1, #0
+36080030	tbz w16, #1, #4
+360ffff0	tbz w16, #1, #-4
+360bfff0	tbz w16, #1, #32764
+360c0010	tbz w16, #1, #-32768
+36080011	tbz w17, #1, #0
+36080031	tbz w17, #1, #4
+360ffff1	tbz w17, #1, #-4
+360bfff1	tbz w17, #1, #32764
+360c0011	tbz w17, #1, #-32768
+3608001d	tbz w29, #1, #0
+3608003d	tbz w29, #1, #4
+360ffffd	tbz w29, #1, #-4
+360bfffd	tbz w29, #1, #32764
+360c001d	tbz w29, #1, #-32768
+3608001e	tbz w30, #1, #0
+3608003e	tbz w30, #1, #4
+360ffffe	tbz w30, #1, #-4
+360bfffe	tbz w30, #1, #32764
+360c001e	tbz w30, #1, #-32768
+3608001f	tbz wzr, #1, #0
+3608003f	tbz wzr, #1, #4
+360fffff	tbz wzr, #1, #-4
+360bffff	tbz wzr, #1, #32764
+360c001f	tbz wzr, #1, #-32768
+36380000	tbz w0, #7, #0
+36380020	tbz w0, #7, #4
+363fffe0	tbz w0, #7, #-4
+363bffe0	tbz w0, #7, #32764
+363c0000	tbz w0, #7, #-32768
+36380001	tbz w1, #7, #0
+36380021	tbz w1, #7, #4
+363fffe1	tbz w1, #7, #-4
+363bffe1	tbz w1, #7, #32764
+363c0001	tbz w1, #7, #-32768
+36380010	tbz w16, #7, #0
+36380030	tbz w16, #7, #4
+363ffff0	tbz w16, #7, #-4
+363bfff0	tbz w16, #7, #32764
+363c0010	tbz w16, #7, #-32768
+36380011	tbz w17, #7, #0
+36380031	tbz w17, #7, #4
+363ffff1	tbz w17, #7, #-4
+363bfff1	tbz w17, #7, #32764
+363c0011	tbz w17, #7, #-32768
+3638001d	tbz w29, #7, #0
+3638003d	tbz w29, #7, #4
+363ffffd	tbz w29, #7, #-4
+363bfffd	tbz w29, #7, #32764
+363c001d	tbz w29, #7, #-32768
+3638001e	tbz w30, #7, #0
+3638003e	tbz w30, #7, #4
+363ffffe	tbz w30, #7, #-4
+363bfffe	tbz w30, #7, #32764
+363c001e	tbz w30, #7, #-32768
+3638001f	tbz wzr, #7, #0
+3638003f	tbz wzr, #7, #4
+363fffff	tbz wzr, #7, #-4
+363bffff	tbz wzr, #7, #32764
+363c001f	tbz wzr, #7, #-32768
+36780000	tbz w0, #15, #0
+36780020	tbz w0, #15, #4
+367fffe0	tbz w0, #15, #-4
+367bffe0	tbz w0, #15, #32764
+367c0000	tbz w0, #15, #-32768
+36780001	tbz w1, #15, #0
+36780021	tbz w1, #15, #4
+367fffe1	tbz w1, #15, #-4
+367bffe1	tbz w1, #15, #32764
+367c0001	tbz w1, #15, #-32768
+36780010	tbz w16, #15, #0
+36780030	tbz w16, #15, #4
+367ffff0	tbz w16, #15, #-4
+367bfff0	tbz w16, #15, #32764
+367c0010	tbz w16, #15, #-32768
+36780011	tbz w17, #15, #0
+36780031	tbz w17, #15, #4
+367ffff1	tbz w17, #15, #-4
+367bfff1	tbz w17, #15, #32764
+367c0011	tbz w17, #15, #-32768
+3678001d	tbz w29, #15, #0
+3678003d	tbz w29, #15, #4
+367ffffd	tbz w29, #15, #-4
+367bfffd	tbz w29, #15, #32764
+367c001d	tbz w29, #15, #-32768
+3678001e	tbz w30, #15, #0
+3678003e	tbz w30, #15, #4
+367ffffe	tbz w30, #15, #-4
+367bfffe	tbz w30, #15, #32764
+367c001e	tbz w30, #15, #-32768
+3678001f	tbz wzr, #15, #0
+3678003f	tbz wzr, #15, #4
+367fffff	tbz wzr, #15, #-4
+367bffff	tbz wzr, #15, #32764
+367c001f	tbz wzr, #15, #-32768
+36f80000	tbz w0, #31, #0
+36f80020	tbz w0, #31, #4
+36ffffe0	tbz w0, #31, #-4
+36fbffe0	tbz w0, #31, #32764
+36fc0000	tbz w0, #31, #-32768
+36f80001	tbz w1, #31, #0
+36f80021	tbz w1, #31, #4
+36ffffe1	tbz w1, #31, #-4
+36fbffe1	tbz w1, #31, #32764
+36fc0001	tbz w1, #31, #-32768
+36f80010	tbz w16, #31, #0
+36f80030	tbz w16, #31, #4
+36fffff0	tbz w16, #31, #-4
+36fbfff0	tbz w16, #31, #32764
+36fc0010	tbz w16, #31, #-32768
+36f80011	tbz w17, #31, #0
+36f80031	tbz w17, #31, #4
+36fffff1	tbz w17, #31, #-4
+36fbfff1	tbz w17, #31, #32764
+36fc0011	tbz w17, #31, #-32768
+36f8001d	tbz w29, #31, #0
+36f8003d	tbz w29, #31, #4
+36fffffd	tbz w29, #31, #-4
+36fbfffd	tbz w29, #31, #32764
+36fc001d	tbz w29, #31, #-32768
+36f8001e	tbz w30, #31, #0
+36f8003e	tbz w30, #31, #4
+36fffffe	tbz w30, #31, #-4
+36fbfffe	tbz w30, #31, #32764
+36fc001e	tbz w30, #31, #-32768
+36f8001f	tbz wzr, #31, #0
+36f8003f	tbz wzr, #31, #4
+36ffffff	tbz wzr, #31, #-4
+36fbffff	tbz wzr, #31, #32764
+36fc001f	tbz wzr, #31, #-32768
+b6000000	tbz x0, #32, #0
+b6000020	tbz x0, #32, #4
+b607ffe0	tbz x0, #32, #-4
+b603ffe0	tbz x0, #32, #32764
+b6040000	tbz x0, #32, #-32768
+b6000001	tbz x1, #32, #0
+b6000021	tbz x1, #32, #4
+b607ffe1	tbz x1, #32, #-4
+b603ffe1	tbz x1, #32, #32764
+b6040001	tbz x1, #32, #-32768
+b6000010	tbz x16, #32, #0
+b6000030	tbz x16, #32, #4
+b607fff0	tbz x16, #32, #-4
+b603fff0	tbz x16, #32, #32764
+b6040010	tbz x16, #32, #-32768
+b6000011	tbz x17, #32, #0
+b6000031	tbz x17, #32, #4
+b607fff1	tbz x17, #32, #-4
+b603fff1	tbz x17, #32, #32764
+b6040011	tbz x17, #32, #-32768
+b600001d	tbz x29, #32, #0
+b600003d	tbz x29, #32, #4
+b607fffd	tbz x29, #32, #-4
+b603fffd	tbz x29, #32, #32764
+b604001d	tbz x29, #32, #-32768
+b600001e	tbz x30, #32, #0
+b600003e	tbz x30, #32, #4
+b607fffe	tbz x30, #32, #-4
+b603fffe	tbz x30, #32, #32764
+b604001e	tbz x30, #32, #-32768
+b600001f	tbz xzr, #32, #0
+b600003f	tbz xzr, #32, #4
+b607ffff	tbz xzr, #32, #-4
+b603ffff	tbz xzr, #32, #32764
+b604001f	tbz xzr, #32, #-32768
+b6780000	tbz x0, #47, #0
+b6780020	tbz x0, #47, #4
+b67fffe0	tbz x0, #47, #-4
+b67bffe0	tbz x0, #47, #32764
+b67c0000	tbz x0, #47, #-32768
+b6780001	tbz x1, #47, #0
+b6780021	tbz x1, #47, #4
+b67fffe1	tbz x1, #47, #-4
+b67bffe1	tbz x1, #47, #32764
+b67c0001	tbz x1, #47, #-32768
+b6780010	tbz x16, #47, #0
+b6780030	tbz x16, #47, #4
+b67ffff0	tbz x16, #47, #-4
+b67bfff0	tbz x16, #47, #32764
+b67c0010	tbz x16, #47, #-32768
+b6780011	tbz x17, #47, #0
+b6780031	tbz x17, #47, #4
+b67ffff1	tbz x17, #47, #-4
+b67bfff1	tbz x17, #47, #32764
+b67c0011	tbz x17, #47, #-32768
+b678001d	tbz x29, #47, #0
+b678003d	tbz x29, #47, #4
+b67ffffd	tbz x29, #47, #-4
+b67bfffd	tbz x29, #47, #32764
+b67c001d	tbz x29, #47, #-32768
+b678001e	tbz x30, #47, #0
+b678003e	tbz x30, #47, #4
+b67ffffe	tbz x30, #47, #-4
+b67bfffe	tbz x30, #47, #32764
+b67c001e	tbz x30, #47, #-32768
+b678001f	tbz xzr, #47, #0
+b678003f	tbz xzr, #47, #4
+b67fffff	tbz xzr, #47, #-4
+b67bffff	tbz xzr, #47, #32764
+b67c001f	tbz xzr, #47, #-32768
+b6f80000	tbz x0, #63, #0
+b6f80020	tbz x0, #63, #4
+b6ffffe0	tbz x0, #63, #-4
+b6fbffe0	tbz x0, #63, #32764
+b6fc0000	tbz x0, #63, #-32768
+b6f80001	tbz x1, #63, #0
+b6f80021	tbz x1, #63, #4
+b6ffffe1	tbz x1, #63, #-4
+b6fbffe1	tbz x1, #63, #32764
+b6fc0001	tbz x1, #63, #-32768
+b6f80010	tbz x16, #63, #0
+b6f80030	tbz x16, #63, #4
+b6fffff0	tbz x16, #63, #-4
+b6fbfff0	tbz x16, #63, #32764
+b6fc0010	tbz x16, #63, #-32768
+b6f80011	tbz x17, #63, #0
+b6f80031	tbz x17, #63, #4
+b6fffff1	tbz x17, #63, #-4
+b6fbfff1	tbz x17, #63, #32764
+b6fc0011	tbz x17, #63, #-32768
+b6f8001d	tbz x29, #63, #0
+b6f8003d	tbz x29, #63, #4
+b6fffffd	tbz x29, #63, #-4
+b6fbfffd	tbz x29, #63, #32764
+b6fc001d	tbz x29, #63, #-32768
+b6f8001e	tbz x30, #63, #0
+b6f8003e	tbz x30, #63, #4
+b6fffffe	tbz x30, #63, #-4
+b6fbfffe	tbz x30, #63, #32764
+b6fc001e	tbz x30, #63, #-32768
+b6f8001f	tbz xzr, #63, #0
+b6f8003f	tbz xzr, #63, #4
+b6ffffff	tbz xzr, #63, #-4
+b6fbffff	tbz xzr, #63, #32764
+b6fc001f	tbz xzr, #63, #-32768
+37000000	tbnz w0, #0, #0
+37000020	tbnz w0, #0, #4
+3707ffe0	tbnz w0, #0, #-4
+3703ffe0	tbnz w0, #0, #32764
+37040000	tbnz w0, #0, #-32768
+37000001	tbnz w1, #0, #0
+37000021	tbnz w1, #0, #4
+3707ffe1	tbnz w1, #0, #-4
+3703ffe1	tbnz w1, #0, #32764
+37040001	tbnz w1, #0, #-32768
+37000010	tbnz w16, #0, #0
+37000030	tbnz w16, #0, #4
+3707fff0	tbnz w16, #0, #-4
+3703fff0	tbnz w16, #0, #32764
+37040010	tbnz w16, #0, #-32768
+37000011	tbnz w17, #0, #0
+37000031	tbnz w17, #0, #4
+3707fff1	tbnz w17, #0, #-4
+3703fff1	tbnz w17, #0, #32764
+37040011	tbnz w17, #0, #-32768
+3700001d	tbnz w29, #0, #0
+3700003d	tbnz w29, #0, #4
+3707fffd	tbnz w29, #0, #-4
+3703fffd	tbnz w29, #0, #32764
+3704001d	tbnz w29, #0, #-32768
+3700001e	tbnz w30, #0, #0
+3700003e	tbnz w30, #0, #4
+3707fffe	tbnz w30, #0, #-4
+3703fffe	tbnz w30, #0, #32764
+3704001e	tbnz w30, #0, #-32768
+3700001f	tbnz wzr, #0, #0
+3700003f	tbnz wzr, #0, #4
+3707ffff	tbnz wzr, #0, #-4
+3703ffff	tbnz wzr, #0, #32764
+3704001f	tbnz wzr, #0, #-32768
+37080000	tbnz w0, #1, #0
+37080020	tbnz w0, #1, #4
+370fffe0	tbnz w0, #1, #-4
+370bffe0	tbnz w0, #1, #32764
+370c0000	tbnz w0, #1, #-32768
+37080001	tbnz w1, #1, #0
+37080021	tbnz w1, #1, #4
+370fffe1	tbnz w1, #1, #-4
+370bffe1	tbnz w1, #1, #32764
+370c0001	tbnz w1, #1, #-32768
+37080010	tbnz w16, #1, #0
+37080030	tbnz w16, #1, #4
+370ffff0	tbnz w16, #1, #-4
+370bfff0	tbnz w16, #1, #32764
+370c0010	tbnz w16, #1, #-32768
+37080011	tbnz w17, #1, #0
+37080031	tbnz w17, #1, #4
+370ffff1	tbnz w17, #1, #-4
+370bfff1	tbnz w17, #1, #32764
+370c0011	tbnz w17, #1, #-32768
+3708001d	tbnz w29, #1, #0
+3708003d	tbnz w29, #1, #4
+370ffffd	tbnz w29, #1, #-4
+370bfffd	tbnz w29, #1, #32764
+370c001d	tbnz w29, #1, #-32768
+3708001e	tbnz w30, #1, #0
+3708003e	tbnz w30, #1, #4
+370ffffe	tbnz w30, #1, #-4
+370bfffe	tbnz w30, #1, #32764
+370c001e	tbnz w30, #1, #-32768
+3708001f	tbnz wzr, #1, #0
+3708003f	tbnz wzr, #1, #4
+370fffff	tbnz wzr, #1, #-4
+370bffff	tbnz wzr, #1, #32764
+370c001f	tbnz wzr, #1, #-32768
+37380000	tbnz w0, #7, #0
+37380020	tbnz w0, #7, #4
+373fffe0	tbnz w0, #7, #-4
+373bffe0	tbnz w0, #7, #32764
+373c0000	tbnz w0, #7, #-32768
+37380001	tbnz w1, #7, #0
+37380021	tbnz w1, #7, #4
+373fffe1	tbnz w1, #7, #-4
+373bffe1	tbnz w1, #7, #32764
+373c0001	tbnz w1, #7, #-32768
+37380010	tbnz w16, #7, #0
+37380030	tbnz w16, #7, #4
+373ffff0	tbnz w16, #7, #-4
+373bfff0	tbnz w16, #7, #32764
+373c0010	tbnz w16, #7, #-32768
+37380011	tbnz w17, #7, #0
+37380031	tbnz w17, #7, #4
+373ffff1	tbnz w17, #7, #-4
+373bfff1	tbnz w17, #7, #32764
+373c0011	tbnz w17, #7, #-32768
+3738001d	tbnz w29, #7, #0
+3738003d	tbnz w29, #7, #4
+373ffffd	tbnz w29, #7, #-4
+373bfffd	tbnz w29, #7, #32764
+373c001d	tbnz w29, #7, #-32768
+3738001e	tbnz w30, #7, #0
+3738003e	tbnz w30, #7, #4
+373ffffe	tbnz w30, #7, #-4
+373bfffe	tbnz w30, #7, #32764
+373c001e	tbnz w30, #7, #-32768
+3738001f	tbnz wzr, #7, #0
+3738003f	tbnz wzr, #7, #4
+373fffff	tbnz wzr, #7, #-4
+373bffff	tbnz wzr, #7, #32764
+373c001f	tbnz wzr, #7, #-32768
+37780000	tbnz w0, #15, #0
+37780020	tbnz w0, #15, #4
+377fffe0	tbnz w0, #15, #-4
+377bffe0	tbnz w0, #15, #32764
+377c0000	tbnz w0, #15, #-32768
+37780001	tbnz w1, #15, #0
+37780021	tbnz w1, #15, #4
+377fffe1	tbnz w1, #15, #-4
+377bffe1	tbnz w1, #15, #32764
+377c0001	tbnz w1, #15, #-32768
+37780010	tbnz w16, #15, #0
+37780030	tbnz w16, #15, #4
+377ffff0	tbnz w16, #15, #-4
+377bfff0	tbnz w16, #15, #32764
+377c0010	tbnz w16, #15, #-32768
+37780011	tbnz w17, #15, #0
+37780031	tbnz w17, #15, #4
+377ffff1	tbnz w17, #15, #-4
+377bfff1	tbnz w17, #15, #32764
+377c0011	tbnz w17, #15, #-32768
+3778001d	tbnz w29, #15, #0
+3778003d	tbnz w29, #15, #4
+377ffffd	tbnz w29, #15, #-4
+377bfffd	tbnz w29, #15, #32764
+377c001d	tbnz w29, #15, #-32768
+3778001e	tbnz w30, #15, #0
+3778003e	tbnz w30, #15, #4
+377ffffe	tbnz w30, #15, #-4
+377bfffe	tbnz w30, #15, #32764
+377c001e	tbnz w30, #15, #-32768
+3778001f	tbnz wzr, #15, #0
+3778003f	tbnz wzr, #15, #4
+377fffff	tbnz wzr, #15, #-4
+377bffff	tbnz wzr, #15, #32764
+377c001f	tbnz wzr, #15, #-32768
+37f80000	tbnz w0, #31, #0
+37f80020	tbnz w0, #31, #4
+37ffffe0	tbnz w0, #31, #-4
+37fbffe0	tbnz w0, #31, #32764
+37fc0000	tbnz w0, #31, #-32768
+37f80001	tbnz w1, #31, #0
+37f80021	tbnz w1, #31, #4
+37ffffe1	tbnz w1, #31, #-4
+37fbffe1	tbnz w1, #31, #32764
+37fc0001	tbnz w1, #31, #-32768
+37f80010	tbnz w16, #31, #0
+37f80030	tbnz w16, #31, #4
+37fffff0	tbnz w16, #31, #-4
+37fbfff0	tbnz w16, #31, #32764
+37fc0010	tbnz w16, #31, #-32768
+37f80011	tbnz w17, #31, #0
+37f80031	tbnz w17, #31, #4
+37fffff1	tbnz w17, #31, #-4
+37fbfff1	tbnz w17, #31, #32764
+37fc0011	tbnz w17, #31, #-32768
+37f8001d	tbnz w29, #31, #0
+37f8003d	tbnz w29, #31, #4
+37fffffd	tbnz w29, #31, #-4
+37fbfffd	tbnz w29, #31, #32764
+37fc001d	tbnz w29, #31, #-32768
+37f8001e	tbnz w30, #31, #0
+37f8003e	tbnz w30, #31, #4
+37fffffe	tbnz w30, #31, #-4
+37fbfffe	tbnz w30, #31, #32764
+37fc001e	tbnz w30, #31, #-32768
+37f8001f	tbnz wzr, #31, #0
+37f8003f	tbnz wzr, #31, #4
+37ffffff	tbnz wzr, #31, #-4
+37fbffff	tbnz wzr, #31, #32764
+37fc001f	tbnz wzr, #31, #-32768
+b7000000	tbnz x0, #32, #0
+b7000020	tbnz x0, #32, #4
+b707ffe0	tbnz x0, #32, #-4
+b703ffe0	tbnz x0, #32, #32764
+b7040000	tbnz x0, #32, #-32768
+b7000001	tbnz x1, #32, #0
+b7000021	tbnz x1, #32, #4
+b707ffe1	tbnz x1, #32, #-4
+b703ffe1	tbnz x1, #32, #32764
+b7040001	tbnz x1, #32, #-32768
+b7000010	tbnz x16, #32, #0
+b7000030	tbnz x16, #32, #4
+b707fff0	tbnz x16, #32, #-4
+b703fff0	tbnz x16, #32, #32764
+b7040010	tbnz x16, #32, #-32768
+b7000011	tbnz x17, #32, #0
+b7000031	tbnz x17, #32, #4
+b707fff1	tbnz x17, #32, #-4
+b703fff1	tbnz x17, #32, #32764
+b7040011	tbnz x17, #32, #-32768
+b700001d	tbnz x29, #32, #0
+b700003d	tbnz x29, #32, #4
+b707fffd	tbnz x29, #32, #-4
+b703fffd	tbnz x29, #32, #32764
+b704001d	tbnz x29, #32, #-32768
+b700001e	tbnz x30, #32, #0
+b700003e	tbnz x30, #32, #4
+b707fffe	tbnz x30, #32, #-4
+b703fffe	tbnz x30, #32, #32764
+b704001e	tbnz x30, #32, #-32768
+b700001f	tbnz xzr, #32, #0
+b700003f	tbnz xzr, #32, #4
+b707ffff	tbnz xzr, #32, #-4
+b703ffff	tbnz xzr, #32, #32764
+b704001f	tbnz xzr, #32, #-32768
+b7780000	tbnz x0, #47, #0
+b7780020	tbnz x0, #47, #4
+b77fffe0	tbnz x0, #47, #-4
+b77bffe0	tbnz x0, #47, #32764
+b77c0000	tbnz x0, #47, #-32768
+b7780001	tbnz x1, #47, #0
+b7780021	tbnz x1, #47, #4
+b77fffe1	tbnz x1, #47, #-4
+b77bffe1	tbnz x1, #47, #32764
+b77c0001	tbnz x1, #47, #-32768
+b7780010	tbnz x16, #47, #0
+b7780030	tbnz x16, #47, #4
+b77ffff0	tbnz x16, #47, #-4
+b77bfff0	tbnz x16, #47, #32764
+b77c0010	tbnz x16, #47, #-32768
+b7780011	tbnz x17, #47, #0
+b7780031	tbnz x17, #47, #4
+b77ffff1	tbnz x17, #47, #-4
+b77bfff1	tbnz x17, #47, #32764
+b77c0011	tbnz x17, #47, #-32768
+b778001d	tbnz x29, #47, #0
+b778003d	tbnz x29, #47, #4
+b77ffffd	tbnz x29, #47, #-4
+b77bfffd	tbnz x29, #47, #32764
+b77c001d	tbnz x29, #47, #-32768
+b778001e	tbnz x30, #47, #0
+b778003e	tbnz x30, #47, #4
+b77ffffe	tbnz x30, #47, #-4
+b77bfffe	tbnz x30, #47, #32764
+b77c001e	tbnz x30, #47, #-32768
+b778001f	tbnz xzr, #47, #0
+b778003f	tbnz xzr, #47, #4
+b77fffff	tbnz xzr, #47, #-4
+b77bffff	tbnz xzr, #47, #32764
+b77c001f	tbnz xzr, #47, #-32768
+b7f80000	tbnz x0, #63, #0
+b7f80020	tbnz x0, #63, #4
+b7ffffe0	tbnz x0, #63, #-4
+b7fbffe0	tbnz x0, #63, #32764
+b7fc0000	tbnz x0, #63, #-32768
+b7f80001	tbnz x1, #63, #0
+b7f80021	tbnz x1, #63, #4
+b7ffffe1	tbnz x1, #63, #-4
+b7fbffe1	tbnz x1, #63, #32764
+b7fc0001	tbnz x1, #63, #-32768
+b7f80010	tbnz x16, #63, #0
+b7f80030	tbnz x16, #63, #4
+b7fffff0	tbnz x16, #63, #-4
+b7fbfff0	tbnz x16, #63, #32764
+b7fc0010	tbnz x16, #63, #-32768
+b7f80011	tbnz x17, #63, #0
+b7f80031	tbnz x17, #63, #4
+b7fffff1	tbnz x17, #63, #-4
+b7fbfff1	tbnz x17, #63, #32764
+b7fc0011	tbnz x17, #63, #-32768
+b7f8001d	tbnz x29, #63, #0
+b7f8003d	tbnz x29, #63, #4
+b7fffffd	tbnz x29, #63, #-4
+b7fbfffd	tbnz x29, #63, #32764
+b7fc001d	tbnz x29, #63, #-32768
+b7f8001e	tbnz x30, #63, #0
+b7f8003e	tbnz x30, #63, #4
+b7fffffe	tbnz x30, #63, #-4
+b7fbfffe	tbnz x30, #63, #32764
+b7fc001e	tbnz x30, #63, #-32768
+b7f8001f	tbnz xzr, #63, #0
+b7f8003f	tbnz xzr, #63, #4
+b7ffffff	tbnz xzr, #63, #-4
+b7fbffff	tbnz xzr, #63, #32764
+b7fc001f	tbnz xzr, #63, #-32768
+d4000001	svc #0
+d4000021	svc #0x1
+d4024681	svc #0x1234
+d41fffe1	svc #0xffff
+d4195fc1	svc #0xcafe
+d4000002	hvc #0
+d4000022	hvc #0x1
+d4024682	hvc #0x1234
+d41fffe2	hvc #0xffff
+d4195fc2	hvc #0xcafe
+d4000003	smc #0
+d4000023	smc #0x1
+d4024683	smc #0x1234
+d41fffe3	smc #0xffff
+d4195fc3	smc #0xcafe
+d4200000	brk #0
+d4200020	brk #0x1
+d4224680	brk #0x1234
+d43fffe0	brk #0xffff
+d4395fc0	brk #0xcafe
+d4400000	hlt #0
+d4400020	hlt #0x1
+d4424680	hlt #0x1234
+d45fffe0	hlt #0xffff
+d4595fc0	hlt #0xcafe
+d4a00001	dcps1
+d4a00021	dcps1 #0x1
+d4a24681	dcps1 #0x1234
+d4bfffe1	dcps1 #0xffff
+d4b95fc1	dcps1 #0xcafe
+d4a00002	dcps2
+d4a00022	dcps2 #0x1
+d4a24682	dcps2 #0x1234
+d4bfffe2	dcps2 #0xffff
+d4b95fc2	dcps2 #0xcafe
+d4a00003	dcps3
+d4a00023	dcps3 #0x1
+d4a24683	dcps3 #0x1234
+d4bfffe3	dcps3 #0xffff
+d4b95fc3	dcps3 #0xcafe
+d61f0000	br x0
+d61f0020	br x1
+d61f0200	br x16
+d61f0220	br x17
+d61f03a0	br x29
+d61f03c0	br x30
+d61f03e0	br xzr
+d63f0000	blr x0
+d63f0020	blr x1
+d63f0200	blr x16
+d63f0220	blr x17
+d63f03a0	blr x29
+d63f03c0	blr x30
+d63f03e0	blr xzr
+d65f0000	ret x0
+d65f0020	ret x1
+d65f0200	ret x16
+d65f0220	ret x17
+d65f03a0	ret x29
+d65f03c0	ret
+d65f03e0	ret xzr
+d69f03e0	eret
+d6bf03e0	drps
+d71f0a10	braa x16, x16
+d71f0a11	braa x16, x17
+d71f0a1e	braa x16, x30
+d71f0a30	braa x17, x16
+d71f0a31	braa x17, x17
+d71f0a3e	braa x17, x30
+d71f0bd0	braa x30, x16
+d71f0bd1	braa x30, x17
+d71f0bde	braa x30, x30
+d71f0e10	brab x16, x16
+d71f0e11	brab x16, x17
+d71f0e1e	brab x16, x30
+d71f0e30	brab x17, x16
+d71f0e31	brab x17, x17
+d71f0e3e	brab x17, x30
+d71f0fd0	brab x30, x16
+d71f0fd1	brab x30, x17
+d71f0fde	brab x30, x30
+d61f0a1f	braaz x16
+d61f0a3f	braaz x17
+d61f0bdf	braaz x30
+d61f0e1f	brabz x16
+d61f0e3f	brabz x17
+d61f0fdf	brabz x30
+d73f0a10	blraa x16, x16
+d73f0a11	blraa x16, x17
+d73f0a1e	blraa x16, x30
+d73f0a30	blraa x17, x16
+d73f0a31	blraa x17, x17
+d73f0a3e	blraa x17, x30
+d73f0bd0	blraa x30, x16
+d73f0bd1	blraa x30, x17
+d73f0bde	blraa x30, x30
+d73f0e10	blrab x16, x16
+d73f0e11	blrab x16, x17
+d73f0e1e	blrab x16, x30
+d73f0e30	blrab x17, x16
+d73f0e31	blrab x17, x17
+d73f0e3e	blrab x17, x30
+d73f0fd0	blrab x30, x16
+d73f0fd1	blrab x30, x17
+d73f0fde	blrab x30, x30
+d63f0a1f	blraaz x16
+d63f0a3f	blraaz x17
+d63f0bdf	blraaz x30
+d63f0e1f	blrabz x16
+d63f0e3f	blrabz x17
+d63f0fdf	blrabz x30
+d65f0bff	retaa
+d65f0fff	retab
+d69f0bff	eretaa
+d69f0fff	eretab
+d503201f	nop
+d503203f	yield
+d503205f	wfe
+d503207f	wfi
+d503209f	sev
+d50320bf	sevl
+d50320df	dgh
+d50320ff	xpaclri
+d503211f	pacia1716
+d503213f	hint #9
+d503215f	pacib1716
+d503217f	hint #11
+d503219f	autia1716
+d50321bf	hint #13
+d50321df	autib1716
+d50321ff	hint #15
+d503221f	esb
+d503223f	psb csync
+d503225f	tsb csync
+d503227f	gcsb dsync
+d503229f	csdb
+d50322bf	hint #21
+d50322df	clrbhb
+d50322ff	hint #23
+d503231f	paciaz
+d503233f	paciasp
+d503235f	pacibz
+d503237f	pacibsp
+d503239f	autiaz
+d50323bf	autiasp
+d50323df	autibz
+d50323ff	autibsp
+d503241f	bti
+d503243f	hint #33
+d503245f	bti c
+d503247f	hint #35
+d503249f	bti j
+d50324bf	hint #37
+d50324df	bti jc
+d50324ff	hint #39
+d503251f	chkfeat x16
+d503253f	hint #41
+d503255f	hint #42
+d503257f	hint #43
+d503259f	hint #44
+d50325bf	hint #45
+d50325df	hint #46
+d50325ff	hint #47
+d503261f	hint #48
+d503263f	hint #49
+d503265f	hint #50
+d503267f	hint #51
+d503269f	hint #52
+d50326bf	hint #53
+d50326df	hint #54
+d50326ff	hint #55
+d503271f	hint #56
+d503273f	hint #57
+d503275f	hint #58
+d503277f	hint #59
+d503279f	hint #60
+d50327bf	hint #61
+d50327df	hint #62
+d50327ff	hint #63
+d503281f	hint #64
+d503283f	hint #65
+d503285f	hint #66
+d503287f	hint #67
+d503289f	hint #68
+d50328bf	hint #69
+d50328df	hint #70
+d50328ff	hint #71
+d503291f	hint #72
+d503293f	hint #73
+d503295f	hint #74
+d503297f	hint #75
+d503299f	hint #76
+d50329bf	hint #77
+d50329df	hint #78
+d50329ff	hint #79
+d5032a1f	hint #80
+d5032a3f	hint #81
+d5032a5f	hint #82
+d5032a7f	hint #83
+d5032a9f	hint #84
+d5032abf	hint #85
+d5032adf	hint #86
+d5032aff	hint #87
+d5032b1f	hint #88
+d5032b3f	hint #89
+d5032b5f	hint #90
+d5032b7f	hint #91
+d5032b9f	hint #92
+d5032bbf	hint #93
+d5032bdf	hint #94
+d5032bff	hint #95
+d5032c1f	hint #96
+d5032c3f	hint #97
+d5032c5f	hint #98
+d5032c7f	hint #99
+d5032c9f	hint #100
+d5032cbf	hint #101
+d5032cdf	hint #102
+d5032cff	hint #103
+d5032d1f	hint #104
+d5032d3f	hint #105
+d5032d5f	hint #106
+d5032d7f	hint #107
+d5032d9f	hint #108
+d5032dbf	hint #109
+d5032ddf	hint #110
+d5032dff	hint #111
+d5032e1f	hint #112
+d5032e3f	hint #113
+d5032e5f	hint #114
+d5032e7f	hint #115
+d5032e9f	hint #116
+d5032ebf	hint #117
+d5032edf	hint #118
+d5032eff	hint #119
+d5032f1f	hint #120
+d5032f3f	hint #121
+d5032f5f	hint #122
+d5032f7f	hint #123
+d5032f9f	hint #124
+d5032fbf	hint #125
+d5032fdf	hint #126
+d5032fff	hint #127
+d503305f	clrex #0
+d503315f	clrex #1
+d503325f	clrex #2
+d503335f	clrex #3
+d503345f	clrex #4
+d503355f	clrex #5
+d503365f	clrex #6
+d503375f	clrex #7
+d503385f	clrex #8
+d503395f	clrex #9
+d5033a5f	clrex #10
+d5033b5f	clrex #11
+d5033c5f	clrex #12
+d5033d5f	clrex #13
+d5033e5f	clrex #14
+d5033f5f	clrex
+d503309f	ssbb
+d503319f	dsb oshld
+d503329f	dsb oshst
+d503339f	dsb osh
+d503349f	pssbb
+d503359f	dsb nshld
+d503369f	dsb nshst
+d503379f	dsb nsh
+d503389f	dsb #8
+d503399f	dsb ishld
+d5033a9f	dsb ishst
+d5033b9f	dsb ish
+d5033c9f	dsb #12
+d5033d9f	dsb ld
+d5033e9f	dsb st
+d5033f9f	dsb sy
+d50330bf	dmb #0
+d50331bf	dmb oshld
+d50332bf	dmb oshst
+d50333bf	dmb osh
+d50334bf	dmb #4
+d50335bf	dmb nshld
+d50336bf	dmb nshst
+d50337bf	dmb nsh
+d50338bf	dmb #8
+d50339bf	dmb ishld
+d5033abf	dmb ishst
+d5033bbf	dmb ish
+d5033cbf	dmb #12
+d5033dbf	dmb ld
+d5033ebf	dmb st
+d5033fbf	dmb sy
+d50330df	isb #0
+d50331df	isb #1
+d50332df	isb #2
+d50333df	isb #3
+d50334df	isb #4
+d50335df	isb #5
+d50336df	isb #6
+d50337df	isb #7
+d50338df	isb #8
+d50339df	isb #9
+d5033adf	isb #10
+d5033bdf	isb #11
+d5033cdf	isb #12
+d5033ddf	isb #13
+d5033edf	isb #14
+d5033fdf	isb
+d50330ff	sb
+d503323f	dsb oshnxs
+d503363f	dsb nshnxs
+d5033a3f	dsb ishnxs
+d5033e3f	dsb synxs
+d500401f	cfinv
+d500403f	xaflag
+d500405f	axflag
+d50040bf	msr spsel, #0
+d50041bf	msr spsel, #1
+d503405f	msr dit, #0
+d503415f	msr dit, #1
+d500407f	msr uao, #0
+d500417f	msr uao, #1
+d500409f	msr pan, #0
+d500419f	msr pan, #1
+d50340df	msr daifset, #0
+d50341df	msr daifset, #1
+d50347df	msr daifset, #7
+d5034fdf	msr daifset, #15
+d50340ff	msr daifclr, #0
+d50341ff	msr daifclr, #1
+d50347ff	msr daifclr, #7
+d5034fff	msr daifclr, #15
+d503403f	msr ssbs, #0
+d503413f	msr ssbs, #1
+d503409f	msr tco, #0
+d503419f	msr tco, #1
+d508711f	ic ialluis
+d508751f	ic iallu
+d50b7520	ic ivau, x0
+d50b7521	ic ivau, x1
+d50b753e	ic ivau, x30
+d50b7420	dc zva, x0
+d50b7421	dc zva, x1
+d50b743e	dc zva, x30
+d5087620	dc ivac, x0
+d5087621	dc ivac, x1
+d508763e	dc ivac, x30
+d5087640	dc isw, x0
+d5087641	dc isw, x1
+d508765e	dc isw, x30
+d50b7a20	dc cvac, x0
+d50b7a21	dc cvac, x1
+d50b7a3e	dc cvac, x30
+d5087a40	dc csw, x0
+d5087a41	dc csw, x1
+d5087a5e	dc csw, x30
+d50b7b20	dc cvau, x0
+d50b7b21	dc cvau, x1
+d50b7b3e	dc cvau, x30
+d50b7e20	dc civac, x0
+d50b7e21	dc civac, x1
+d50b7e3e	dc civac, x30
+d50b7c20	dc cvap, x0
+d50b7c21	dc cvap, x1
+d50b7c3e	dc cvap, x30
+d5087800	at s1e1r, x0
+d5087801	at s1e1r, x1
+d508781e	at s1e1r, x30
+d5087820	at s1e1w, x0
+d5087821	at s1e1w, x1
+d508783e	at s1e1w, x30
+d5087840	at s1e0r, x0
+d5087841	at s1e0r, x1
+d508785e	at s1e0r, x30
+d5087860	at s1e0w, x0
+d5087861	at s1e0w, x1
+d508787e	at s1e0w, x30
+d508831f	tlbi vmalle1is
+d5088320	tlbi vae1is, x0
+d5088321	tlbi vae1is, x1
+d508833e	tlbi vae1is, x30
+d508871f	tlbi vmalle1
+d5088720	tlbi vae1, x0
+d5088721	tlbi vae1, x1
+d508873e	tlbi vae1, x30
+d5088340	tlbi aside1is, x0
+d5088341	tlbi aside1is, x1
+d508835e	tlbi aside1is, x30
+d509239f	sys #1, c2, c3, #4
+d52b7c20	sysl x0, #3, c7, c12, #1
+d5380000	mrs x0, midr_el1
+d5180000	msr s3_0_c0_c0_0, x0
+d5380001	mrs x1, midr_el1
+d5180001	msr s3_0_c0_c0_0, x1
+d538001e	mrs x30, midr_el1
+d518001e	msr s3_0_c0_c0_0, x30
+d53b4200	mrs x0, nzcv
+d51b4200	msr nzcv, x0
+d53b4201	mrs x1, nzcv
+d51b4201	msr nzcv, x1
+d53b421e	mrs x30, nzcv
+d51b421e	msr nzcv, x30
+d53b4400	mrs x0, fpcr
+d51b4400	msr fpcr, x0
+d53b4401	mrs x1, fpcr
+d51b4401	msr fpcr, x1
+d53b441e	mrs x30, fpcr
+d51b441e	msr fpcr, x30
+d53b4420	mrs x0, fpsr
+d51b4420	msr fpsr, x0
+d53b4421	mrs x1, fpsr
+d51b4421	msr fpsr, x1
+d53b443e	mrs x30, fpsr
+d51b443e	msr fpsr, x30
+d53bd040	mrs x0, tpidr_el0
+d51bd040	msr tpidr_el0, x0
+d53bd041	mrs x1, tpidr_el0
+d51bd041	msr tpidr_el0, x1
+d53bd05e	mrs x30, tpidr_el0
+d51bd05e	msr tpidr_el0, x30
+d53bd060	mrs x0, tpidrro_el0
+d51bd060	msr tpidrro_el0, x0
+d53bd061	mrs x1, tpidrro_el0
+d51bd061	msr tpidrro_el0, x1
+d53bd07e	mrs x30, tpidrro_el0
+d51bd07e	msr tpidrro_el0, x30
+d53be020	mrs x0, cntpct_el0
+d51be020	msr s3_3_c14_c0_1, x0
+d53be021	mrs x1, cntpct_el0
+d51be021	msr s3_3_c14_c0_1, x1
+d53be03e	mrs x30, cntpct_el0
+d51be03e	msr s3_3_c14_c0_1, x30
+d53be040	mrs x0, cntvct_el0
+d51be040	msr s3_3_c14_c0_2, x0
+d53be041	mrs x1, cntvct_el0
+d51be041	msr s3_3_c14_c0_2, x1
+d53be05e	mrs x30, cntvct_el0
+d51be05e	msr s3_3_c14_c0_2, x30
+d5381000	mrs x0, sctlr_el1
+d5181000	msr sctlr_el1, x0
+d5381001	mrs x1, sctlr_el1
+d5181001	msr sctlr_el1, x1
+d538101e	mrs x30, sctlr_el1
+d518101e	msr sctlr_el1, x30
+d53fffe0	mrs x0, s3_7_c15_c15_7
+d51fffe0	msr s3_7_c15_c15_7, x0
+d53fffe1	mrs x1, s3_7_c15_c15_7
+d51fffe1	msr s3_7_c15_c15_7, x1
+d53ffffe	mrs x30, s3_7_c15_c15_7
+d51ffffe	msr s3_7_c15_c15_7, x30
+d5031000	wfet x0
+d5031001	wfet x1
+d5031010	wfet x16
+d503101e	wfet x30
+d503101f	wfet xzr
+d5031020	wfit x0
+d5031021	wfit x1
+d5031030	wfit x16
+d503103e	wfit x30
+d503103f	wfit xzr
+d50240ff	msr s0_2_c4_c0_7, xzr
+d6df0000	
+d4600000	
+d79f0a11	

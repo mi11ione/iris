@@ -1,0 +1,28 @@
+{
+  "schema": "iris-bench-baseline/1",
+  "hostClass": "Apple M4 (4P+6E), 24 GiB, macOS 27.0, Swift 6.2.4 \u2014 recorded 2026-06-11 on AC power",
+  "note": "Thresholds are HOST-CLASS-RELATIVE and CI-UNTESTED: medians recorded on the machine above running `iris-bench smoke` (64 MiB buffer, 3 runs, 10^6 lookups, seed 0xc0ffee0015bad) \u2014 the release-preparation re-record on AC power (supersedes the earlier battery-power record, which it reproduces within 2%; methodology in Benchmarks/README.md). A different host class (e.g. a GitHub macos-15 runner) WILL produce different absolutes; on first CI run, replace these medians with that host's smoke output and keep the tolerance. Comparison is one-sided: throughput gates only on falling below baseline*(1-tolerance), latency only on exceeding baseline*(1+tolerance).",
+  "toleranceFraction": 0.15,
+  "metrics": {
+    "bulk-single": {
+      "unit": "words/s",
+      "largerIsBetter": true,
+      "median": 19382299
+    },
+    "lookup-view": {
+      "unit": "ns/op",
+      "largerIsBetter": false,
+      "median": 37.35
+    },
+    "lookup-raw": {
+      "unit": "ns/op",
+      "largerIsBetter": false,
+      "median": 4.86
+    },
+    "session-lookup": {
+      "unit": "ns/op",
+      "largerIsBetter": false,
+      "median": 10.54
+    }
+  }
+}

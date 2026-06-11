@@ -1,0 +1,149 @@
+# Copyright (c) 2026 Roman Zhuzhgov
+# Licensed under the Apache License, Version 2.0
+#
+# Nightly sweep (trust layer 3): the FULL 2^32 word space on both
+# platforms — totality (a well-formed record for every word, no crash)
+# and determinism (two passes, digest equality). Decode is a pure
+# function of its inputs, so the per-platform digests must also agree
+# with each other; the cross-platform comparison job pins that.
+#
+# The external-corpus TSV leg runs only where a runner carries the
+# multi-GB real-binary corpus (the parent project's Corpus/ tree),
+# advertised through the repository variable IRIS_DECODE_CORPUS; on
+# ordinary hosted runners it skips with a notice, never silently.
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: "30 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Container jobs (swift:6.1) default to sh, which rejects `set -o pipefail`.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  exhaustive:
+    name: Exhaustive 2^32 (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            label: macOS
+            container: ""
+          - os: ubuntu-24.04
+            label: Linux
+            container: swift:6.1
+    runs-on: ${{ matrix.os }}
+    # An empty container string means "run on the host" (the documented
+    # GitHub Actions behavior for expression-valued `container:`).
+    container: ${{ matrix.container }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build parity tool (release)
+        run: swift build -c release --product iris-parity
+      - name: Exhaustive sweep — totality + two-pass determinism
+        run: |
+          set -o pipefail
+          .build/release/iris-parity exhaustive all | tee "exhaustive-${{ matrix.label }}.log"
+      - name: Record digest
+        run: grep "^\[exhaustive\] digest=" "exhaustive-${{ matrix.label }}.log" > "digest-${{ matrix.label }}.txt"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: exhaustive-digest-${{ matrix.label }}
+          path: digest-${{ matrix.label }}.txt
+
+  cross-platform-digest:
+    name: Cross-platform digest equality
+    needs: exhaustive
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: exhaustive-digest-*
+          merge-multiple: true
+      - name: Compare
+        run: |
+          cat digest-*.txt
+          digests="$(grep -ho 'digest=0x[0-9a-f]*' digest-*.txt | sort -u)"
+          count="$(printf '%s\n' "$digests" | sed '/^$/d' | wc -l)"
+          if [ "$count" -ne 1 ]; then
+            echo "::error::exhaustive digests differ across platforms (or are missing) — decode is not platform-pure"
+            exit 1
+          fi
+
+  bench-smoke:
+    name: Benchmark regression smoke
+    # The benchmark regression guard: build the Benchmarks package (its
+    # own SwiftPM package — keeps the root dependency-free) and run the
+    # SHORT bulk+lookup smoke against the checked-in baseline with a
+    # one-sided ±15% tolerance. CAVEAT (documented in the baseline file
+    # too): the thresholds are HOST-CLASS-RELATIVE, recorded on an Apple
+    # M4 development machine, and this job is CI-UNTESTED — on the first run,
+    # if the runner's host class differs enough to breach, re-record
+    # `Benchmarks/baseline.json` from that run's smoke output and keep
+    # the tolerance. Failures after that are real regressions (or a
+    # runner hardware change, which the log's machine block shows).
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build benchmarks (release)
+        working-directory: Benchmarks
+        run: swift build -c release
+      - name: Smoke vs baseline (±15%, one-sided)
+        working-directory: Benchmarks
+        run: |
+          set -o pipefail
+          .build/release/iris-bench smoke --json --baseline baseline.json | tee bench-smoke.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-smoke-results
+          path: Benchmarks/bench-smoke.json
+
+  external-corpus:
+    name: External-corpus TSV (when configured)
+    # Two repository variables light this job up: IRIS_CORPUS_RUNNER is
+    # the runs-on label of the corpus-bearing machine (e.g. a
+    # self-hosted label; defaults to macos-15, where the job skips with
+    # a notice), and IRIS_DECODE_CORPUS is the corpus tree path on that
+    # machine. Both must be set for the leg to actually run.
+    runs-on: ${{ vars.IRIS_CORPUS_RUNNER || 'macos-15' }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check corpus configuration
+        id: corpus
+        env:
+          CORPUS: ${{ vars.IRIS_DECODE_CORPUS }}
+        run: |
+          if [ -z "$CORPUS" ]; then
+            echo "::notice::IRIS_DECODE_CORPUS repository variable not set — external-corpus parity skipped (runs only on a runner that carries the corpus tree)"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          elif [ ! -d "$CORPUS" ]; then
+            echo "::warning::IRIS_DECODE_CORPUS=$CORPUS is set but the path does not exist on this runner — skipping"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install LLVM (brew)
+        if: steps.corpus.outputs.configured == 'true'
+        run: |
+          brew install llvm
+          echo "IRIS_LLVM_MC=$(brew --prefix llvm)/bin/llvm-mc" >> "$GITHUB_ENV"
+      - name: Build parity tool (release)
+        if: steps.corpus.outputs.configured == 'true'
+        run: swift build -c release --product iris-parity
+      - name: TSV — full external corpus, reanchored at maximal mattr
+        if: steps.corpus.outputs.configured == 'true'
+        env:
+          IRIS_DECODE_CORPUS: ${{ vars.IRIS_DECODE_CORPUS }}
+        run: .build/release/iris-parity tsv --family all --reanchor

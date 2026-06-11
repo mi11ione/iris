@@ -1,0 +1,27 @@
+Tests/Fixtures/CLI/bin/dic-arm64.o (arm64):
+
+__TEXT,__text:
+
+_main:
+00: 52800000  mov w0, #0
+04: d65f03c0  ret
+
+_pick:
+08: 71000c1f  cmp w0, #3
+0c: 540001a8  b.hi 0x40 ; _pick+0x38
+10: 90000001  adrp x1, #0
+14: 91000021  add x1, x1, #0
+18: 38604822  ldrb w2, [x1, w0, uxtw]
+1c: 10000063  adr x3, #12
+20: 8b020863  add x3, x3, x2, lsl #2
+24: d61f0060  br x3
+28: 52800140  mov w0, #10
+2c: d65f03c0  ret
+30: 52800280  mov w0, #20
+34: d65f03c0  ret
+38: 528003c0  mov w0, #30
+3c: d65f03c0  ret
+40: 52800c60  mov w0, #99
+44: d65f03c0  ret
+48: 06040200  .long 0x6040200 ; data-in-code (jump-table-8)
+4c: deadbeef  .long 0xdeadbeef ; data-in-code (data)

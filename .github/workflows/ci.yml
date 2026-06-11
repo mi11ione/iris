@@ -1,0 +1,100 @@
+# Copyright (c) 2026 Roman Zhuzhgov
+# Licensed under the Apache License, Version 2.0
+#
+# Per-commit gate (trust layer 1): build (debug + release),
+# the full golden test suite on macOS and Linux, the zero-imports grep
+# gate, and the 100%-coverage gate (macOS; line/function/region columns,
+# per file, Sources/Iris only).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Container jobs (swift:6.1) default to sh, which rejects `set -o pipefail`.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS build + test + gates
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Toolchain
+        run: swift --version
+      - name: Build (debug)
+        run: |
+          set -o pipefail
+          swift build 2>&1 | tee build-debug.log
+      - name: Build (release)
+        run: |
+          set -o pipefail
+          swift build -c release 2>&1 | tee build-release.log
+      - name: Warnings are errors for the tree
+        run: |
+          if grep -E "warning:" build-debug.log build-release.log; then
+            echo "::error::compiler warnings present"
+            exit 1
+          fi
+      - name: Test (with coverage)
+        run: |
+          set -o pipefail
+          swift test --enable-code-coverage 2>&1 | tee test.log
+      - name: Warnings are errors for the test build
+        run: |
+          if grep -E "warning:" test.log; then
+            echo "::error::compiler warnings present in the test build"
+            exit 1
+          fi
+      - name: No-imports gate
+        run: Scripts/check-no-imports.sh
+      - name: Coverage gate (per-file 100%, all columns, Sources/Iris)
+        run: Scripts/coverage-gate.sh --skip-tests
+
+  linux:
+    name: Linux build + test
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Toolchain
+        run: swift --version
+      - name: Build (debug)
+        run: |
+          set -o pipefail
+          swift build 2>&1 | tee build-debug.log
+      - name: Build (release)
+        run: |
+          set -o pipefail
+          swift build -c release 2>&1 | tee build-release.log
+      - name: Warnings are errors for the tree
+        run: |
+          if grep -E "warning:" build-debug.log build-release.log; then
+            echo "::error::compiler warnings present"
+            exit 1
+          fi
+      - name: Test
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee test.log
+      - name: Warnings are errors for the test build
+        run: |
+          if grep -E "warning:" test.log; then
+            echo "::error::compiler warnings present in the test build"
+            exit 1
+          fi
+      - name: No-imports gate
+        run: Scripts/check-no-imports.sh
