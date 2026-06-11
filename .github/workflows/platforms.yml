@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Roman Zhuzhgov
+# Licensed under the Apache License, Version 2.0
+#
+# Proves the reach the zero-import design buys: the `Iris` LIBRARY (no
+# imports, no OS calls, explicit little-endian reads) compiles on Windows
+# and cross-compiles for Android. The CLI and parity tool are not built
+# here: they use Foundation + POSIX mmap + subprocess and are macOS/Linux
+# only by design.
+
+name: Platforms
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  windows:
+    name: Windows (library)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: SwiftyLab/setup-swift@latest
+        with:
+          swift-version: "6.1"
+      - uses: actions/checkout@v6
+      - name: Build the Iris library
+        run: swift build --product Iris -c release
+
+  android:
+    name: Android (library, cross-compiled)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cross-compile the Iris library for Android (aarch64)
+        uses: skiptools/swift-android-action@main
+        with:
+          build-tests: false
+          target: Iris
