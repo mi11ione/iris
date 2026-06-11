@@ -47,12 +47,27 @@ public struct ListingRenderer: Sendable {
         public let symbols: SymbolIndex
         /// Every code section of the binary (for same-section checks).
         public let sections: [CodeSection]
+        /// Imported-symbol name keyed by stub VM address; a branch to one
+        /// of these annotates `symbol stub for: <name>`.
+        public let stubTargets: [UInt64: String]
 
         @inlinable
-        public init(section: CodeSection, symbols: SymbolIndex, sections: [CodeSection]) {
+        public init(
+            section: CodeSection,
+            symbols: SymbolIndex,
+            sections: [CodeSection],
+            stubTargets: [UInt64: String] = [:],
+        ) {
             self.section = section
             self.symbols = symbols
             self.sections = sections
+            self.stubTargets = stubTargets
+        }
+
+        /// The shared branch-target resolver over this context.
+        @inlinable
+        var symbolizer: BranchSymbolizer {
+            BranchSymbolizer(symbols: symbols, sections: sections, stubTargets: stubTargets)
         }
     }
 
@@ -107,7 +122,12 @@ public struct ListingRenderer: Sendable {
         // A section wrapping the top of the address space (hostile vmaddr)
         // holds 16-digit addresses; otherwise the width of the last one.
         let width = sectionEnd > section.address ? String(sectionEnd &- 1, radix: 16).count : 16
-        let context = Context(section: section, symbols: binary.symbols, sections: binary.codeSections)
+        let context = Context(
+            section: section,
+            symbols: binary.symbols,
+            sections: binary.codeSections,
+            stubTargets: binary.stubTargets,
+        )
         for instruction in stream {
             // Word-aligned labels only: a label can only attach to a
             // line, and lines sit at record addresses.
@@ -191,7 +211,7 @@ public struct ListingRenderer: Sendable {
             )
         default:
             let text = InstructionText.absoluteBranchText(instruction)
-            let annotation = symbolAnnotation(for: instruction, context: context).map { " ; " + $0 } ?? ""
+            let annotation = targetAnnotation(for: instruction, context: context).map { " ; " + $0 } ?? ""
             let mnemonic = InstructionText.mnemonicToken(of: text)
             let rest = text.dropFirst(mnemonic.count)
             return (
@@ -199,6 +219,20 @@ public struct ListingRenderer: Sendable {
                 palette.mnemonic(String(mnemonic)) + String(rest) + palette.annotation(annotation),
             )
         }
+    }
+
+    /// The trailing comment for a non-sentinel line: branch-target
+    /// symbolication when the record branches, otherwise the formed
+    /// absolute PC-relative address (ADRP/ADR/literal loads) so the
+    /// listing shows the page/offset math the encoding implies.
+    func targetAnnotation(for instruction: Instruction, context: Context?) -> String? {
+        if let symbol = symbolAnnotation(for: instruction, context: context) {
+            return symbol
+        }
+        if let pcRelative = instruction.pcRelativeTarget {
+            return InstructionText.hex(pcRelative)
+        }
+        return nil
     }
 
     /// The data-in-code kind covering this word, rendered in the
@@ -222,21 +256,16 @@ public struct ListingRenderer: Sendable {
         }
     }
 
-    /// Branch-target symbolication: the symbol exactly at the target,
-    /// or the closest preceding symbol as `name+0x<delta>` — the latter
-    /// only when target and symbol lie in the same code section
-    /// (cross-section deltas would fabricate locality).
+    /// Branch-target symbolication: a stub forwarding to an import
+    /// (`symbol stub for: _name`) takes precedence; otherwise the symbol
+    /// exactly at the target, or the closest preceding symbol as
+    /// `name+0x<delta>` — the latter only when target and symbol lie in
+    /// the same code section (cross-section deltas would fabricate
+    /// locality).
     func symbolAnnotation(for instruction: Instruction, context: Context?) -> String? {
         guard let context, let target = instruction.branchTarget else { return nil }
-        if let exact = context.symbols.name(at: target) {
-            return exact
-        }
-        guard let nearest = context.symbols.nearest(atOrBefore: target) else { return nil }
-        let sameSection = context.sections.contains { section in
-            section.containsAddress(target) && section.containsAddress(nearest.address)
-        }
-        guard sameSection else { return nil }
-        return nearest.name + "+0x" + String(target &- nearest.address, radix: 16)
+        guard let resolution = context.symbolizer.resolve(target: target) else { return nil }
+        return resolution.isStub ? "symbol stub for: " + resolution.name : resolution.name
     }
 
     /// All symbols inside the section's address range, split into two

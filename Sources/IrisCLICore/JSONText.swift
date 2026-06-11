@@ -14,6 +14,35 @@ public enum JSONText {
     /// The `schemaVersion` value emitted on every line.
     public static let schemaVersion = 1
 
+    /// Per-binary symbol context for file-mode NDJSON: the containing
+    /// function of each record and the resolved name of its branch target.
+    /// Absent in the direct-decode modes (raw bytes carry no symbols), so
+    /// those streams emit no `symbol` / `targetSymbol` field.
+    @frozen
+    public struct SymbolContext: Sendable {
+        /// Function boundaries, for the `symbol` (containing function) field.
+        public let labels: FunctionLabels
+        /// Branch-target resolver, for the `targetSymbol` field.
+        public let symbolizer: BranchSymbolizer
+
+        @inlinable
+        public init(labels: FunctionLabels, symbolizer: BranchSymbolizer) {
+            self.labels = labels
+            self.symbolizer = symbolizer
+        }
+
+        /// Build the context straight from a walked binary.
+        @inlinable
+        public init(binary: WalkedBinary) {
+            labels = FunctionLabels(functionStarts: binary.functionStarts, symbols: binary.symbols)
+            symbolizer = BranchSymbolizer(
+                symbols: binary.symbols,
+                sections: binary.codeSections,
+                stubTargets: binary.stubTargets,
+            )
+        }
+    }
+
     /// JSON string literal with the mandatory escapes (quote, backslash,
     /// control characters; the two-character forms where JSON names them).
     public static func string(_ value: String) -> String {
@@ -44,8 +73,18 @@ public enum JSONText {
     /// `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`,
     /// `text`, `category`, `operands`, `reads`, `writes`, `branchClass`,
     /// `memoryAccess`, `ordering`, `flagEffect`, then the optional
-    /// `branchTarget` / `pcRelativeTarget`, then `isData`, `isUndefined`.
-    public static func instructionLine(_ instruction: Instruction) -> String {
+    /// `branchTarget` / `pcRelativeTarget` / `symbol` / `targetSymbol`,
+    /// then `isData`, `isUndefined`.
+    ///
+    /// In file mode, `context` supplies the containing-function `symbol`
+    /// and the resolved `targetSymbol`; the direct-decode modes pass `nil`
+    /// (raw bytes carry no symbols) and emit neither field. All additions
+    /// are optional, so `schemaVersion` stays `1` per the schema's
+    /// add-only policy.
+    public static func instructionLine(
+        _ instruction: Instruction,
+        context: SymbolContext? = nil,
+    ) -> String {
         var fields: [String] = []
         fields.append("\"schemaVersion\":\(schemaVersion)")
         fields.append("\"kind\":\"instruction\"")
@@ -69,6 +108,14 @@ public enum JSONText {
         }
         if let target = instruction.pcRelativeTarget {
             fields.append("\"pcRelativeTarget\":\(string(InstructionText.hex(target)))")
+        }
+        if let context, let symbol = context.labels.containing(instruction.address) {
+            fields.append("\"symbol\":\(string(symbol))")
+        }
+        if let context, let target = instruction.branchTarget,
+           let resolution = context.symbolizer.resolve(target: target)
+        {
+            fields.append("\"targetSymbol\":\(string(resolution.name))")
         }
         fields.append("\"isData\":\(instruction.category == .dataInCodeMarker)")
         fields.append("\"isUndefined\":\(instruction.isUndefined)")

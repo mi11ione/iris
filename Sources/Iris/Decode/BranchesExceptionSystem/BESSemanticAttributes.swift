@@ -196,16 +196,27 @@ public enum BESSemanticAttributes {
              .dcps1, .dcps2, .dcps3,
              .eret, .eretaa, .eretab, .drps,
              .nop, .yield, .wfe, .wfi, .sev, .sevl,
-             .dgh, .csdb, .esb, .psb, .tsb, .gcsbDsync, .xpaclri,
-             .paciaz, .paciasp, .pacibz, .pacibsp,
-             .autiaz, .autiasp, .autibz, .autibsp,
-             .pacia1716, .pacib1716, .autia1716, .autib1716,
+             .dgh, .csdb, .esb, .psb, .tsb, .gcsbDsync,
              .bti, .chkfeat, .clrbhb, .hint,
              .clrex, .dsb, .dmb, .isb, .sb, .ssbb, .pssbb,
              .cfinv, .xaflag, .axflag, .msrImm,
              .smstart, .smstop,
              .mrs:
             return BESExpectedReads(required: 0, allowed: 0)
+        // HINT-space PAC: the modifier register and signing target are
+        // fixed in the encoding (never operands) but are read. Exact masks,
+        // ARM ARM K1: *SP forms sign/auth X30 using SP (read {x30, sp});
+        // *Z forms use a zero modifier (read {x30}); *1716 forms sign/auth
+        // X17 using X16 (read {x17, x16}); XPACLRI strips X30 (read {x30}).
+        case .paciasp, .pacibsp, .autiasp, .autibsp:
+            let mask = (UInt64(1) << 30) | (UInt64(1) << 31) // {x30, sp}
+            return BESExpectedReads(required: mask, allowed: mask)
+        case .paciaz, .pacibz, .autiaz, .autibz, .xpaclri:
+            let mask = UInt64(1) << 30 // {x30}
+            return BESExpectedReads(required: mask, allowed: mask)
+        case .pacia1716, .pacib1716, .autia1716, .autib1716:
+            let mask = (UInt64(1) << 17) | (UInt64(1) << 16) // {x17, x16}
+            return BESExpectedReads(required: mask, allowed: mask)
         case .cbz, .cbnz, .tbz, .tbnz,
              .br, .blr, .ret,
              .braaz, .brabz, .blraaz, .blrabz,
@@ -327,6 +338,15 @@ public enum BESSemanticAttributes {
             let alias = BESSyslAliasTable.lookup(op1: op1, CRn: CRn, CRm: CRm, op2: op2)
             let writesRt = alias.map { $0.touchesRt(Rt) } ?? true
             return writesRt ? (UInt64(1) << UInt64(Rt)) : 0
+        // HINT-space PAC writes back the signed/authed/stripped register:
+        // X30 for the *SP / *Z forms and XPACLRI, X17 for the *1716 forms
+        // (ARM ARM K1, in-place X[d] = AddPAC/Auth/Strip(...)).
+        case .paciasp, .pacibsp, .autiasp, .autibsp,
+             .paciaz, .pacibz, .autiaz, .autibz,
+             .xpaclri:
+            return lrBit // {x30}
+        case .pacia1716, .pacib1716, .autia1716, .autib1716:
+            return UInt64(1) << 17 // {x17}
         case .b, .bCond, .bcCond,
              .cbz, .cbnz, .tbz, .tbnz,
              .cbgt, .cbge, .cbhi, .cbhs, .cbeq, .cbne, .cblt, .cblo,
@@ -338,10 +358,7 @@ public enum BESSemanticAttributes {
              .svc, .hvc, .smc, .brk, .hlt,
              .dcps1, .dcps2, .dcps3,
              .nop, .yield, .wfe, .wfi, .sev, .sevl,
-             .dgh, .csdb, .esb, .psb, .tsb, .gcsbDsync, .xpaclri,
-             .paciaz, .paciasp, .pacibz, .pacibsp,
-             .autiaz, .autiasp, .autibz, .autibsp,
-             .pacia1716, .pacib1716, .autia1716, .autib1716,
+             .dgh, .csdb, .esb, .psb, .tsb, .gcsbDsync,
              .bti, .chkfeat, .clrbhb, .hint,
              .clrex, .dsb, .dmb, .isb, .sb, .ssbb, .pssbb,
              .cfinv, .xaflag, .axflag, .msrImm,

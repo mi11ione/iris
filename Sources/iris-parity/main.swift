@@ -14,7 +14,7 @@
 import Foundation
 
 /// The tool's release version, matching the package tag.
-let parityVersion = "0.1.0"
+let parityVersion = "0.2.0"
 
 let usage = """
 usage: iris-parity <subcommand> [options]

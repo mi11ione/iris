@@ -515,4 +515,69 @@ struct BESSemanticAttributesTests {
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "semanticWrites")
     }
+
+    // MARK: - HINT-space PAC implicit register sets (ARM ARM K1)
+
+    /// The checker accepts every HINT-space PAC form when the decoder
+    /// emits its implicit register set. This pins decoder↔checker
+    /// agreement on the corrected reads/writes.
+    @Test func verifyAcceptsHintSpacePac() {
+        for word: UInt32 in [
+            0xD503_20FF, // xpaclri
+            0xD503_211F, 0xD503_215F, 0xD503_219F, 0xD503_21DF, // *1716
+            0xD503_231F, 0xD503_233F, 0xD503_235F, 0xD503_237F, // paci{a,a sp,b,b sp}
+            0xD503_239F, 0xD503_23BF, 0xD503_23DF, 0xD503_23FF, // auti{a,a sp,b,b sp}
+        ] {
+            #expect(BESSemanticChecker.verify(decode(word, at: 0)) == nil,
+                    "checker rejected hint-space PAC 0x\(String(word, radix: 16))")
+        }
+    }
+
+    /// SP-modifier forms read {x30, sp} and write {x30}.
+    @Test func expectedMasksHintSpacePacSpForms() {
+        let x30: UInt64 = 1 << 30
+        let sp: UInt64 = 1 << 31
+        for word: UInt32 in [0xD503_233F, 0xD503_237F, 0xD503_23BF, 0xD503_23FF] {
+            let d = decode(word, at: 0)
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.required == (x30 | sp))
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.allowed == (x30 | sp))
+            #expect(BESSemanticAttributes.expectedWriteMask(for: d) == x30)
+        }
+    }
+
+    /// Zero-modifier forms and XPACLRI read {x30} and write {x30}.
+    @Test func expectedMasksHintSpacePacZeroFormsAndXpaclri() {
+        let x30: UInt64 = 1 << 30
+        for word: UInt32 in [0xD503_231F, 0xD503_235F, 0xD503_239F, 0xD503_23DF, 0xD503_20FF] {
+            let d = decode(word, at: 0)
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.required == x30)
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.allowed == x30)
+            #expect(BESSemanticAttributes.expectedWriteMask(for: d) == x30)
+        }
+    }
+
+    /// The *1716 forms read {x16, x17} and write {x17}.
+    @Test func expectedMasksHintSpacePac1716Forms() {
+        let x16: UInt64 = 1 << 16
+        let x17: UInt64 = 1 << 17
+        for word: UInt32 in [0xD503_211F, 0xD503_215F, 0xD503_219F, 0xD503_21DF] {
+            let d = decode(word, at: 0)
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.required == (x16 | x17))
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.allowed == (x16 | x17))
+            #expect(BESSemanticAttributes.expectedWriteMask(for: d) == x17)
+        }
+    }
+
+    /// Mutating a hint-space PAC draft to drop its required reads is
+    /// caught — proves the corrected mask is enforced, not merely emitted.
+    @Test func verifyRejectsHintSpacePacWithMissingReads() {
+        let d = mutated(decode(0xD503_233F, at: 0), semanticReads: .empty) // paciasp
+        #expect(BESSemanticChecker.verify(d)?.field == "semanticReads.missing")
+    }
+
+    /// Mutating a hint-space PAC draft to drop its write is caught.
+    @Test func verifyRejectsHintSpacePacWithMissingWrite() {
+        let d = mutated(decode(0xD503_237F, at: 0), semanticWrites: .empty) // pacibsp
+        #expect(BESSemanticChecker.verify(d)?.field == "semanticWrites")
+    }
 }

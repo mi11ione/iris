@@ -65,6 +65,21 @@ struct ListingGoldenTests {
         #expect(run.stdout.contains("bl 0x100000398 ; _helper"))
     }
 
+    @Test func stubBranchAnnotatesTheImport() {
+        expectGolden(arguments: ["--color", "never"], fixture: "stub-arm64", goldenName: "stub-arm64.listing.txt")
+        let run = runCLI(["--color", "never", cliFixturePath("stub-arm64")])
+        #expect(run.stdout.contains("b 0x10000042c ; symbol stub for: _strcoll"))
+    }
+
+    @Test func stubSymbolicationSurvivesStripping() {
+        expectGolden(arguments: ["--color", "never"], fixture: "stub-stripped", goldenName: "stub-stripped.listing.txt")
+        let run = runCLI(["--color", "never", cliFixturePath("stub-stripped")])
+        // The import name still resolves through the stub even with no
+        // symbol table, while the function it sits in is a sub_ label.
+        #expect(run.stdout.contains("; symbol stub for: _strcoll"))
+        #expect(run.stdout.contains("sub_100000410:"))
+    }
+
     @Test func intraFunctionBranchesCarryOffsetForm() {
         let run = runCLI(["--color", "never", cliFixturePath("hello-arm64")])
         #expect(run.stdout.contains("b.ge 0x10000038c ; _sum_to+0x4c"))

@@ -89,6 +89,14 @@ struct MemoryOrderingTests {
         let v = MemoryOrdering(rawValue: 0b11)
         #expect(v == [.acquire, .release])
     }
+
+    @Test func descriptionRendersBracketedNames() {
+        #expect(MemoryOrdering().description == "[]")
+        #expect(MemoryOrdering.acquire.description == "[acquire]")
+        #expect(MemoryOrdering.release.description == "[release]")
+        #expect(([.acquire, .release] as MemoryOrdering).description == "[acquire, release]")
+        #expect("\(MemoryOrdering.acquire)" == "[acquire]")
+    }
 }
 
 /// Validates FlagEffect — a packed NZCV read/write bitmask (writes in bits

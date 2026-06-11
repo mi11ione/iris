@@ -171,3 +171,19 @@ extension RegisterSet: Sequence {
         count
     }
 }
+
+extension RegisterSet: CustomStringConvertible {
+    /// Bracketed list of the set's register names in ascending canonical-index
+    /// order, e.g. `[x29, x30, sp]` or `[]` for the empty set. Each name comes
+    /// from ``RegisterRef/name`` (so SIMD registers render `v0`…`v31` and the
+    /// encoding-31 slot renders `sp`). A debug / logging convenience; the
+    /// canonical ``Instruction/text`` does not use it.
+    public var description: String {
+        var parts: [String] = []
+        parts.reserveCapacity(count)
+        for reg in self {
+            parts.append(reg.name)
+        }
+        return "[" + parts.joined(separator: ", ") + "]"
+    }
+}

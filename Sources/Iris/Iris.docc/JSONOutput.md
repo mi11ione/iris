@@ -18,7 +18,7 @@ Diagnostics never appear on stdout in either mode. They go to stderr (suppressed
 
 ## kind: "instruction"
 
-Field order is fixed: `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`, `text`, `category`, `operands`, `reads`, `writes`, `branchClass`, `memoryAccess`, `ordering`, `flagEffect`, then the optional `branchTarget` and `pcRelativeTarget` (each present only when resolved), then `isData`, `isUndefined`.
+Field order is fixed: `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`, `text`, `category`, `operands`, `reads`, `writes`, `branchClass`, `memoryAccess`, `ordering`, `flagEffect`, then the optional `branchTarget`, `pcRelativeTarget`, `symbol`, and `targetSymbol` (each present only when resolved), then `isData`, `isUndefined`.
 
 | field | type | meaning |
 |---|---|---|
@@ -38,6 +38,8 @@ Field order is fixed: `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`
 | `flagEffect` | object | `{"reads": "<letters>", "writes": "<letters>"}` where letters are a subset of `nzcv` in that order, with empty strings for no effect |
 | `branchTarget` | string? | absolute resolved target of a direct branch (B/BL/B.cond/CBZ/TBZ…), `0x` hex, **absent** for indirect/exception/non-branches |
 | `pcRelativeTarget` | string? | absolute PC-relative data address (ADR/ADRP/literal loads/literal prefetch), `0x` hex, **absent** otherwise |
+| `symbol` | string? | name of the function containing the record, the label the listing groups under (a symbol-table name, or the `sub_<hex>` form when only `LC_FUNCTION_STARTS` marks the entry). **File mode only** — **absent** in the direct-decode modes (`0x<word>` / `--bytes`), which carry no symbols, and absent for a record no function owns |
+| `targetSymbol` | string? | name the `branchTarget` resolves to: the imported function a `__stubs` entry forwards to (matching the listing's `symbol stub for:` annotation), a symbol exactly at the target, or the closest preceding symbol in the same section as `name+0x<delta>`. **File mode only**, **absent** when the target is unresolved or the record does not branch |
 | `isData` | bool | `true` iff the word is covered by an `LC_DATA_IN_CODE` span (`category == "dataInCodeMarker"`) |
 | `isUndefined` | bool | `true` iff the encoding is unallocated or its extension is absent from the decode features, the explicit "Iris decodes nothing here" witness |
 
@@ -48,8 +50,10 @@ Example (one line, wrapped for reading):
  "mnemonic":"bl","text":"bl #-132","category":"branchesExceptionSystem","operands":["#-132"],
  "reads":[],"writes":["x30"],"branchClass":"call","memoryAccess":"none","ordering":[],
  "flagEffect":{"reads":"","writes":""},"branchTarget":"0x100000328",
- "isData":false,"isUndefined":false}
+ "symbol":"_caller","targetSymbol":"_callee","isData":false,"isUndefined":false}
 ```
+
+`symbol` and `targetSymbol` arrived after `schemaVersion 1` shipped. They are additive optional fields, exactly what this article's add-only policy permits within a major schema version, so `schemaVersion` stays `1`. A consumer written against the original schema ignores the new keys; a consumer that wants function context reads them when present.
 
 ## kind: "census"
 

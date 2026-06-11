@@ -86,12 +86,52 @@ enum HintDecode {
                 operands: [.unsignedImmediate(value: UInt64(entry.subTargetOperand), width: 2)],
             )
         }
+        let (reads, writes) = HintDecode.pacImplicitRegisters(for: entry.mnemonic)
         return DecodedDraft(
             address: address,
             encoding: encoding,
             mnemonic: entry.mnemonic,
+            semanticReads: reads,
+            semanticWrites: writes,
             category: .branchesExceptionSystem,
             operands: [],
         )
+    }
+
+    /// Implicit register effects of the operand-less HINT-space pointer-auth
+    /// instructions (the modifier register and signing/auth target are fixed
+    /// in the encoding, so they never appear as operands but must show in the
+    /// dataflow sets). Sources: ARM ARM K1 (PACIASP/AUTIASP § sign/auth X30
+    /// using SP; PACIAZ/AUTIAZ § zero modifier; PAC*1716/AUT*1716 § X17 from
+    /// X16; XPACLRI § strip X30). Every non-PAC HINT (NOP, BTI, barrier-like
+    /// sync hints, …) touches no general register, so it falls through to the
+    /// empty pair. The {x30, sp} read matches the validated RETAA/RETAB model
+    /// in `BranchRegDecode`.
+    @inline(__always)
+    private static func pacImplicitRegisters(
+        for mnemonic: Mnemonic,
+    ) -> (reads: RegisterSet, writes: RegisterSet) {
+        switch mnemonic {
+        // Sign/authenticate X30 using SP as the modifier: read X30 + SP,
+        // write X30 (X30 = AddPAC/Auth(X30, SP)).
+        case .paciasp, .pacibsp, .autiasp, .autibsp:
+            (RegisterSet.empty.inserting(.x(30)).inserting(.sp()),
+             RegisterSet.empty.inserting(.x(30)))
+        // Sign/authenticate X30 with a zero modifier: read X30, write X30.
+        case .paciaz, .pacibz, .autiaz, .autibz:
+            (RegisterSet.empty.inserting(.x(30)),
+             RegisterSet.empty.inserting(.x(30)))
+        // Sign/authenticate X17 using X16 as the modifier: read X17 + X16,
+        // write X17 (X17 = AddPAC/Auth(X17, X16)).
+        case .pacia1716, .pacib1716, .autia1716, .autib1716:
+            (RegisterSet.empty.inserting(.x(17)).inserting(.x(16)),
+             RegisterSet.empty.inserting(.x(17)))
+        // Strip PAC from X30 (LR): read X30, write X30.
+        case .xpaclri:
+            (RegisterSet.empty.inserting(.x(30)),
+             RegisterSet.empty.inserting(.x(30)))
+        default:
+            (.empty, .empty)
+        }
     }
 }

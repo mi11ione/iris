@@ -8,7 +8,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/mi11ione/iris/main/install.sh | sh
 #
 # Configuration (environment variables):
-#   IRIS_VERSION      a specific release like 0.1.0 (default: latest)
+#   IRIS_VERSION      a specific release like 0.2.0 (default: latest)
 #   IRIS_INSTALL_DIR  install directory (default: ~/.local/bin)
 
 set -u

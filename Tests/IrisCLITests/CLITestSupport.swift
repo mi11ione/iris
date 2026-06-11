@@ -214,7 +214,9 @@ struct MachOAssembler {
         u32(0) // flags
     }
 
-    /// `section_64` (80 bytes).
+    /// `section_64` (80 bytes). `reserved1`/`reserved2` carry the
+    /// indirect-symbol base and entry stride for an `S_SYMBOL_STUBS`
+    /// section; they are zero for ordinary sections.
     mutating func section64(
         sectname: String,
         segname: String,
@@ -222,6 +224,8 @@ struct MachOAssembler {
         size: UInt64,
         offset: UInt32,
         flags: UInt32,
+        reserved1: UInt32 = 0,
+        reserved2: UInt32 = 0,
     ) {
         fixedString(sectname, length: 16)
         fixedString(segname, length: 16)
@@ -232,9 +236,24 @@ struct MachOAssembler {
         u32(0) // reloff
         u32(0) // nreloc
         u32(flags)
-        u32(0) // reserved1
-        u32(0) // reserved2
+        u32(reserved1)
+        u32(reserved2)
         u32(0) // reserved3
+    }
+
+    /// `dysymtab_command` (80 bytes). Only `indirectsymoff` (+56) and
+    /// `nindirectsyms` (+60) drive stub symbolication; the rest are zero.
+    mutating func dysymtabCommand(indirectsymoff: UInt32, nindirectsyms: UInt32) {
+        u32(0xB) // LC_DYSYMTAB
+        u32(80)
+        for _ in 0 ..< 12 {
+            u32(0)
+        } // ilocalsym … nextrel (12 u32 fields)
+        u32(indirectsymoff)
+        u32(nindirectsyms)
+        for _ in 0 ..< 4 {
+            u32(0)
+        } // extreloff … nlocrel (4 u32 fields)
     }
 
     /// `symtab_command` (24 bytes).

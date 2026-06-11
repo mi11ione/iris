@@ -55,6 +55,66 @@ struct JSONOutputTests {
         #expect(run.stdout == golden("hello-arm64.ndjson"))
     }
 
+    @Test func stubStreamMatchesGolden() {
+        let run = runCLI(["--json", cliFixturePath("stub-arm64")])
+        #expect(run.status == CLI.exitSuccess)
+        #expect(run.stdout == golden("stub-arm64.ndjson"))
+    }
+
+    @Test func instructionsCarryContainingSymbol() throws {
+        let run = runCLI(["--json", cliFixturePath("hello-arm64")])
+        // _main's call to _helper reports _main as its containing function
+        // and _helper as its target.
+        let callLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"branchTarget\":\"0x100000398\"") })
+        let fields = try #require(object(callLine))
+        #expect(fields["symbol"] as? String == "_main")
+        #expect(fields["targetSymbol"] as? String == "_helper")
+    }
+
+    @Test func branchTargetSymbolNamesTheStubImport() throws {
+        let run = runCLI(["--json", cliFixturePath("stub-arm64")])
+        let stubLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"branchTarget\":\"0x10000042c\"") })
+        let fields = try #require(object(stubLine))
+        #expect(fields["symbol"] as? String == "_compare")
+        #expect(fields["targetSymbol"] as? String == "_strcoll")
+    }
+
+    @Test func branchTargetSymbolUsesOffsetForm() throws {
+        // hello-arm64's intra-function back-branch lands past a symbol in
+        // the same section, so targetSymbol is the name+0x<delta> form.
+        let run = runCLI(["--json", cliFixturePath("hello-arm64")])
+        let offsetLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"branchTarget\":\"0x10000038c\"") })
+        #expect(try #require(object(offsetLine))["targetSymbol"] as? String == "_sum_to+0x4c")
+    }
+
+    @Test func strippedBinaryReportsSubLabelAsSymbol() throws {
+        // No symbol table: the containing function is a sub_ label, and
+        // the stub import still resolves as targetSymbol.
+        let run = runCLI(["--json", cliFixturePath("stub-stripped")])
+        let stubLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"branchTarget\":\"0x10000042c\"") })
+        let fields = try #require(object(stubLine))
+        #expect(fields["symbol"] as? String == "sub_100000410")
+        #expect(fields["targetSymbol"] as? String == "_strcoll")
+    }
+
+    @Test func directDecodeModesOmitSymbolFields() throws {
+        // Raw bytes carry no symbols, so neither field is emitted.
+        let run = runCLI(["--json", "0x97ffffdf"])
+        let fields = try #require(object(run.stdout.trimmingCharacters(in: .newlines)))
+        #expect(fields["symbol"] == nil)
+        #expect(fields["targetSymbol"] == nil)
+    }
+
+    @Test func symbolContextMemberwiseInitComposes() {
+        // The memberwise init pairs a label set and a resolver directly;
+        // instructionLine reads both through it.
+        let labels = FunctionLabels(functionStarts: [0x1000], symbols: .empty)
+        let symbolizer = BranchSymbolizer(symbols: .empty, sections: [], stubTargets: [0x2000: "_imported"])
+        let context = JSONText.SymbolContext(labels: labels, symbolizer: symbolizer)
+        #expect(context.labels.containing(0x1004) == "sub_1000")
+        #expect(context.symbolizer.resolve(target: 0x2000)?.name == "_imported")
+    }
+
     @Test func branchLineCarriesTargetAndSemantics() throws {
         let run = runCLI(["--json", cliFixturePath("hello-arm64")])
         let blLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"mnemonic\":\"bl\"") })

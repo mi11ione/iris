@@ -39,6 +39,12 @@ public struct SymbolIndex: Sendable {
         addresses.count
     }
 
+    /// Every indexed `(address, name)` pair, ascending by address.
+    @inlinable
+    public var allSymbols: [(address: UInt64, name: String)] {
+        Array(zip(addresses, names))
+    }
+
     /// O(log n) exact-address lookup.
     /// - Returns: the symbol name at exactly `address`, or `nil`.
     @inlinable

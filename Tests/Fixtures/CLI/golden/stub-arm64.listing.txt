@@ -1,0 +1,19 @@
+Tests/Fixtures/CLI/bin/stub-arm64 (arm64):
+
+__TEXT,__text:
+
+_compare:
+100000410: 14000007  b 0x10000042c ; symbol stub for: _strcoll
+
+_main:
+100000414: 7100081f  cmp w0, #2
+100000418: 5400006a  b.ge 0x100000424 ; _main+0x10
+10000041c: 52800000  mov w0, #0
+100000420: d65f03c0  ret
+100000424: a9400420  ldp x0, x1, [x1]
+100000428: 17fffffa  b 0x100000410 ; _compare
+
+__TEXT,__stubs:
+10000042c: 90000030  adrp x16, #16384 ; 0x100004000
+100000430: f9400210  ldr x16, [x16]
+100000434: d61f0200  br x16

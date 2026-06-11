@@ -76,10 +76,34 @@ struct MalformedBinaryTests {
     }
 
     @Test func fatWithBadSliceRefusesItExplicitly() throws {
+        // The arm64e slice IS declared but its bytes are out of range, so
+        // the refusal names the truncation, not a missing architecture
+        // (the slice exists, so "no arm64e slice" would be misleading).
         let outcome = MachOWalker.walk(path: cliFixturePath("fat-bad-slice"), arch: .arm64e)
-        let unavailable = try #require(archUnavailableOutcome(outcome))
-        #expect(unavailable.requested == .arm64e)
-        #expect(unavailable.available == ["arm64", "arm64e"])
+        let detail = try #require(notMachOOutcome(outcome))
+        #expect(detail.contains("arm64e slice's content"))
+        #expect(detail.contains("out of range"))
+        #expect(detail.contains("truncated fat binary"))
+    }
+
+    @Test func fatWithEverySliceOutOfBoundsNamesTheTruncation() throws {
+        // Both fat slices point past EOF: the default-slice refusal still
+        // names the real cause (a truncated fat binary), never a
+        // misleading "no slice available".
+        let detail = try #require(notMachOOutcome(MachOWalker.walk(path: cliFixturePath("fat-all-oob"), arch: nil)))
+        #expect(detail.contains("slice's content"))
+        #expect(detail.contains("out of range"))
+        #expect(detail.contains("truncated fat binary"))
+    }
+
+    @Test func badIndirectSymbolTableDropsStubsOnly() throws {
+        // LC_DYSYMTAB.indirectsymoff past EOF: stub symbolication is
+        // unavailable with a typed diagnostic, but the listing still
+        // renders (the stub branch just carries no annotation).
+        let binary = try #require(walkedBinary(cliFixturePath("bad-indirectsym")))
+        #expect(binary.diagnostics.map(\.kind).contains(.indirectSymbolTableOutOfBounds))
+        #expect(binary.stubTargets.isEmpty)
+        #expect(!binary.codeSections.isEmpty)
     }
 
     @Test func emptyAndTinyFiles() throws {
@@ -159,6 +183,7 @@ struct MalformedBinaryTests {
             .dataInCodeEntryClamped: "data-in-code entry clamped",
             .symbolTableOutOfBounds: "symbol table out of bounds",
             .symbolNameOutOfBounds: "symbol name out of bounds",
+            .indirectSymbolTableOutOfBounds: "indirect symbol table out of bounds",
             .functionStartsOutOfBounds: "function starts out of bounds",
             .functionStartsMalformed: "function starts malformed",
             .functionStartsUnanchored: "function starts unanchored",
@@ -264,6 +289,17 @@ struct MalformedBinaryTests {
         let binary = try #require(walkedBinary(bytes: bytes))
         let diagnostic = try #require(binary.diagnostics.first { $0.kind == .loadCommandInvalid })
         #expect(diagnostic.detail == "LC_FUNCTION_STARTS at 184 has cmdsize 8, smaller than its 16-byte struct; skipped")
+    }
+
+    @Test func dysymtabCommandTooSmall() throws {
+        let bytes = minimalBinary(words: [0xD503_201F], extraSize: 16, extraCommands: { a in
+            a.u32(0xB) // LC_DYSYMTAB with cmdsize 16 < 80
+            a.u32(16)
+            a.u64(0)
+        })
+        let binary = try #require(walkedBinary(bytes: bytes))
+        let diagnostic = try #require(binary.diagnostics.first { $0.kind == .loadCommandInvalid })
+        #expect(diagnostic.detail == "LC_DYSYMTAB at 184 has cmdsize 16, smaller than its 80-byte struct; skipped")
     }
 
     @Test func duplicateCommandsKeepTheFirst() throws {

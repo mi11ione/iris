@@ -26,6 +26,14 @@
 #                   (cafebabf), exercising the fat64 walk path
 #   hello-stripped  hello-arm64 with the symbol table stripped
 #                   (function starts survive -> sub_<hex> labels)
+#   stub-arm64      thin arm64 calling an external libc function
+#                   (strcoll) so the linker emits a __stubs entry routed
+#                   through the indirect symbol table; a branch to it
+#                   annotates `; symbol stub for: _strcoll` (stub.c)
+#   stub-stripped   stub-arm64 with the symbol table stripped — the
+#                   import name still resolves through LC_DYSYMTAB's
+#                   indirect symbol table (which strip preserves), so
+#                   stub symbolication survives stripping
 #   dic-arm64.o     assembly with .data_region markers -> real
 #                   LC_DATA_IN_CODE (jump-table-8 + data kinds). Kept as
 #                   MH_OBJECT deliberately: the current linker (ld-prime)
@@ -56,6 +64,11 @@
 #   hostile-dic-region  LC_DATA_IN_CODE.dataoff pointed past the file
 #   fat-bad-slice       hello-fat with the second fat_arch.offset pointed
 #                       past the file (selection falls back to slice 1)
+#   fat-all-oob         hello-fat with BOTH fat_arch.offsets pointed past
+#                       the file (no slice selectable -> the truncated-fat
+#                       "slice content out of range" error, not "no slice")
+#   bad-indirectsym     stub-arm64 with LC_DYSYMTAB.indirectsymoff pointed
+#                       past the file (stub symbolication unavailable)
 #   not-macho.txt       plain text (no magic)
 
 set -eu
@@ -72,6 +85,8 @@ echo "building well-formed fixtures..."
 "$CC" -arch arm64e -O0 -fno-stack-protector -Wl,-reproducible -o "$bin/hello-arm64e" "$src/hello.c"
 lipo -create -output "$bin/hello-fat" "$bin/hello-arm64" "$bin/hello-arm64e"
 lipo -create -fat64 -output "$bin/hello-fat64" "$bin/hello-arm64" "$bin/hello-arm64e"
+"$CC" -arch arm64 -O1 -fno-stack-protector -Wl,-reproducible -o "$bin/stub-arm64" "$src/stub.c"
+strip -o "$bin/stub-stripped" "$bin/stub-arm64" 2> /dev/null
 "$CC" -arch arm64 -c -o "$bin/dic-arm64.o" "$src/dic.s"
 "$CC" -arch arm64 -Wl,-ld_classic -Wl,-reproducible -nostartfiles -Wl,-e,_main \
     -o "$bin/dic-linked" "$bin/dic-arm64.o"
@@ -126,6 +141,7 @@ def find_command(buf, target):
 hello = bytearray((bindir / 'hello-arm64').read_bytes())
 dic = bytearray((bindir / 'dic-arm64.o').read_bytes())
 fat = bytearray((bindir / 'hello-fat').read_bytes())
+stub = bytearray((bindir / 'stub-arm64').read_bytes())
 
 # Sanity: dic-arm64.o must really carry LC_DATA_IN_CODE entries, or the
 # fixture would silently stop testing the data-in-code path.
@@ -188,6 +204,23 @@ b = bytearray(fat)
 struct.pack_into('>I', b, 8 + 20 + 8, 0xF000_0000)
 (bindir / 'fat-bad-slice').write_bytes(bytes(b))
 
+# fat-all-oob: BOTH fat_arch.offsets (big-endian u32 at 8+8 and 8+20+8)
+# pointed past the file; no slice is selectable. The walker must report
+# the truncated-fat "slice content out of range" cause, not a misleading
+# "no slice for this architecture".
+b = bytearray(fat)
+struct.pack_into('>I', b, 8 + 8, 0xF000_0000)
+struct.pack_into('>I', b, 8 + 20 + 8, 0xF000_0000)
+(bindir / 'fat-all-oob').write_bytes(bytes(b))
+
+# bad-indirectsym: LC_DYSYMTAB.indirectsymoff (u32 at +56) pointed past
+# the file; stub symbolication is unavailable with a diagnostic, the
+# listing still renders (the stub branch just shows no annotation).
+LC_DYSYMTAB = 0xB
+b = bytearray(stub)
+struct.pack_into('<I', b, find_command(b, LC_DYSYMTAB) + 56, 0xF000_0000)
+(bindir / 'bad-indirectsym').write_bytes(bytes(b))
+
 print('surgery complete')
 PY
 
@@ -211,6 +244,9 @@ iris="$root/.build/debug/iris"
 "$iris" --color never Tests/Fixtures/CLI/bin/hello-arm64e > "$golden/hello-arm64e.listing.txt"
 "$iris" --color never Tests/Fixtures/CLI/bin/hello-fat > "$golden/hello-fat.listing.txt"
 "$iris" --color never Tests/Fixtures/CLI/bin/hello-stripped > "$golden/hello-stripped.listing.txt"
+"$iris" --color never Tests/Fixtures/CLI/bin/stub-arm64 > "$golden/stub-arm64.listing.txt"
+"$iris" --color never Tests/Fixtures/CLI/bin/stub-stripped > "$golden/stub-stripped.listing.txt"
+"$iris" --json Tests/Fixtures/CLI/bin/stub-arm64 > "$golden/stub-arm64.ndjson"
 "$iris" --color never Tests/Fixtures/CLI/bin/dic-arm64.o > "$golden/dic-arm64.listing.txt"
 "$iris" --color never Tests/Fixtures/CLI/bin/dic-linked > "$golden/dic-linked.listing.txt"
 "$iris" --color never --semantics Tests/Fixtures/CLI/bin/hello-arm64 > "$golden/hello-arm64.semantics.txt"

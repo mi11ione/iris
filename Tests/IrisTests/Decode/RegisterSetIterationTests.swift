@@ -105,3 +105,38 @@ struct RegisterSetAlgebraTests {
         #expect(RegisterSet(mask: .max).count == 64)
     }
 }
+
+/// Validates `RegisterSet`'s `CustomStringConvertible` rendering: a
+/// bracketed, ascending, comma-separated list of canonical register
+/// names, debug-only and independent of the canonical text path.
+@Suite("RegisterSet / description")
+struct RegisterSetDescriptionTests {
+    @Test func emptySetIsEmptyBrackets() {
+        #expect(RegisterSet.empty.description == "[]")
+        #expect("\(RegisterSet.empty)" == "[]")
+    }
+
+    @Test func singleGPR() {
+        #expect(RegisterSet.empty.inserting(.x(5)).description == "[x5]")
+    }
+
+    @Test func multipleGPRsAreAscendingAndCommaSeparated() {
+        let set = RegisterSet.empty.inserting(.x(30)).inserting(.x(29))
+        #expect(set.description == "[x29, x30]")
+    }
+
+    @Test func stackPointerRendersAsSp() {
+        let set = RegisterSet.empty.inserting(.x(29)).inserting(.x(30)).inserting(.sp())
+        #expect(set.description == "[x29, x30, sp]")
+    }
+
+    @Test func vectorRegistersRenderAsV() {
+        let set = RegisterSet.empty.inserting(.simd(0)).inserting(.simd(31))
+        #expect(set.description == "[v0, v31]")
+    }
+
+    @Test func mixedGPRSpAndVector() {
+        let set = RegisterSet(mask: (1 << 0) | (1 << 31) | (1 << 32))
+        #expect(set.description == "[x0, sp, v0]")
+    }
+}

@@ -30,6 +30,7 @@ public enum MachOWalker {
     static let mhObject: UInt32 = 0x1
     static let lcSegment64: UInt32 = 0x19
     static let lcSymtab: UInt32 = 0x2
+    static let lcDysymtab: UInt32 = 0xB
     static let lcFunctionStarts: UInt32 = 0x26
     static let lcDataInCode: UInt32 = 0x29
     static let segmentCommand64Size = 72
@@ -38,6 +39,10 @@ public enum MachOWalker {
     static let dataInCodeEntrySize = 8
     static let sAttrPureInstructions: UInt32 = 0x8000_0000
     static let sAttrSomeInstructions: UInt32 = 0x0000_0400
+    // section_64.flags low byte = section type. S_SYMBOL_STUBS marks the
+    // `__stubs`/`__auth_stubs` slabs whose entries each forward to an
+    // imported symbol via the indirect symbol table.
+    static let sSymbolStubs: UInt8 = 0x8
     static let sZerofill: UInt8 = 0x1
     static let sGBZerofill: UInt8 = 0xC
     static let sThreadLocalZerofill: UInt8 = 0x12
@@ -46,6 +51,11 @@ public enum MachOWalker {
     static let nSect: UInt8 = 0xE
     static let nAbs: UInt8 = 0x2
     static let nExt: UInt8 = 0x01
+    // Indirect-symbol-table sentinels: an entry equal to either (or their
+    // union) names no symbol (a local/absolute pointer), so its stub slot
+    // carries no import.
+    static let indirectSymbolLocal: UInt32 = 0x8000_0000
+    static let indirectSymbolAbs: UInt32 = 0x4000_0000
 
     /// Open `path`, select the requested (or best) slice, and walk it.
     public static func walk(path: String, arch: ArchSelection?) -> WalkOutcome {
@@ -115,6 +125,14 @@ public enum MachOWalker {
         }
 
         guard let window = selectSlice(from: slices, arch: arch) else {
+            // Distinguish "the architecture is not in the container" from
+            // "the matching slice is declared but its bytes are out of
+            // range" (a truncated fat) — the same nil selection, different
+            // cause and different fix.
+            let excludedMatch = slices.first { matchesSelection($0, arch: arch) && $0.window == nil }
+            if let excludedMatch {
+                return .notMachO(detail: "\(excludedMatch.name) slice's content [\(excludedMatch.offset), +\(excludedMatch.size)) is out of range for the \(file.size)-byte file (truncated fat binary)")
+            }
             return .archUnavailable(requested: arch, available: slices.map(\.name))
         }
         guard let sliceMagic: UInt32 = window.file.read(at: 0) else {
@@ -189,6 +207,15 @@ public enum MachOWalker {
             ?? first { $0.cputype == ArchitectureName.cpuTypeARM64 }
     }
 
+    /// Whether a slice satisfies the selection criteria regardless of
+    /// whether its bytes fit — an explicit `arch` matches strictly, the
+    /// default accepts any ARM64-cputype slice. Lets the caller tell a
+    /// missing architecture apart from a present-but-truncated one.
+    static func matchesSelection(_ slice: FatSlice, arch: ArchSelection?) -> Bool {
+        if let arch { return slice.selection == arch }
+        return slice.cputype == ArchitectureName.cpuTypeARM64
+    }
+
     /// Thin path (also the selected-fat-slice path): parse the
     /// `mach_header_64`, check architecture, walk load commands.
     static func walkThin(
@@ -249,6 +276,14 @@ public enum MachOWalker {
             textBase: commands.textSegmentBase,
             diagnostics: &diagnostics,
         )
+        let stubTargets = parseStubTargets(
+            file: file,
+            symtab: commands.symtab,
+            dysymtab: commands.dysymtab,
+            segments: commands.segments,
+            swapped: swapped,
+            diagnostics: &diagnostics,
+        )
 
         return .binary(WalkedBinary(
             path: file.path,
@@ -257,6 +292,7 @@ public enum MachOWalker {
             codeSections: sections,
             symbols: symbols,
             functionStarts: starts,
+            stubTargets: stubTargets,
             diagnostics: diagnostics,
         ))
     }
@@ -309,6 +345,9 @@ public enum MachOWalker {
         var symtab: LinkeditRegion?
         var functionStarts: LinkeditRegion?
         var dataInCode: LinkeditRegion?
+        /// `LC_DYSYMTAB`'s indirect-symbol-table window: `fieldA` =
+        /// `indirectsymoff`, `fieldB` = `nindirectsyms` (the rest unused).
+        var dysymtab: LinkeditRegion?
         var textSegmentBase: UInt64?
     }
 
@@ -422,6 +461,26 @@ public enum MachOWalker {
                 LinkeditRegion(fieldA: fieldA, fieldB: fieldB, fieldC: fieldC, fieldD: fieldD),
                 into: &collected.symtab,
                 commandName: "LC_SYMTAB",
+                diagnostics: &diagnostics,
+            )
+        case lcDysymtab:
+            // dysymtab_command: 18 UInt32 fields after (cmd, cmdsize).
+            // The listing needs only indirectsymoff (+56) and
+            // nindirectsyms (+60) for stub symbolication.
+            guard size >= 80,
+                  let indirectsymoff = u32(file, start + 56, swapped),
+                  let nindirectsyms = u32(file, start + 60, swapped)
+            else {
+                diagnostics.append(WalkerDiagnostic(
+                    kind: .loadCommandInvalid,
+                    detail: "LC_DYSYMTAB at \(start) has cmdsize \(size), smaller than its 80-byte struct; skipped",
+                ))
+                return
+            }
+            store(
+                LinkeditRegion(fieldA: indirectsymoff, fieldB: nindirectsyms),
+                into: &collected.dysymtab,
+                commandName: "LC_DYSYMTAB",
                 diagnostics: &diagnostics,
             )
         case lcFunctionStarts, lcDataInCode:
@@ -719,6 +778,132 @@ public enum MachOWalker {
             }
         }
         return SymbolIndex(symbols: externalPairs + localPairs)
+    }
+
+    /// Resolve every `S_SYMBOL_STUBS` section's entries to their imported
+    /// symbol names, keyed by stub VM address — the map the listing uses
+    /// to annotate a branch to a stub as `; symbol stub for: _name`.
+    ///
+    /// A stub section's `reserved1` is its first entry's index into the
+    /// indirect symbol table; entry N maps to indirect-symtab slot
+    /// `reserved1 + N`, whose value is an index into `LC_SYMTAB`'s
+    /// `nlist_64` array (the imported symbol, undefined in this image).
+    /// Entries flagged LOCAL/ABS name no symbol and are skipped. Both the
+    /// symtab and the indirect table are required; either absent yields an
+    /// empty map (a fully-static binary has no stubs). Every read is
+    /// bounds-guarded against the slice; a regressed proof drops the one
+    /// entry, never crashes.
+    static func parseStubTargets(
+        file: MappedFile,
+        symtab: LinkeditRegion?,
+        dysymtab: LinkeditRegion?,
+        segments: [SegmentRecord],
+        swapped _: Bool,
+        diagnostics: inout [WalkerDiagnostic],
+    ) -> [UInt64: String] {
+        guard let symtab, let dysymtab else { return [:] }
+        let symoff = Int(symtab.fieldA)
+        let nsyms = Int(symtab.fieldB)
+        let stroff = Int(symtab.fieldC)
+        let strsize = Int(symtab.fieldD)
+        let indirectsymoff = Int(dysymtab.fieldA)
+        let nindirectsyms = Int(dysymtab.fieldB)
+        guard nindirectsyms > 0, nsyms > 0 else { return [:] }
+        guard indirectsymoff + nindirectsyms * 4 <= file.size else {
+            diagnostics.append(WalkerDiagnostic(
+                kind: .indirectSymbolTableOutOfBounds,
+                detail: "LC_DYSYMTAB indirect symbols [\(indirectsymoff), +\(nindirectsyms)·4) exceed the \(file.size)-byte slice; stub symbolication unavailable",
+            ))
+            return [:]
+        }
+        // The symtab/string-table bounds gate name lookups; if they don't
+        // fit, parseSymbols already diagnosed it, so stay silent here.
+        guard symoff + nsyms * nlist64Size <= file.size, stroff + strsize <= file.size else {
+            return [:]
+        }
+
+        var stubTargets: [UInt64: String] = [:]
+        for segment in segments {
+            let budget = (segment.commandSize - segmentCommand64Size) / section64Size
+            let nsects = min(Int(segment.nsects), budget)
+            for i in 0 ..< max(nsects, 0) {
+                let base = segment.commandStart + segmentCommand64Size + i * section64Size
+                appendStubSection(
+                    file: file,
+                    sectionBase: base,
+                    swapped: segment.swapped,
+                    symoff: symoff, nsyms: nsyms, stroff: stroff, strsize: strsize,
+                    indirectsymoff: indirectsymoff, nindirectsyms: nindirectsyms,
+                    into: &stubTargets,
+                )
+            }
+        }
+        return stubTargets
+    }
+
+    /// Decode one `section_64` (proven in bounds by the caller); when it
+    /// is an `S_SYMBOL_STUBS` section, resolve each entry to its imported
+    /// name and record `stubAddress → name`.
+    static func appendStubSection(
+        file: MappedFile,
+        sectionBase: Int,
+        swapped: Bool,
+        symoff: Int, nsyms: Int, stroff: Int, strsize: Int,
+        indirectsymoff: Int, nindirectsyms: Int,
+        into stubTargets: inout [UInt64: String],
+    ) {
+        // Reads lie inside the caller-proven section_64 extent; a miss
+        // degrades to the skip a non-stub section takes.
+        guard let addr = u64(file, sectionBase + 32, swapped),
+              let size = u64(file, sectionBase + 40, swapped),
+              let flags = u32(file, sectionBase + 64, swapped),
+              let reserved1 = u32(file, sectionBase + 68, swapped),
+              let reserved2 = u32(file, sectionBase + 72, swapped),
+              UInt8(truncatingIfNeeded: flags) == sSymbolStubs
+        else { return }
+        let stride = UInt64(reserved2)
+        // A zero stub size cannot enumerate entries; nothing to resolve.
+        guard stride > 0, size > 0 else { return }
+        let entryCount = Int(size / stride)
+        let firstIndirect = Int(reserved1)
+        for entry in 0 ..< entryCount {
+            let indirectSlot = firstIndirect + entry
+            guard indirectSlot < nindirectsyms else { break }
+            // The slot read lies inside the caller-proven indirect table;
+            // LOCAL/ABS slots and out-of-range indices name no symbol and
+            // share this skip.
+            guard let symbolIndexRaw = u32(file, indirectsymoff + indirectSlot * 4, swapped),
+                  symbolIndexRaw & (indirectSymbolLocal | indirectSymbolAbs) == 0,
+                  Int(symbolIndexRaw) < nsyms
+            else { continue }
+            let symbolIndex = Int(symbolIndexRaw)
+            guard let name = symbolName(
+                file: file, symoff: symoff, index: symbolIndex,
+                stroff: stroff, strsize: strsize, swapped: swapped,
+            ) else { continue }
+            let stubAddress = addr &+ UInt64(entry) &* stride
+            stubTargets[stubAddress] = name
+        }
+    }
+
+    /// The string-table name of the `nlist_64` at `index`, or `nil` when
+    /// the entry has no in-bounds, non-empty name. Used to resolve an
+    /// indirect-symbol-table slot to its imported symbol.
+    static func symbolName(
+        file: MappedFile,
+        symoff: Int,
+        index: Int,
+        stroff: Int,
+        strsize: Int,
+        swapped: Bool,
+    ) -> String? {
+        // symoff + nsyms*16 <= file.size and index < nsyms (caller-proven).
+        let base = symoff + index * nlist64Size
+        guard let nStrx = u32(file, base, swapped), nStrx != 0, Int(nStrx) < strsize else { return nil }
+        guard let name = file.readCString(at: stroff + Int(nStrx), maxLength: strsize - Int(nStrx)),
+              !name.isEmpty
+        else { return nil }
+        return name
     }
 
     /// Decode the `LC_FUNCTION_STARTS` ULEB128 delta chain into ascending

@@ -97,12 +97,15 @@ Exit codes, stdout/stderr separation, `--color auto|always|never`, and `--quiet`
 
 ## Feed an LLM
 
-Disassembly text is what model pipelines choke on: too many tokens, too little structure, easy to hallucinate over. Iris emits the dataflow already computed, chunks binaries into function-sized units via symbols and `LC_FUNCTION_STARTS`, and produces byte-identical output for identical input, so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved. A model is never handed a confident wrong instruction.
+Disassembly text is what model pipelines choke on. It carries too many tokens, too little structure, and too much room to hallucinate. Iris emits the dataflow already computed and produces byte-identical output for identical input, so prompts cache and evals reproduce. Each instruction object names its containing function in a `symbol` field, the same function the text listing groups under, sourced from the symbol table and `LC_FUNCTION_STARTS` (a stripped binary falls back to a `sub_<hex>` label). When a branch or call resolves to a known name, a `targetSymbol` field carries it, including imports reached through a `__stubs` entry. That gives a model function context and named call edges with no extra passes. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
 
 ```sh
-# call-graph edges as one JSON object per call: at = caller site, to = resolved target
-# (null target means an indirect call), ready to feed a model or a retrieval index
-iris --json MyApp | jq -c 'select(.branchClass=="call") | {at: .address, to: .branchTarget}'
+# named call-graph edges: from = caller function, to = resolved callee
+# (an absent targetSymbol means the target had no known name)
+iris --json MyApp | jq -c 'select(.branchClass=="call") | {from: .symbol, to: .targetSymbol, at: .address}'
+# {"from":"_helper","to":"_add42","at":"0x1000003b0"}
+# {"from":"_helper","to":"_sum_to","at":"0x1000003bc"}
+# {"from":"_main","to":"_helper","at":"0x1000003f8"}
 ```
 
 ## Decode from Swift
@@ -127,7 +130,7 @@ Every `Instruction` carries bit-exact register read/write sets, memory access an
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mi11ione/iris", from: "0.1.0")
+    .package(url: "https://github.com/mi11ione/iris", from: "0.2.0")
 ]
 ```
 

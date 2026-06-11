@@ -21,6 +21,10 @@ public struct WalkedBinary: Sendable {
     public let symbols: SymbolIndex
     /// Ascending `LC_FUNCTION_STARTS` addresses; empty when absent.
     public let functionStarts: [UInt64]
+    /// Imported-symbol name keyed by `__stubs`/`__auth_stubs` entry VM
+    /// address; empty when the binary has no symbol stubs. A branch whose
+    /// target is one of these addresses calls the named import.
+    public let stubTargets: [UInt64: String]
     /// Malformations stepped around during the walk.
     public let diagnostics: [WalkerDiagnostic]
 
@@ -31,6 +35,7 @@ public struct WalkedBinary: Sendable {
         codeSections: [CodeSection],
         symbols: SymbolIndex,
         functionStarts: [UInt64],
+        stubTargets: [UInt64: String] = [:],
         diagnostics: [WalkerDiagnostic],
     ) {
         self.path = path
@@ -39,6 +44,7 @@ public struct WalkedBinary: Sendable {
         self.codeSections = codeSections
         self.symbols = symbols
         self.functionStarts = functionStarts
+        self.stubTargets = stubTargets
         self.diagnostics = diagnostics
     }
 }

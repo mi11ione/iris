@@ -99,6 +99,48 @@ struct BESHintTests {
         }
     }
 
+    @Test func pacHintSpaceImplicitRegisterSets() {
+        // The operand-less HINT-space PAC instructions carry implicit
+        // register effects (the modifier + signing target are fixed in the
+        // encoding, never operands). Exact masks per ARM ARM K1:
+        //   *SP forms  sign/auth X30 using SP  → reads {x30, sp}, writes {x30}
+        //   *Z  forms  sign/auth X30, zero mod → reads {x30},     writes {x30}
+        //   *1716forms sign/auth X17 using X16 → reads {x17, x16}, writes {x17}
+        //   XPACLRI    strip PAC from X30/LR   → reads {x30},     writes {x30}
+        let x16: UInt64 = 1 << 16
+        let x17: UInt64 = 1 << 17
+        let x30: UInt64 = 1 << 30
+        let sp: UInt64 = 1 << 31
+        let cases: [(UInt8, Mnemonic, UInt64, UInt64)] = [
+            (25, .paciasp, x30 | sp, x30), (27, .pacibsp, x30 | sp, x30),
+            (29, .autiasp, x30 | sp, x30), (31, .autibsp, x30 | sp, x30),
+            (24, .paciaz, x30, x30), (26, .pacibz, x30, x30),
+            (28, .autiaz, x30, x30), (30, .autibz, x30, x30),
+            (8, .pacia1716, x16 | x17, x17), (10, .pacib1716, x16 | x17, x17),
+            (12, .autia1716, x16 | x17, x17), (14, .autib1716, x16 | x17, x17),
+            (7, .xpaclri, x30, x30),
+        ]
+        for (imm7, expected, reads, writes) in cases {
+            let d = decode(enc(imm7), at: 0)
+            #expect(d.mnemonic == expected, "HINT \(imm7)")
+            #expect(d.semanticReads.mask == reads,
+                    "\(expected.name) reads 0x\(String(d.semanticReads.mask, radix: 16)) expected 0x\(String(reads, radix: 16))")
+            #expect(d.semanticWrites.mask == writes,
+                    "\(expected.name) writes 0x\(String(d.semanticWrites.mask, radix: 16)) expected 0x\(String(writes, radix: 16))")
+        }
+    }
+
+    @Test func nonPacHintSpaceSlotsHaveNoRegisterEffects() {
+        // Every non-PAC HINT (NOP, event/sync hints, BTI, CHKFEAT, and the
+        // generic .hint sentinel) touches no general register. Guards the
+        // PAC implicit-register path from leaking onto neighbors.
+        for imm7: UInt8 in [0, 1, 2, 3, 4, 5, 6, 16, 17, 18, 19, 20, 22, 32, 34, 40, 64, 127] {
+            let d = decode(enc(imm7), at: 0)
+            #expect(d.semanticReads.mask == 0, "HINT \(imm7) reads")
+            #expect(d.semanticWrites.mask == 0, "HINT \(imm7) writes")
+        }
+    }
+
     @Test func btiBareNoSubTarget() {
         // HINT 32 = bare BTI (no sub-target).
         let d = decode(enc(32), at: 0)

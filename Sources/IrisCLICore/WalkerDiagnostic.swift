@@ -68,6 +68,9 @@ public struct WalkerDiagnostic: Sendable, Hashable, CustomStringConvertible {
         /// An `nlist_64` entry's name offset is outside the string
         /// table; the symbol is dropped.
         case symbolNameOutOfBounds
+        /// The `LC_DYSYMTAB` indirect symbol table region is outside the
+        /// slice; stub symbolication is unavailable.
+        case indirectSymbolTableOutOfBounds
         /// The `LC_FUNCTION_STARTS` region is outside the slice; function
         /// starts are unavailable.
         case functionStartsOutOfBounds
@@ -95,6 +98,7 @@ public struct WalkerDiagnostic: Sendable, Hashable, CustomStringConvertible {
             case .dataInCodeEntryClamped: "data-in-code entry clamped"
             case .symbolTableOutOfBounds: "symbol table out of bounds"
             case .symbolNameOutOfBounds: "symbol name out of bounds"
+            case .indirectSymbolTableOutOfBounds: "indirect symbol table out of bounds"
             case .functionStartsOutOfBounds: "function starts out of bounds"
             case .functionStartsMalformed: "function starts malformed"
             case .functionStartsUnanchored: "function starts unanchored"

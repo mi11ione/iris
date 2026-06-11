@@ -12,7 +12,7 @@ import Iris
 /// diagnostics, never error messages.
 public enum CLI {
     /// The tool's release version, matching the package tag.
-    public static let version = "0.1.0"
+    public static let version = "0.2.0"
 
     /// Exit code for success.
     public static let exitSuccess: Int32 = 0
@@ -153,13 +153,14 @@ public enum CLI {
                 return exitSuccess
             }
             if invocation.json {
+                let jsonContext = JSONText.SymbolContext(binary: binary)
                 for section in binary.codeSections {
                     let stream = section.instructions(features: binary.features)
                     for diagnostic in stream.diagnostics {
                         surface(section, diagnostic)
                     }
                     for instruction in stream {
-                        writeOutput(JSONText.instructionLine(instruction) + "\n")
+                        writeOutput(JSONText.instructionLine(instruction, context: jsonContext) + "\n")
                     }
                 }
                 return exitSuccess
@@ -200,8 +201,12 @@ public enum CLI {
 
     usage:
       iris [options] <file>           disassemble a Mach-O binary's code sections
-      iris [options] 0x<word>         decode one little-endian instruction word
+      iris [options] 0x<word>         decode one 32-bit instruction word
       iris [options] --bytes "<hex>"  decode hex bytes as little-endian words
+
+    word vs bytes order: 0x<word> is the instruction word as written
+    (0xd503201f), so its bytes read high-to-low; --bytes is memory order
+    (little-endian), so "1f 20 03 d5" is the same instruction.
 
     options:
       --arch <arm64|arm64e>        select the slice of a fat binary
@@ -217,7 +222,10 @@ public enum CLI {
       --stats                      emit an instruction census instead of a
                                    listing (with --json: one census object)
       --color <auto|always|never>  ANSI color (default: auto — only on a TTY)
-      --quiet                      suppress diagnostics on stderr
+      --quiet                      suppress decode diagnostics on stderr
+                                   (malformed-input warnings); fatal errors
+                                   such as a missing or unmappable file are
+                                   still reported
       --version                    print the version
       --help, -h                   print this help
 
