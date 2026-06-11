@@ -126,7 +126,7 @@ for inst in stream where inst.isCall {
 // bl #12 -> 4010
 ```
 
-Every `Instruction` carries bit-exact register read/write sets, memory access and ordering, per-flag effects, ADR/ADRP page math, and precisely-scoped predicates. It is the precomputed layer that CFG builders, emulators, and decompilers otherwise write first. The library has no dependencies and no imports, and runs anywhere Swift 6 compiles: macOS, iOS, tvOS, watchOS, visionOS, Linux. That includes inside a crash reporter on the device.
+Every `Instruction` carries bit-exact register read/write sets, memory access and ordering, per-flag effects, ADR/ADRP page math, and precisely-scoped predicates. It is the precomputed layer that CFG builders, emulators, and decompilers otherwise write first. The library has no dependencies and no imports, so it runs anywhere Swift compiles: macOS, Linux, Windows, Android, and on-device iOS. CI builds it on every one of them.
 
 ```swift
 dependencies: [
@@ -156,6 +156,7 @@ Every possible 32-bit word decodes to a well-formed record. Unknown encodings yi
 [![CI](https://github.com/mi11ione/iris/actions/workflows/ci.yml/badge.svg)](https://github.com/mi11ione/iris/actions/workflows/ci.yml)
 [![Parity](https://github.com/mi11ione/iris/actions/workflows/parity.yml/badge.svg)](https://github.com/mi11ione/iris/actions/workflows/parity.yml)
 [![Nightly](https://github.com/mi11ione/iris/actions/workflows/nightly.yml/badge.svg)](https://github.com/mi11ione/iris/actions/workflows/nightly.yml)
+[![Platforms](https://github.com/mi11ione/iris/actions/workflows/platforms.yml/badge.svg)](https://github.com/mi11ione/iris/actions/workflows/platforms.yml)
 [![Swift Package Index](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fmi11ione%2Firis%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/mi11ione/iris)
 
 Correctness is defined by external oracles, never asserted from inside:
