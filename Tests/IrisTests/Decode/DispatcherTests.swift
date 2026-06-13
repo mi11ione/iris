@@ -24,6 +24,14 @@ struct FeaturesTests {
         #expect(Features.arm64e == .pointerAuthentication)
     }
 
+    @Test func baseIsTheEmptySet() {
+        #expect(Features.base == [])
+        #expect(Features.base.isEmpty)
+        #expect(Features.base.rawValue == 0)
+        // The named spelling decodes identically to the bare empty set.
+        #expect(decode(0xF820_0400, features: .base).isUndefined)
+    }
+
     @Test func setAlgebraBehavesAsOptionSet() {
         var f: Features = []
         #expect(f.isEmpty)

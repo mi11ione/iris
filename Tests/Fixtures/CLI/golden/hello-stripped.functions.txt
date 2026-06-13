@@ -1,0 +1,7 @@
+Tests/Fixtures/CLI/bin/hello-stripped (arm64):
+
+address      symbol         instructions  calls  pac
+0x100000328  sub_100000328             6      0   no
+0x100000340  sub_100000340            22      0   no
+0x100000398  sub_100000398            15      2   no
+0x1000003d4  sub_1000003d4            11      1   no

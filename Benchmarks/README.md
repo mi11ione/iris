@@ -45,13 +45,18 @@ meaningless (the tool warns).
 
 Nightly CI runs `iris-bench smoke --json --baseline baseline.json`:
 a short configuration (64 MiB, 3 runs, 10^6 lookups) producing the
-metrics pinned in `baseline.json`. Comparison is one-sided: throughput
-gates only on falling below baseline×(1−tolerance), latency only on
-exceeding baseline×(1+tolerance), with tolerance ±15%. A baseline
-metric missing from the run fails rather than skips. The thresholds
-are host-class-relative: on a different host class, re-record the
-medians from that host's smoke output and keep the tolerance (the
-note inside `baseline.json` says the same).
+full metric set. `baseline.json` carries numbers recorded on the
+GitHub-hosted runner the workflow uses, and pins one gating metric:
+bulk-single throughput, which is stable on that host (about 4 percent
+intra-run spread). It fails only when the median falls below
+baseline×(1−tolerance), with tolerance 35 percent, so the smoke is a
+catastrophe canary for a real (roughly 2x or worse) decode regression
+rather than a precise perf gate. The nanosecond lookup metrics still
+run and print, but they are left out of `baseline.json` on purpose:
+on a shared virtual host they swing 33 to 35 percent run to run, and
+the comparator reports any metric absent from the baseline without
+gating. Precise performance work runs the full suite above on a known
+host. A baseline metric missing from the run fails rather than skips.
 
 ## Iris vs Capstone
 

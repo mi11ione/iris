@@ -107,4 +107,11 @@ struct ListingGoldenTests {
         })
         #expect(columns == [21 + 44])
     }
+
+    @Test func absentGoldenReadsAsEmpty() {
+        // The golden reader decodes a missing file to an empty string rather
+        // than trapping, so a renamed or not-yet-generated golden surfaces as
+        // an inequality at the call site, never a crash.
+        #expect(golden("no-such-fixture.listing.txt").isEmpty)
+    }
 }

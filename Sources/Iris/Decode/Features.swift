@@ -24,6 +24,11 @@ public struct Features: OptionSet, Sendable, Hashable {
         self.rawValue = rawValue
     }
 
+    /// Plain ARM64: no optional extensions. The named spelling of the
+    /// empty set, so a base-ISA call site reads `features: .base` instead
+    /// of the bare `features: []`. Identical in value to `[]`.
+    public static let base: Features = []
+
     /// ARM64E pointer-authentication encodings that are unallocated on
     /// plain ARM64 (today: the LDRAA/LDRAB load tier). PAC encodings
     /// that exist on the base ISA (hint-space PACIASP and friends,

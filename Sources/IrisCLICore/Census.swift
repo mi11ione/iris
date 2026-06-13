@@ -3,7 +3,7 @@
 
 import Iris
 
-/// The `--stats` instruction census: per-mnemonic and per-category
+/// The `stats` verb's instruction census: per-mnemonic and per-category
 /// counts, extension-site counts (PAC / MTE / AMX / crypto), and word
 /// totals, accumulated streamingly and rendered as a table or one JSON
 /// object.
@@ -89,8 +89,8 @@ public struct Census: Sendable {
         return lines
     }
 
-    /// The `--stats --json` rendering: one JSON object (`kind` is
-    /// `census`); map keys sorted by name for byte-stable output.
+    /// The `stats --json` rendering: one JSON object (`kind` is `census`),
+    /// map keys sorted by name for byte-stable output.
     public func jsonObject() -> String {
         var fields: [String] = []
         fields.append("\"schemaVersion\":\(JSONText.schemaVersion)")

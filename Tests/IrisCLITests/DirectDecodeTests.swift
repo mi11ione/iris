@@ -4,11 +4,11 @@
 import IrisCLICore
 import Testing
 
-/// Validates the direct-decode modes (`iris 0x<word>`, `iris --bytes`):
-/// little-endian word assembly, multi-word sequences, and how the
-/// shared mode flags (`--features`, the `--arch` alias, `--semantics`,
-/// `--json`) compose with them.
-@Suite("Direct decode modes")
+/// Validates the `decode` verb (`iris 0x<word>`, `iris --bytes`, and the
+/// explicit `iris decode …`): little-endian word assembly, multi-word
+/// sequences, and how its flags (`--features`, `--semantics`, `--json`)
+/// compose with the input. `--arch` belongs to the file verbs, not decode.
+@Suite("Decode verb")
 struct DirectDecodeTests {
     @Test func singleWordDecodes() {
         let run = runCLI(["0xd503201f"])
@@ -42,12 +42,24 @@ struct DirectDecodeTests {
         #expect(withFeatures.stdout == "0: f8200420  ldraa x0, [x1]\n")
     }
 
-    @Test func archIsAFeaturesAliasForDirectDecode() {
-        let viaArch = runCLI(["--arch", "arm64e", "0xf8200420"])
-        let viaFeatures = runCLI(["--features", "arm64e", "0xf8200420"])
-        #expect(viaArch.stdout == viaFeatures.stdout)
-        let plainArch = runCLI(["--arch", "arm64", "0xf8200420"])
-        #expect(plainArch.stdout.contains("; undefined"))
+    @Test func archIsRejectedByDecode() {
+        // --arch selects a Mach-O slice and belongs to the file verbs;
+        // decode unlocks extensions with --features instead.
+        let explicit = runCLI(["decode", "--arch", "arm64", "0xf8200420"])
+        #expect(explicit.status == CLI.exitUsage)
+        #expect(explicit.stderr.contains("iris decode: error: unknown option '--arch'"))
+        // Inferred decode (0x token, no verb word) scopes the error to
+        // plain `iris:`.
+        let inferred = runCLI(["--arch", "arm64e", "0xf8200420"])
+        #expect(inferred.status == CLI.exitUsage)
+        #expect(inferred.stderr.contains("iris: error: unknown option '--arch'"))
+    }
+
+    @Test func explicitDecodeVerbAndFeaturesAgree() {
+        let inferred = runCLI(["--features", "arm64e", "0xf8200420"])
+        let explicit = runCLI(["decode", "--features", "arm64e", "0xf8200420"])
+        #expect(explicit.stdout == inferred.stdout)
+        #expect(explicit.stdout == "0: f8200420  ldraa x0, [x1]\n")
     }
 
     @Test func semanticsAnnotatesDirectLines() {

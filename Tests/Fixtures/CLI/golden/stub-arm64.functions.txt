@@ -1,0 +1,5 @@
+Tests/Fixtures/CLI/bin/stub-arm64 (arm64):
+
+address      symbol    instructions  calls  pac
+0x100000410  _compare             1      0   no
+0x100000414  _main                6      0   no

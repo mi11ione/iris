@@ -1,28 +1,13 @@
 {
   "schema": "iris-bench-baseline/1",
-  "hostClass": "Apple M4 (4P+6E), 24 GiB, macOS 27.0, Swift 6.2.4 \u2014 recorded 2026-06-11 on AC power",
-  "note": "Thresholds are HOST-CLASS-RELATIVE and CI-UNTESTED: medians recorded on the machine above running `iris-bench smoke` (64 MiB buffer, 3 runs, 10^6 lookups, seed 0xc0ffee0015bad) \u2014 the release-preparation re-record on AC power (supersedes the earlier battery-power record, which it reproduces within 2%; methodology in Benchmarks/README.md). A different host class (e.g. a GitHub macos-15 runner) WILL produce different absolutes; on first CI run, replace these medians with that host's smoke output and keep the tolerance. Comparison is one-sided: throughput gates only on falling below baseline*(1-tolerance), latency only on exceeding baseline*(1+tolerance).",
-  "toleranceFraction": 0.15,
+  "hostClass": "GitHub-hosted macOS runner (Apple Silicon, ~3-core virtual), recorded from a Nightly run",
+  "note": "Recorded on the GitHub-hosted runner the Nightly workflow actually uses, so the nightly smoke gates against numbers from its own host class rather than a developer machine. It gates on ONE metric, bulk-single throughput, which on that runner is stable (about 4 percent intra-run spread). The nanosecond lookup metrics (lookup-view, lookup-raw, session-lookup) are deliberately omitted: on a shared virtual host they swing 33 to 35 percent run to run, so gating on them would flap. The smoke still measures and prints them, and the comparator reports any metric absent from this file without gating. Tolerance is wide (35 percent) on purpose: this is a catastrophe canary for a real (roughly 2x or worse) decode regression, not a precise perf gate. Precise performance work runs the full iris-bench suite on a known host (methodology in Benchmarks/README.md). Comparison is one-sided: throughput fails only when median falls below baseline*(1-tolerance).",
+  "toleranceFraction": 0.35,
   "metrics": {
     "bulk-single": {
       "unit": "words/s",
       "largerIsBetter": true,
-      "median": 19382299
-    },
-    "lookup-view": {
-      "unit": "ns/op",
-      "largerIsBetter": false,
-      "median": 37.35
-    },
-    "lookup-raw": {
-      "unit": "ns/op",
-      "largerIsBetter": false,
-      "median": 4.86
-    },
-    "session-lookup": {
-      "unit": "ns/op",
-      "largerIsBetter": false,
-      "median": 10.54
+      "median": 3978681
     }
   }
 }

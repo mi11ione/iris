@@ -1,0 +1,7 @@
+Tests/Fixtures/CLI/bin/hello-arm64 (arm64):
+
+address      symbol   instructions  calls  pac
+0x100000328  _add42              6      0   no
+0x100000340  _sum_to            22      0   no
+0x100000398  _helper            15      2   no
+0x1000003d4  _main              11      1   no

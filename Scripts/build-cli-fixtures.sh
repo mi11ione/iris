@@ -251,8 +251,18 @@ iris="$root/.build/debug/iris"
 "$iris" --color never Tests/Fixtures/CLI/bin/dic-linked > "$golden/dic-linked.listing.txt"
 "$iris" --color never --semantics Tests/Fixtures/CLI/bin/hello-arm64 > "$golden/hello-arm64.semantics.txt"
 "$iris" --json Tests/Fixtures/CLI/bin/hello-arm64 > "$golden/hello-arm64.ndjson"
-"$iris" --stats Tests/Fixtures/CLI/bin/hello-arm64e > "$golden/hello-arm64e.stats.txt"
-"$iris" --stats --json Tests/Fixtures/CLI/bin/dic-linked > "$golden/dic-linked.stats.json"
+"$iris" stats Tests/Fixtures/CLI/bin/hello-arm64e > "$golden/hello-arm64e.stats.txt"
+"$iris" stats --json Tests/Fixtures/CLI/bin/dic-linked > "$golden/dic-linked.stats.json"
+# functions verb (per-function granularity): human summary and the
+# "kind":"function" NDJSON for the thin, arm64e (PAC), stripped (sub_
+# labels), and stub (adjacent-__stubs exclusion) shapes.
+"$iris" functions --color never Tests/Fixtures/CLI/bin/hello-arm64 > "$golden/hello-arm64.functions.txt"
+"$iris" functions --color never Tests/Fixtures/CLI/bin/hello-arm64e > "$golden/hello-arm64e.functions.txt"
+"$iris" functions --color never Tests/Fixtures/CLI/bin/hello-stripped > "$golden/hello-stripped.functions.txt"
+"$iris" functions --color never Tests/Fixtures/CLI/bin/stub-arm64 > "$golden/stub-arm64.functions.txt"
+"$iris" functions --json Tests/Fixtures/CLI/bin/hello-arm64 > "$golden/hello-arm64.functions.ndjson"
+"$iris" functions --json Tests/Fixtures/CLI/bin/hello-arm64e > "$golden/hello-arm64e.functions.ndjson"
+"$iris" functions --json Tests/Fixtures/CLI/bin/stub-arm64 > "$golden/stub-arm64.functions.ndjson"
 
 echo "goldens locked:"
 ls -l "$golden"

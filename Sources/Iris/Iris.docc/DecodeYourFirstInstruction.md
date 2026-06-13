@@ -72,14 +72,15 @@ print(branch.branchTarget.map { String($0, radix: 16) } ?? "-")
 
 ## Features
 
-``Features`` selects optional instruction-set extensions. The empty set is
-plain ARM64. ``Features/arm64e`` adds the pointer-authentication encodings
-that are unallocated on the base ISA (today, the LDRAA/LDRAB load tier).
-Encodings whose extension is absent from the set decode as UNDEFINED:
+``Features`` selects optional instruction-set extensions. ``Features/base``
+is plain ARM64 (the named spelling of the empty set, which `decode` also
+uses by default). ``Features/arm64e`` adds the pointer-authentication
+encodings that are unallocated on the base ISA (today, the LDRAA/LDRAB load
+tier). Encodings whose extension is absent from the set decode as UNDEFINED:
 
 ```swift
 let word: UInt32 = 0xF8200400                      // ldraa x0, [x0]
-print(decode(word).isUndefined)                    // true  (plain ARM64)
+print(decode(word, features: .base).isUndefined)   // true  (plain ARM64)
 print(decode(word, features: .arm64e).text)        // "ldraa x0, [x0]"
 ```
 

@@ -75,7 +75,7 @@ struct SystemBinarySmokeTests {
         #expect(total == census.totalWords)
         #expect(census.totalWords > 0)
 
-        let run = runCLI(["--stats", path])
+        let run = runCLI(["stats", path])
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stdout.contains("total words        \(census.totalWords)\n"))
     }

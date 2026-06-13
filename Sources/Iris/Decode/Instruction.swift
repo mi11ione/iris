@@ -31,6 +31,12 @@
 /// deliberately different from ``InstructionRecord``, whose synthesized
 /// equality includes the side-buffer indices — index equality is the
 /// correct meaning for raw storage.
+///
+/// The semantic predicates and properties layered on top (``isCall``,
+/// ``isReturn``, ``readsMemory``, ``writesMemory``,
+/// ``usesPointerAuthentication``, ``branchTarget``, ``pcRelativeTarget``,
+/// and the register / flag accessors) are grouped on this page under
+/// Topics, and <doc:TheSemanticLayer> walks them with examples.
 @frozen
 public struct Instruction: Sendable, Hashable, CustomStringConvertible {
     /// The packed record this view presents.

@@ -81,12 +81,22 @@ public enum JSONText {
     /// (raw bytes carry no symbols) and emit neither field. All additions
     /// are optional, so `schemaVersion` stays `1` per the schema's
     /// add-only policy.
+    ///
+    /// `includeSchemaVersion` defaults to `true` (the standalone
+    /// per-instruction stream). The `functions` verb's wrapper sets it
+    /// `false` so the nested instruction object drops the redundant leading
+    /// `schemaVersion` the enclosing function object already carries;
+    /// every other field stays identical, so a nested object plucked out
+    /// is a valid instruction record but for that one owner-supplied key.
     public static func instructionLine(
         _ instruction: Instruction,
         context: SymbolContext? = nil,
+        includeSchemaVersion: Bool = true,
     ) -> String {
         var fields: [String] = []
-        fields.append("\"schemaVersion\":\(schemaVersion)")
+        if includeSchemaVersion {
+            fields.append("\"schemaVersion\":\(schemaVersion)")
+        }
         fields.append("\"kind\":\"instruction\"")
         fields.append("\"address\":\(string(InstructionText.hex(instruction.address)))")
         fields.append("\"encoding\":\(string("0x" + InstructionText.word(instruction.encoding)))")
@@ -119,6 +129,31 @@ public enum JSONText {
         }
         fields.append("\"isData\":\(instruction.category == .dataInCodeMarker)")
         fields.append("\"isUndefined\":\(instruction.isUndefined)")
+        return "{" + fields.joined(separator: ",") + "}"
+    }
+
+    /// One NDJSON `kind:"function"` object for `functions --json`. Field
+    /// order is fixed: `schemaVersion`, `kind`, `symbol`, `address`,
+    /// `endAddress`, `instructionCount`, `instructions`. The function
+    /// object owns the `schemaVersion`, so each nested instruction object
+    /// is the per-instruction record with its redundant leading
+    /// `schemaVersion` omitted and every other field identical (including
+    /// the same `context`-supplied `symbol` / `targetSymbol`).
+    public static func functionLine(
+        _ function: FunctionView,
+        context: SymbolContext? = nil,
+    ) -> String {
+        var fields: [String] = []
+        fields.append("\"schemaVersion\":\(schemaVersion)")
+        fields.append("\"kind\":\"function\"")
+        fields.append("\"symbol\":\(string(function.symbol))")
+        fields.append("\"address\":\(string(InstructionText.hex(function.address)))")
+        fields.append("\"endAddress\":\(string(InstructionText.hex(function.endAddress)))")
+        fields.append("\"instructionCount\":\(function.instructionCount)")
+        let nested = function.instructions
+            .map { instructionLine($0, context: context, includeSchemaVersion: false) }
+            .joined(separator: ",")
+        fields.append("\"instructions\":[\(nested)]")
         return "{" + fields.joined(separator: ",") + "}"
     }
 

@@ -34,14 +34,21 @@ brew install mi11ione/tap/iris
 ## Inspect a binary
 
 ```sh
-$ iris MyApp.app/Contents/MacOS/MyApp     # full listing: symbols, function starts,
-                                          # symbolicated branches, data-in-code kinds
-$ iris --arch arm64e --semantics MyApp    # the listing above, semantics on every line
-$ iris 0xd503233f                         # 0: d503233f  paciasp
-$ iris --bytes "1f 20 03 d5"              # 0: d503201f  nop
+$ iris MyApp.app/Contents/MacOS/MyApp           # full listing: symbols, function starts,
+                                                # symbolicated branches, data-in-code kinds
+$ iris disasm --arch arm64e --semantics MyApp   # the listing above, semantics on every line
+$ iris functions MyApp                          # one row per function: address, name,
+                                                # instruction count, calls, PAC use
+$ iris stats MyApp                              # the extension census (PAC, MTE, AMX, crypto)
+$ iris 0xd503233f                               # 0: d503233f  paciasp
+$ iris --bytes "1f 20 03 d5"                    # 0: d503201f  nop
 ```
 
-The single-word forms answer "what is this instruction" from a hex dump in one command.
+`iris <file>` is the disassemble verb (its name, `disasm`, is optional). `stats`,
+`functions`, and `decode` are the other three. `iris 0x<word>` and `iris --bytes`
+are `decode` without the word. The single-word forms answer "what is this
+instruction" from a hex dump in one command. Run `iris --help` for the verb list,
+or `iris <verb> --help` for a verb's options.
 
 ## Triage a crash from raw bytes
 
@@ -58,10 +65,10 @@ If the fault was at offset 4, the record says it directly: a load through `x0`, 
 
 ## Audit what ships in your build
 
-`--stats` censuses a binary for pointer authentication, MTE, AMX, and crypto sites:
+`iris stats` censuses a binary for pointer authentication, MTE, AMX, and crypto sites:
 
 ```
-$ iris --stats hello-arm64e
+$ iris stats hello-arm64e
 total words        56
 undefined          0
 data-in-code       0
@@ -77,7 +84,7 @@ extension sites:
 Gate CI on the answer, for example "fail the build if PAC adoption ever drops to zero":
 
 ```sh
-iris --json --stats MyApp | jq -e '.extensions.pointerAuthentication > 0'
+iris stats --json MyApp | jq -e '.extensions.pointerAuthentication > 0'
 ```
 
 ## Script it from any language
@@ -97,7 +104,19 @@ Exit codes, stdout/stderr separation, `--color auto|always|never`, and `--quiet`
 
 ## Feed an LLM
 
-Disassembly text is what model pipelines choke on. It carries too many tokens, too little structure, and too much room to hallucinate. Iris emits the dataflow already computed and produces byte-identical output for identical input, so prompts cache and evals reproduce. Each instruction object names its containing function in a `symbol` field, the same function the text listing groups under, sourced from the symbol table and `LC_FUNCTION_STARTS` (a stripped binary falls back to a `sub_<hex>` label). When a branch or call resolves to a known name, a `targetSymbol` field carries it, including imports reached through a `__stubs` entry. That gives a model function context and named call edges with no extra passes. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
+Disassembly text is what model pipelines choke on. It carries too many tokens, too little structure, and too much room to hallucinate. Iris emits the dataflow already computed and produces byte-identical output for identical input, so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
+
+`iris functions` chunks the binary into one JSON object per function, the unit a model prompt usually wants. Boundaries come from `LC_FUNCTION_STARTS` and section membership, so a function holds exactly its own instructions and never the trailing `__stubs` padding that grouping the per-instruction stream by symbol would sweep in:
+
+```sh
+iris functions --json hello-arm64 | jq -c '{symbol, address, endAddress, instructionCount}'
+# {"symbol":"_add42","address":"0x100000328","endAddress":"0x100000340","instructionCount":6}
+# {"symbol":"_sum_to","address":"0x100000340","endAddress":"0x100000398","instructionCount":22}
+# {"symbol":"_helper","address":"0x100000398","endAddress":"0x1000003d4","instructionCount":15}
+# {"symbol":"_main","address":"0x1000003d4","endAddress":"0x100000400","instructionCount":11}
+```
+
+Each function object wraps its instruction objects, and each of those names its function in a `symbol` field and carries a `targetSymbol` when a branch resolves to a known name, including imports reached through a `__stubs` entry. That gives a model function context and named call edges with no extra passes. The per-instruction stream carries the same fields, so a call-graph pass reads straight off it:
 
 ```sh
 # named call-graph edges: from = caller function, to = resolved callee
@@ -130,7 +149,7 @@ Every `Instruction` carries bit-exact register read/write sets, memory access an
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mi11ione/iris", from: "0.2.0")
+    .package(url: "https://github.com/mi11ione/iris", from: "0.3.0")
 ]
 ```
 

@@ -96,4 +96,37 @@ struct MachOWalkerTests {
         let text = try #require(binary.codeSections.first { $0.sectionName == "__text" })
         #expect(binary.symbols.name(at: text.address) == "_main")
     }
+
+    @Test func outcomeProjectionsKeepOnlyTheirOwnCase() {
+        // One outcome of each kind, all synthetic. Each projection returns a
+        // payload for its own case and nil for every other, and the diagnostic
+        // projection reads the kinds from a binary outcome and nothing from a
+        // failure outcome.
+        var inflated = minimalBinary(words: [0xD503_201F])
+        inflated.replaceSubrange(20 ..< 24, with: [0x00, 0x00, 0x10, 0x00]) // sizeofcmds = 1 MiB
+        let binary = walkBytes(inflated)
+        let notMachO = walkBytes([0xDE, 0xAD, 0xBE, 0xEF, 0, 0, 0, 0])
+        let unreadable = walkBytes([])
+        let unavailable = walkBytes(minimalBinary(words: [0xD503_201F]), arch: .arm64e)
+
+        // Each accessor projects its own case.
+        #expect(binaryOutcome(binary) != nil)
+        #expect(notMachOOutcome(notMachO) != nil)
+        #expect(unreadableOutcome(unreadable) != nil)
+        #expect(archUnavailableOutcome(unavailable) != nil)
+
+        // And returns nil for a different case (the else arm of each guard).
+        #expect(binaryOutcome(notMachO) == nil)
+        #expect(notMachOOutcome(binary) == nil)
+        #expect(unreadableOutcome(binary) == nil)
+        #expect(archUnavailableOutcome(binary) == nil)
+
+        // The diagnostic projection reads a binary's kinds and is empty for
+        // every failure outcome.
+        let kinds = diagnosticKinds(of: binary)
+        #expect(kinds.contains(.loadCommandRegionTruncated))
+        #expect(diagnosticKinds(of: notMachO).isEmpty)
+        #expect(diagnosticKinds(of: unreadable).isEmpty)
+        #expect(diagnosticKinds(of: unavailable).isEmpty)
+    }
 }

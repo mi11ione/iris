@@ -24,11 +24,35 @@ struct ExitCodeTests {
         #expect(run.stderr.isEmpty)
     }
 
+    @Test func bareInvocationPrintsTopLevelHelp() {
+        let run = runCLI([])
+        #expect(run.status == CLI.exitSuccess)
+        #expect(run.stdout == CLI.helpText)
+        #expect(run.stderr.isEmpty)
+    }
+
+    @Test func verbHelpPrintsThatVerbsTextAndSucceeds() {
+        // `iris <verb> --help` prints the verb's own help, distinct from
+        // the top-level overview, on stdout at exit 0.
+        for (arguments, expected): ([String], String) in [
+            (["disasm", "--help"], CLI.disasmHelpText),
+            (["decode", "--help"], CLI.decodeHelpText),
+            (["stats", "--help"], CLI.statsHelpText),
+            (["functions", "-h"], CLI.functionsHelpText),
+        ] {
+            let run = runCLI(arguments)
+            #expect(run.status == CLI.exitSuccess)
+            #expect(run.stdout == expected)
+            #expect(run.stdout != CLI.helpText)
+            #expect(run.stderr.isEmpty)
+        }
+    }
+
     @Test func versionPrintsToStdoutAndSucceeds() {
         let run = runCLI(["--version"])
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stdout == "iris \(CLI.version)\n")
-        #expect(CLI.version == "0.2.0")
+        #expect(CLI.version == "0.3.0")
         #expect(run.stderr.isEmpty)
     }
 

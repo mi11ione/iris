@@ -145,8 +145,12 @@ struct ListingRenderingTests {
         #expect(InstructionText.absoluteBranchText(synthetic) == "?ret")
     }
 
-    @Test func emitStreamHandlesEmptyBuffer() {
-        let stream = InstructionStream(
+    @Test func emitStreamEmitsOneChunkPerInstruction() {
+        // One sink fed both streams in order: the empty buffer adds nothing,
+        // the one-word buffer adds exactly its line. Sharing the sink keeps it
+        // exercised, so the empty case proves the boundary without a body an
+        // empty stream could never reach.
+        let empty = InstructionStream(
             baseAddress: 0,
             byteCount: 0,
             features: [],
@@ -154,9 +158,14 @@ struct ListingRenderingTests {
             operands: [],
             diagnostics: [],
         )
-        var output = ""
-        plain.emitStream(stream, emit: { output += $0 })
-        #expect(output.isEmpty)
+        let oneWord = InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5]) // nop
+        var chunks: [String] = []
+        let sink: (String) -> Void = { chunks.append($0) }
+
+        plain.emitStream(empty, emit: sink)
+        #expect(chunks.isEmpty)
+        plain.emitStream(oneWord, emit: sink)
+        #expect(chunks == ["0: d503201f  nop\n"])
     }
 
     @Test func addressColumnPadsToSectionWidth() throws {
@@ -204,7 +213,9 @@ struct ListingRenderingTests {
     }
 
     @Test func addressWrapIsSurfacedOnStderr() {
-        for mode in [[], ["--json"], ["--stats"]] {
+        // Every file verb that decodes the section surfaces the wrap: the
+        // default disasm, disasm --json, and the stats census.
+        for mode in [[], ["--json"], ["stats"]] {
             let run = withTemporaryFile(bytes: wrappingBinaryBytes()) { runCLI(mode + [$0]) }
             #expect(run.status == CLI.exitSuccess)
             #expect(run.stderr == "iris: warning: __TEXT,__text: addresses wrap past 2^64 at buffer offset 8\n")

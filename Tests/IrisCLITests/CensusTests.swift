@@ -6,25 +6,41 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates the `--stats` census: accumulation rules (sentinels in the
+/// Validates the `stats` verb census: accumulation rules (sentinels in the
 /// totals, not the mnemonic table), extension-site counters, the table
-/// rendering against its golden, and the `--stats --json` object.
+/// rendering against its golden, and the `stats --json` object. The census
+/// reads a Mach-O file, so the table/JSON-shape unit checks build a
+/// ``Census`` over a synthesized stream directly (the same accumulation the
+/// verb drives) and assert on its rendering.
 @Suite("Instruction census")
 struct CensusTests {
+    /// A census accumulated over one little-endian word stream.
+    func census(words: [UInt32], features: Features = []) -> Census {
+        var bytes: [UInt8] = []
+        for word in words {
+            withUnsafeBytes(of: word.littleEndian) { bytes.append(contentsOf: $0) }
+        }
+        var census = Census()
+        census.add(InstructionStream(bytes: bytes, features: features))
+        return census
+    }
+
+    // MARK: CLI integration over a file
+
     @Test func tableMatchesGolden() {
-        let run = runCLI(["--stats", cliFixturePath("hello-arm64e")])
+        let run = runCLI(["stats", cliFixturePath("hello-arm64e")])
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stdout == golden("hello-arm64e.stats.txt"))
     }
 
     @Test func jsonObjectMatchesGolden() {
-        let run = runCLI(["--stats", "--json", cliFixturePath("dic-linked")])
+        let run = runCLI(["stats", "--json", cliFixturePath("dic-linked")])
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stdout == golden("dic-linked.stats.json"))
     }
 
     @Test func jsonObjectParsesWithSchemaFields() throws {
-        let run = runCLI(["--stats", "--json", cliFixturePath("dic-linked")])
+        let run = runCLI(["stats", "--json", cliFixturePath("dic-linked")])
         let fields = try #require(
             (try? JSONSerialization.jsonObject(with: Data(run.stdout.utf8))) as? [String: Any],
         )
@@ -51,6 +67,8 @@ struct CensusTests {
         #expect(census.mnemonicCounts["retab"] == 2)
     }
 
+    // MARK: Accumulation rules
+
     @Test func sentinelsCountInTotalsNotMnemonics() {
         var census = Census()
         let stream = InstructionStream(
@@ -76,14 +94,9 @@ struct CensusTests {
     }
 
     @Test func extensionSiteCounters() {
-        var census = Census()
         // pacia x0, x1 / irg x0, x1 / aese v0.16b, v1.16b /
         // casal x0, x1, [x2] / AMX ldy x0
-        for word in [0xDAC1_0020, 0x9ADF_1020, 0x4E28_4820, 0xC8E0_FC41, 0x0020_1020] as [UInt32] {
-            var bytes: [UInt8] = []
-            withUnsafeBytes(of: word.littleEndian) { bytes.append(contentsOf: $0) }
-            census.add(InstructionStream(bytes: bytes, features: .arm64e))
-        }
+        let census = census(words: [0xDAC1_0020, 0x9ADF_1020, 0x4E28_4820, 0xC8E0_FC41, 0x0020_1020], features: .arm64e)
         #expect(census.pointerAuthenticationSites == 1)
         #expect(census.memoryTaggingSites == 1)
         #expect(census.cryptoSites == 1)
@@ -92,40 +105,52 @@ struct CensusTests {
         #expect(census.mnemonicCounts["ldy"] == 1)
     }
 
-    @Test func amxSitesReachTheTable() {
-        let run = runCLI(["--stats", "0x00201020"])
-        #expect(run.stdout.contains("amx              1\n"))
-        #expect(run.stdout.contains("  amx                       1\n"))
+    // MARK: Table rendering (the rendering the `stats` verb prints)
+
+    @Test func amxSiteReachesTheTable() {
+        let lines = census(words: [0x0020_1020]).tableLines()
+        // The extension-sites row and the per-category row both carry it.
+        #expect(lines.contains("  amx              1"))
+        #expect(lines.contains("  amx                       1"))
     }
 
     @Test func tableRendersTruncatedTailRow() {
-        let run = runCLI(["--stats", "--bytes", "1f 20 03 d5 aa"])
-        #expect(run.stdout.contains("truncated tails    1\n"))
-        #expect(run.stdout.contains("total words        2\n"))
+        var census = Census()
+        census.add(InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5, 0xAA])) // nop + 1-byte tail
+        let lines = census.tableLines()
+        #expect(lines.contains("truncated tails    1"))
+        #expect(lines.contains("total words        2"))
     }
 
     @Test func tableOmitsTailRowWhenNone() {
-        let run = runCLI(["--stats", "--bytes", "1f 20 03 d5"])
-        #expect(!run.stdout.contains("truncated tails"))
+        let lines = census(words: [0xD503_201F]).tableLines()
+        #expect(!lines.contains { $0.hasPrefix("truncated tails") })
     }
 
-    @Test func tableOrdersByCountThenName() {
+    @Test func tableOrdersByCountThenName() throws {
         // Two rets, one nop, one mov: ret first, then mov/nop by name.
-        let run = runCLI(["--stats", "--bytes", "c0 03 5f d6 1f 20 03 d5 e0 03 01 aa c0 03 5f d6"])
-        let lines = run.stdout.split(separator: "\n").map(String.init)
-        let start = lines.firstIndex(of: "mnemonics:").map { $0 + 1 }
-        #expect(start != nil)
-        let mnemonicRows = lines.suffix(from: start ?? lines.count).map { $0.trimmingCharacters(in: .whitespaces) }
+        let lines = census(words: [0xD65F_03C0, 0xD503_201F, 0xAA01_03E0, 0xD65F_03C0]).tableLines()
+        let header = try #require(lines.firstIndex(of: "mnemonics:"))
+        let mnemonicRows = lines.suffix(from: header + 1).map { $0.trimmingCharacters(in: .whitespaces) }
         #expect(mnemonicRows == ["ret                       2", "mov                       1", "nop                       1"])
     }
 
-    @Test func directStatsHonorFeatures() {
+    @Test func censusHonorsFeatures() {
         // ldraa is gated on the arm64e feature set: honest UNDEFINED
         // without it, a counted PAC site with it.
-        let without = runCLI(["--stats", "0xf8200420"])
-        #expect(without.stdout.contains("undefined          1\n"))
-        let with = runCLI(["--stats", "--features", "arm64e", "0xf8200420"])
-        #expect(with.stdout.contains("undefined          0\n"))
-        #expect(with.stdout.contains("pointer-auth     1\n"))
+        let without = census(words: [0xF820_0420])
+        #expect(without.tableLines().contains("undefined          1"))
+        let with = census(words: [0xF820_0420], features: .arm64e)
+        #expect(with.tableLines().contains("undefined          0"))
+        #expect(with.tableLines().contains("  pointer-auth     1"))
+    }
+
+    // MARK: The verb is file-only
+
+    @Test func statsRejectsARawWord() {
+        // The census reads a Mach-O file; a raw word routes to decode.
+        let run = runCLI(["stats", "0x00201020"])
+        #expect(run.status == CLI.exitUsage)
+        #expect(run.stderr.contains("iris stats: error: '0x00201020' is a raw word; use 'iris decode 0x00201020'"))
     }
 }

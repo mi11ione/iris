@@ -39,13 +39,38 @@ struct ArchitectureNamingTests {
         #expect(ArchitectureName.selection(cputype: 0x0100_0007, cpusubtype: 3) == nil)
     }
 
-    @Test func helpTextNamesEverything() {
-        for needle in [
-            "usage:", "--arch", "--features", "--semantics", "--json",
-            "--stats", "--color", "--quiet", "--bytes", "--help",
-            "exit codes:",
-        ] {
-            #expect(CLI.helpText.contains(needle), "help is missing \(needle)")
+    @Test func topLevelHelpNamesEveryVerbAndGlobal() {
+        for needle in ["usage:", "verbs:", "disasm", "decode", "stats", "functions",
+                       "--version", "--help", "exit codes:"]
+        {
+            #expect(CLI.helpText.contains(needle), "top-level help is missing \(needle)")
+        }
+        #expect(CLI.helpText(for: nil) == CLI.helpText)
+    }
+
+    @Test func eachVerbHelpNamesItsOwnFlags() {
+        #expect(CLI.helpText(for: .disasm).contains("--arch"))
+        #expect(CLI.helpText(for: .disasm).contains("--semantics"))
+        #expect(CLI.helpText(for: .disasm).contains("--quiet"))
+        #expect(!CLI.helpText(for: .disasm).contains("--features"))
+
+        #expect(CLI.helpText(for: .decode).contains("--features"))
+        #expect(CLI.helpText(for: .decode).contains("--semantics"))
+        #expect(CLI.helpText(for: .decode).contains("--bytes"))
+        #expect(!CLI.helpText(for: .decode).contains("--arch"))
+
+        #expect(CLI.helpText(for: .stats).contains("--arch"))
+        #expect(CLI.helpText(for: .stats).contains("--json"))
+        #expect(!CLI.helpText(for: .stats).contains("--semantics"))
+
+        #expect(CLI.helpText(for: .functions).contains("--json"))
+        #expect(CLI.helpText(for: .functions).contains("--color"))
+        #expect(!CLI.helpText(for: .functions).contains("--semantics"))
+
+        // Every verb help names its usage and the help flag.
+        for verb in Verb.allCases {
+            #expect(CLI.helpText(for: verb).contains("usage:"))
+            #expect(CLI.helpText(for: verb).contains("--help, -h"))
         }
     }
 }

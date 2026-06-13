@@ -45,6 +45,25 @@ private func makeRealStream() -> InstructionStream {
     )
 }
 
+/// A lookup result reduced to the fields the equality pins compare: the
+/// record and the materialized operand list, or `.absent` for a `nil`
+/// lookup. Comparing two signatures decides agreement in one `==`,
+/// without a per-case mismatch arm that real input never reaches.
+private enum LookupSignature: Equatable {
+    case absent
+    case present(InstructionRecord, [Operand])
+}
+
+/// The signature of a session lookup.
+private func lookupSignature(_ borrowed: BorrowedInstruction?) -> LookupSignature {
+    borrowed.map { .present($0.record, Array($0.operands)) } ?? .absent
+}
+
+/// The signature of a stream-view lookup.
+private func lookupSignature(_ view: Instruction?) -> LookupSignature {
+    view.map { .present($0.record, Array($0.operands)) } ?? .absent
+}
+
 /// Validates that every session access path agrees with the ergonomic
 /// Instruction views over the same stream — the golden equality pin for
 /// the closure-scoped session tier: identical records and identical
@@ -56,19 +75,26 @@ struct SessionViewEqualityTests {
     @Test func sessionElementsMatchViewElementsAtEveryIndex() {
         let stream = makeRealStream()
         #expect(stream.count == 17)
-        let allEqual = stream.withSession { session -> Bool in
-            guard session.count == stream.count else { return false }
-            guard session.baseAddress == stream.baseAddress else { return false }
-            guard session.byteCount == stream.byteCount else { return false }
-            for index in 0 ..< stream.count {
+        // Each comparison is evaluated unconditionally and folded into one
+        // verdict, so the equality is asserted without an unreachable
+        // mismatch arm. The session and view always agree here by design.
+        let scalars = stream.withSession { session in
+            [
+                session.count == stream.count,
+                session.baseAddress == stream.baseAddress,
+                session.byteCount == stream.byteCount,
+            ]
+        }
+        let perIndex = stream.withSession { session -> [Bool] in
+            (0 ..< stream.count).map { index in
                 let borrowed = session[index]
                 let view = stream[index]
-                guard borrowed.record == stream.records[index] else { return false }
-                guard Array(borrowed.operands) == Array(view.operands) else { return false }
+                return borrowed.record == stream.records[index]
+                    && Array(borrowed.operands) == Array(view.operands)
             }
-            return true
         }
-        #expect(allEqual)
+        #expect(!scalars.contains(false))
+        #expect(perIndex == Array(repeating: true, count: stream.count))
     }
 
     @Test func sessionIterationMatchesViewIterationInOrder() {
@@ -91,25 +117,23 @@ struct SessionViewEqualityTests {
     @Test func sessionLookupAgreesWithStreamLookupAtEveryWordAddress() {
         let stream = makeRealStream()
         let base = stream.baseAddress
-        let agreement = stream.withSession { session -> Bool in
+        // Materialize each lookup to a comparable signature (presence,
+        // record, operands) and compare the two signatures directly. The
+        // sweep runs two words past the end so it covers both the present
+        // and the absent address, with no unreachable mismatch arm.
+        let agreement = stream.withSession { session -> [Bool] in
+            var results: [Bool] = []
             var address = base
             while address < base &+ stream.byteCount &+ 8 {
-                let fromSession = session.instruction(at: address)
-                let fromStream = stream.instruction(at: address)
-                switch (fromSession, fromStream) {
-                case (nil, nil):
-                    break
-                case let (.some(borrowed), .some(view)):
-                    guard borrowed.record == view.record else { return false }
-                    guard Array(borrowed.operands) == Array(view.operands) else { return false }
-                default:
-                    return false
-                }
+                let fromSession = lookupSignature(session.instruction(at: address))
+                let fromStream = lookupSignature(stream.instruction(at: address))
+                results.append(fromSession == fromStream)
                 address &+= 4
             }
-            return true
+            return results
         }
-        #expect(agreement)
+        #expect(!agreement.contains(false))
+        #expect(agreement.count == 19)
     }
 
     @Test func sessionAddressSubscriptMirrorsInstructionAt() {
@@ -127,23 +151,18 @@ struct SessionViewEqualityTests {
     @Test func sessionContainingLookupAgreesWithStreamAtUnalignedAddresses() {
         let stream = makeRealStream()
         let base = stream.baseAddress
-        let agreement = stream.withSession { session -> Bool in
-            for offset in [UInt64(1), 2, 3, 5, 17, 50, 53, 65] {
-                let fromSession = session.instruction(containing: base &+ offset)
-                let fromStream = stream.instruction(containing: base &+ offset)
-                switch (fromSession, fromStream) {
-                case (nil, nil):
-                    break
-                case let (.some(borrowed), .some(view)):
-                    guard borrowed.record == view.record else { return false }
-                    guard Array(borrowed.operands) == Array(view.operands) else { return false }
-                default:
-                    return false
-                }
+        // Offsets cover unaligned addresses inside the stream and one past
+        // its end (1000), so the agreement check evaluates both the present
+        // and the absent signature. Comparison is one `==` per offset.
+        let agreement = stream.withSession { session -> [Bool] in
+            [UInt64(1), 2, 3, 5, 17, 50, 53, 65, 1000].map { offset in
+                let fromSession = lookupSignature(session.instruction(containing: base &+ offset))
+                let fromStream = lookupSignature(stream.instruction(containing: base &+ offset))
+                return fromSession == fromStream
             }
-            return true
         }
-        #expect(agreement)
+        #expect(!agreement.contains(false))
+        #expect(agreement.count == 9)
     }
 
     @Test func sessionSeesDataMarkersAndUndefinedExactlyAsViews() {
@@ -189,13 +208,16 @@ struct SessionEdgeTests {
 
     @Test func sessionOverEmptyStreamIsEmpty() {
         let stream = InstructionStream(bytes: [] as [UInt8], at: 0x4000)
+        // Iteration is exercised through the iterator itself (`Array(session)`),
+        // so the empty walk needs no per-element transform body that an empty
+        // collection could never invoke.
         let (count, isEmpty, lookup, containing, walked) = stream.withSession { session in
             (
                 session.count,
                 session.isEmpty,
                 session.instruction(at: 0x4000) == nil,
                 session.instruction(containing: 0x4000) == nil,
-                session.reduce(0) { sum, _ in sum + 1 },
+                Array(session).count,
             )
         }
         #expect(count == 0)
