@@ -11,7 +11,7 @@
 // consumes. Every read is bounds-checked: regions are validated once
 // against the slice, then read through guards that degrade (with a
 // diagnostic, or via the same skip a by-design rejection takes) if a
-// bounds proof ever regresses — no force-unwraps on the read path;
+// bounds proof ever regresses, no force-unwraps on the read path;
 // malformed input degrades with a WalkerDiagnostic, never a crash.
 
 import Iris
@@ -46,6 +46,10 @@ public enum MachOWalker {
     static let sZerofill: UInt8 = 0x1
     static let sGBZerofill: UInt8 = 0xC
     static let sThreadLocalZerofill: UInt8 = 0x12
+    // section type S_CSTRING_LITERALS marks `__cstring`-style sections
+    // whose content is NUL-terminated C strings; a referenced-data target
+    // landing here reads back as a quoted string.
+    static let sCStringLiterals: UInt8 = 0x2
     static let nStab: UInt8 = 0xE0
     static let nTypeMask: UInt8 = 0x0E
     static let nSect: UInt8 = 0xE
@@ -78,7 +82,7 @@ public enum MachOWalker {
     }
 
     /// One `fat_arch` record, decoded host-order, with its windowed view
-    /// (`nil` when the declared byte range does not fit the file — the
+    /// (`nil` when the declared byte range does not fit the file, the
     /// one source of truth for slice eligibility).
     struct FatSlice {
         let cputype: Int32
@@ -127,7 +131,7 @@ public enum MachOWalker {
         guard let window = selectSlice(from: slices, arch: arch) else {
             // Distinguish "the architecture is not in the container" from
             // "the matching slice is declared but its bytes are out of
-            // range" (a truncated fat) — the same nil selection, different
+            // range" (a truncated fat), the same nil selection, different
             // cause and different fix.
             let excludedMatch = slices.first { matchesSelection($0, arch: arch) && $0.window == nil }
             if let excludedMatch {
@@ -208,7 +212,7 @@ public enum MachOWalker {
     }
 
     /// Whether a slice satisfies the selection criteria regardless of
-    /// whether its bytes fit — an explicit `arch` matches strictly, the
+    /// whether its bytes fit, an explicit `arch` matches strictly, the
     /// default accepts any ARM64-cputype slice. Lets the caller tell a
     /// missing architecture apart from a present-but-truncated one.
     static func matchesSelection(_ slice: FatSlice, arch: ArchSelection?) -> Bool {
@@ -261,6 +265,7 @@ public enum MachOWalker {
         )
 
         var sections = collectCodeSections(file: file, segments: commands.segments, diagnostics: &diagnostics)
+        let dataSections = collectDataSections(file: file, segments: commands.segments)
         rebaseDataInCode(
             file: file,
             command: commands.dataInCode,
@@ -290,6 +295,7 @@ public enum MachOWalker {
             architecture: name,
             features: features,
             codeSections: sections,
+            dataSections: dataSections,
             symbols: symbols,
             functionStarts: starts,
             stubTargets: stubTargets,
@@ -616,9 +622,75 @@ public enum MachOWalker {
         ))
     }
 
+    /// Walk every segment's `section_64` array and keep the non-code,
+    /// file-backed sections (`__cstring`, `__const`, `__data`, …) as
+    /// ``DataSection``s, clamped to the slice. These are the targets an
+    /// address-forming instruction's referenced-data annotation resolves
+    /// against; they are not disassembled.
+    static func collectDataSections(
+        file: MappedFile,
+        segments: [SegmentRecord],
+    ) -> [DataSection] {
+        var sections: [DataSection] = []
+        for segment in segments {
+            let budget = (segment.commandSize - segmentCommand64Size) / section64Size
+            let nsects = min(Int(segment.nsects), budget)
+            for i in 0 ..< max(nsects, 0) {
+                let base = segment.commandStart + segmentCommand64Size + i * section64Size
+                appendIfData(file: file, sectionBase: base, swapped: segment.swapped, into: &sections)
+            }
+        }
+        return sections
+    }
+
+    /// Decode one `section_64` (proven in bounds by the caller); append it
+    /// as a ``DataSection`` when it is non-code, file-backed, and non-empty
+    /// , clamping a lying size to the bytes that exist, dropping anything
+    /// out of range. Silent: data sections feed an annotation, so a
+    /// malformed one yields no annotation rather than a disassembly
+    /// diagnostic.
+    static func appendIfData(
+        file: MappedFile,
+        sectionBase: Int,
+        swapped: Bool,
+        into sections: inout [DataSection],
+    ) {
+        guard let sectname = file.readFixedString(at: sectionBase, length: 16),
+              let segname = file.readFixedString(at: sectionBase + 16, length: 16),
+              let addr = u64(file, sectionBase + 32, swapped),
+              let size = u64(file, sectionBase + 40, swapped),
+              let offsetRaw = u32(file, sectionBase + 48, swapped),
+              let flags = u32(file, sectionBase + 64, swapped),
+              // Non-code only: a section with instruction attributes is a
+              // CodeSection, collected separately and disassembled.
+              flags & (sAttrPureInstructions | sAttrSomeInstructions) == 0
+        else { return }
+        let type = UInt8(truncatingIfNeeded: flags)
+        // Zerofill sections have no file content to read a string from.
+        guard type != sZerofill, type != sGBZerofill, type != sThreadLocalZerofill else { return }
+        guard size > 0 else { return }
+        let offset = UInt64(offsetRaw)
+        let fileSize = UInt64(file.size)
+        guard offset < fileSize else { return }
+        var byteCount = size
+        let (end, overflow) = offset.addingReportingOverflow(size)
+        if overflow || end > fileSize {
+            byteCount = fileSize - offset
+        }
+        sections.append(DataSection(
+            segmentName: segname,
+            sectionName: sectname,
+            address: addr,
+            fileOffset: offset,
+            byteCount: byteCount,
+            isCStringLiteral: type == sCStringLiterals,
+            slice: file,
+        ))
+    }
+
     /// Decode `LC_DATA_IN_CODE` entries and rebase each into the buffer
     /// space of the code section containing it; entries outside every
-    /// code section are dropped, straddling entries clamped — each with
+    /// code section are dropped, straddling entries clamped, each with
     /// a diagnostic.
     ///
     /// Entry-offset semantics differ by filetype (verified against the
@@ -781,7 +853,7 @@ public enum MachOWalker {
     }
 
     /// Resolve every `S_SYMBOL_STUBS` section's entries to their imported
-    /// symbol names, keyed by stub VM address — the map the listing uses
+    /// symbol names, keyed by stub VM address, the map the listing uses
     /// to annotate a branch to a stub as `; symbol stub for: _name`.
     ///
     /// A stub section's `reserved1` is its first entry's index into the

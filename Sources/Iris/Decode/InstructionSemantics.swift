@@ -3,64 +3,40 @@
 //
 // The Instruction semantics surface: resolved PC-relative control flow
 // (absolute branch / address-formation targets as API, not caller
-// arithmetic) and the semantic predicates — each an allocation-free
+// arithmetic) and the semantic predicates, each an allocation-free
 // projection of the record's existing classifications, never new
 // analysis.
 
 public extension Instruction {
     /// Absolute target of a direct control-flow transfer: B, BL, B.cond,
     /// BC.cond, CBZ/CBNZ, TBZ/TBNZ, and the FEAT_CMPBR
-    /// compare-and-branch family — `address &+ label byte offset`,
+    /// compare-and-branch family, `address &+ label byte offset`,
     /// modulo 2^64 (the same address model as the stream's).
     ///
-    /// `nil` when control flow is indirect (BR, BLR, RET — the target is
-    /// a register value), exception-generating (SVC/BRK/UDF… — vectored,
+    /// `nil` when control flow is indirect (BR, BLR, RET, the target is
+    /// a register value), exception-generating (SVC/BRK/UDF…, vectored,
     /// not encoded), or when the instruction does not branch. `BL`
-    /// resolves; `BLR` is `nil` with `branchClass == .call` — direct vs
+    /// resolves; `BLR` is `nil` with `branchClass == .call`, direct vs
     /// indirect stays recoverable from ``branchClass`` plus nil-ness.
     @inlinable
     var branchTarget: UInt64? {
-        switch record.branchClass {
-        case .direct, .conditional, .call:
-            for operand in operands {
-                if case let .label(byteOffset) = operand {
-                    return record.address &+ UInt64(bitPattern: byteOffset)
-                }
-            }
-            return nil
-        default:
-            return nil
-        }
+        record.projectedBranchTarget(operands)
     }
 
     /// Absolute PC-relative *data* address this instruction forms or
     /// references: ADR (`address &+ offset`), ADRP
-    /// (`(address & ~0xFFF) &+ page offset` — the page math lives here,
-    /// never in caller arithmetic), and the PC-literal loads/prefetch —
+    /// (`(address & ~0xFFF) &+ page offset`, the page math lives here,
+    /// never in caller arithmetic), and the PC-literal loads/prefetch ,
     /// LDR/LDRSW (literal), PRFM (literal) (`address &+ displacement`).
     /// All arithmetic is modulo 2^64. `nil` for everything else.
     @inlinable
     var pcRelativeTarget: UInt64? {
-        for operand in operands {
-            switch operand {
-            case let .pageLabel(byteOffset):
-                return (record.address & ~UInt64(0xFFF)) &+ UInt64(bitPattern: byteOffset)
-            case let .label(byteOffset) where record.mnemonic == .adr:
-                return record.address &+ UInt64(bitPattern: byteOffset)
-            case let .memory(memory):
-                if case .pc = memory.base {
-                    return record.address &+ UInt64(bitPattern: memory.displacement)
-                }
-            default:
-                continue
-            }
-        }
-        return nil
+        record.projectedPCRelativeTarget(operands)
     }
 }
 
 public extension Instruction {
-    /// True for BL/BLR and their authenticated variants — the
+    /// True for BL/BLR and their authenticated variants, the
     /// control-flow transfers that write the link register
     /// (`branchClass == .call`).
     ///
@@ -69,7 +45,7 @@ public extension Instruction {
     /// mnemonic).
     @inlinable
     var isCall: Bool {
-        record.branchClass == .call
+        record.projectedIsCall
     }
 
     /// True for RET/RETAA/RETAB (`branchClass == .return`).
@@ -78,7 +54,7 @@ public extension Instruction {
     /// authentication succeeds.
     @inlinable
     var isReturn: Bool {
-        record.branchClass == .return
+        record.projectedIsReturn
     }
 
     /// True when the instruction's architectural effect depends on a
@@ -92,11 +68,7 @@ public extension Instruction {
     /// execute unconditionally) and does NOT claim which path is taken.
     @inlinable
     var isConditional: Bool {
-        if record.branchClass == .conditional { return true }
-        for operand in operands {
-            if case .conditionCode = operand { return true }
-        }
-        return false
+        record.projectedIsConditional(operands)
     }
 
     /// True when the instruction semantically reads memory
@@ -104,14 +76,12 @@ public extension Instruction {
     /// (read-modify-write) is both a read and a write.
     ///
     /// PRFM/PRFUM are NOT reads (an architectural hint may access
-    /// nothing) — callers that care see `memoryAccess == .prefetch`.
+    /// nothing), callers that care see `memoryAccess == .prefetch`.
     /// Does NOT claim the access completes (it may fault), nor the
     /// address (the operands carry that).
     @inlinable
     var readsMemory: Bool {
-        record.memoryAccess == .load
-            || record.memoryAccess == .atomic
-            || record.memoryAccess == .exclusiveLoad
+        record.projectedReadsMemory
     }
 
     /// True when the instruction semantically writes memory
@@ -122,20 +92,18 @@ public extension Instruction {
     /// address (the operands carry that).
     @inlinable
     var writesMemory: Bool {
-        record.memoryAccess == .store
-            || record.memoryAccess == .atomic
-            || record.memoryAccess == .exclusiveStore
+        record.projectedWritesMemory
     }
 
     /// True for single-instruction atomic read-modify-writes (the LSE
-    /// atomics, CAS, SWP — `memoryAccess == .atomic`).
+    /// atomics, CAS, SWP, `memoryAccess == .atomic`).
     ///
     /// Does NOT cover exclusive-monitor halves: an LDXR/STXR pair is
     /// atomic only as a sequence, which a per-instruction predicate
-    /// cannot honestly claim — that is ``isExclusive``.
+    /// cannot honestly claim, that is ``isExclusive``.
     @inlinable
     var isAtomic: Bool {
-        record.memoryAccess == .atomic
+        record.projectedIsAtomic
     }
 
     /// True for one half of an exclusive-monitor pair
@@ -145,22 +113,21 @@ public extension Instruction {
     /// visible in ``semanticWrites``).
     @inlinable
     var isExclusive: Bool {
-        record.memoryAccess == .exclusiveLoad
-            || record.memoryAccess == .exclusiveStore
+        record.projectedIsExclusive
     }
 
     /// True when any of N/Z/C/V is consumed (`flagEffect`). Does NOT
-    /// claim *which* flags — that is ``FlagEffect/readFlags``.
+    /// claim *which* flags, that is ``FlagEffect/readFlags``.
     @inlinable
     var readsFlags: Bool {
-        record.flagEffect.readsAnyFlag
+        record.projectedReadsFlags
     }
 
     /// True when any of N/Z/C/V is written (`flagEffect`). Does NOT
-    /// claim *which* flags — that is ``FlagEffect/writtenFlags``.
+    /// claim *which* flags, that is ``FlagEffect/writtenFlags``.
     @inlinable
     var writesFlags: Bool {
-        record.flagEffect.writesAnyFlag
+        record.projectedWritesFlags
     }
 
     /// True when the mnemonic is one of the pointer-authentication-
@@ -170,13 +137,13 @@ public extension Instruction {
     /// their `z` forms), the hint-space PACI*/AUTI* forms and XPACLRI,
     /// and the authenticated loads LDRAA/LDRAB.
     ///
-    /// Does NOT claim which key (A/B — the mnemonic spells it), the
+    /// Does NOT claim which key (A/B, the mnemonic spells it), the
     /// discriminator, or runtime authentication behavior. The check is
     /// an honest projection: the mnemonic *is* the record's
     /// classification of the encoding.
     @inlinable
     var usesPointerAuthentication: Bool {
-        Mnemonic.involvesPointerAuthentication(record.mnemonic)
+        record.projectedUsesPointerAuthentication
     }
 }
 

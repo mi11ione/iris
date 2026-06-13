@@ -3,7 +3,7 @@
 //
 // BorrowedInstruction. The session tier's element: a copied 40-byte
 // record plus a borrowed slice of a pinned operand buffer. Formation
-// performs no reference counting and no allocation — the measured
+// performs no reference counting and no allocation, the measured
 // property the session API ships for (the borrowing-view experiment,
 // Benchmarks/Sources/iris-bench/ViewExperiment.swift).
 
@@ -14,7 +14,7 @@
 /// ``InstructionStream/withSession(_:)``. It carries the same packed
 /// ``record``, with ``operands`` presented as an `UnsafeBufferPointer`
 /// slice of the session's pinned side buffer instead of a retained view.
-/// Forming one is a 40-byte copy plus a (pointer, length) pair — no
+/// Forming one is a 40-byte copy plus a (pointer, length) pair, no
 /// reference counting, no heap allocation, which is what makes session
 /// access faster and context-independent compared to forming
 /// ``Instruction`` values (the measured contract is documented on
@@ -30,12 +30,20 @@
 /// operands. The type is deliberately not `Sendable`: the borrowed
 /// pointer must never cross a concurrency boundary.
 ///
-/// The ergonomic projections (`mnemonic`, `text`, branch targets,
-/// predicates, …) live on ``Instruction``; the borrowed view is
-/// deliberately spartan — read decode fields through ``record``.
+/// The semantic projection surface a hot loop reaches for is mirrored
+/// here from ``Instruction``: the record-derived conveniences
+/// (``mnemonic``, ``category``, ``address``, the register sets, the flag
+/// effect, ``isUndefined``, …), the predicates (``isCall``, ``readsMemory``,
+/// ``usesPointerAuthentication``, …), and the resolved ``branchTarget`` /
+/// ``pcRelativeTarget``. Each delegates to the same implementation
+/// ``Instruction`` uses, so a session loop reads them directly without
+/// dropping to the ``Instruction`` tier for a second pass. The one
+/// projection deliberately absent is ``Instruction/text``: rendering
+/// allocates a `String`, which this retain-free tier exists to avoid, so
+/// copy the ``record`` out when text is needed.
 @frozen
 public struct BorrowedInstruction {
-    /// The packed 40-byte record, copied by value — safe to copy out of
+    /// The packed 40-byte record, copied by value, safe to copy out of
     /// the session scope.
     public let record: InstructionRecord
 
@@ -46,7 +54,7 @@ public struct BorrowedInstruction {
 
     /// Pair a record with a borrowed operand slice. Ordinary value
     /// construction: the caller owns the pinning scope of `operands` and
-    /// the record/slice correspondence — ``InstructionStream/Session``
+    /// the record/slice correspondence, ``InstructionStream/Session``
     /// is the checked producer.
     @inlinable
     public init(record: InstructionRecord, operands: UnsafeBufferPointer<Operand>) {

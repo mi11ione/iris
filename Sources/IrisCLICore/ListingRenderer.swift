@@ -25,7 +25,7 @@ import Iris
 /// tail shows its residual bytes' value at its natural width,
 /// space-padded). Direct branches render their absolute target (the
 /// library's relative `#offset` form rewritten at presentation level)
-/// and gain a `; symbol` annotation when the target resolves — exactly
+/// and gain a `; symbol` annotation when the target resolves, exactly
 /// at a symbol, or past one in the same code section (`; _name+0x8`).
 /// Labels come from `LC_FUNCTION_STARTS` and the symbol table; a
 /// function start without a symbol is labeled `sub_<hex>:`. With
@@ -50,6 +50,10 @@ public struct ListingRenderer: Sendable {
         /// Imported-symbol name keyed by stub VM address; a branch to one
         /// of these annotates `symbol stub for: <name>`.
         public let stubTargets: [UInt64: String]
+        /// Resolver for the referenced-data annotation (the string /
+        /// data-symbol / section an address-forming instruction points
+        /// at). Empty in the direct-decode modes.
+        public let referencedData: ReferencedDataResolver
 
         @inlinable
         public init(
@@ -57,11 +61,13 @@ public struct ListingRenderer: Sendable {
             symbols: SymbolIndex,
             sections: [CodeSection],
             stubTargets: [UInt64: String] = [:],
+            referencedData: ReferencedDataResolver = .empty,
         ) {
             self.section = section
             self.symbols = symbols
             self.sections = sections
             self.stubTargets = stubTargets
+            self.referencedData = referencedData
         }
 
         /// The shared branch-target resolver over this context.
@@ -86,25 +92,36 @@ public struct ListingRenderer: Sendable {
     /// whole-listing accumulation). Stream-level diagnostics of each
     /// section's decode are forwarded to `onStreamDiagnostic` so the
     /// CLI can route them to stderr.
+    /// Emit the full listing, optionally scoped by `addressFilter` (the
+    /// `disasm --function` / `--range` window). The path header always
+    /// prints; a section's header and its function labels print lazily,
+    /// only once that section has an in-scope instruction, so a scope that
+    /// selects nothing in a section prints no empty block for it.
     public func emitListing(
         for binary: WalkedBinary,
         emit: (String) -> Void,
+        addressFilter: (UInt64) -> Bool = { _ in true },
         onStreamDiagnostic: (CodeSection, Diagnostic) -> Void = { _, _ in },
     ) {
         emit("\(binary.path) (\(binary.architecture)):\n")
         for section in binary.codeSections {
-            emit("\n")
-            emit(palette.label(section.displayName + ":") + "\n")
-            emitSection(section, of: binary, emit: emit, onStreamDiagnostic: onStreamDiagnostic)
+            emitSection(
+                section, of: binary, emit: emit,
+                addressFilter: addressFilter, onStreamDiagnostic: onStreamDiagnostic,
+            )
         }
     }
 
     /// Emit one section's lines: a label line at every function start
-    /// and symbol address, one instruction line per record.
+    /// and symbol address, one instruction line per record. The section
+    /// header is emitted lazily through `emitSectionHeader` (so a fully
+    /// filtered-out section contributes nothing), and only in-scope
+    /// instructions (and the labels sitting on them) are printed.
     func emitSection(
         _ section: CodeSection,
         of binary: WalkedBinary,
         emit: (String) -> Void,
+        addressFilter: (UInt64) -> Bool,
         onStreamDiagnostic: (CodeSection, Diagnostic) -> Void,
     ) {
         let stream = section.instructions(features: binary.features)
@@ -127,15 +144,34 @@ public struct ListingRenderer: Sendable {
             symbols: binary.symbols,
             sections: binary.codeSections,
             stubTargets: binary.stubTargets,
+            referencedData: binary.referencedDataResolver,
         )
+        // The section header prints once, right before its first in-scope
+        // line, so a scope that lands in no part of this section leaves it
+        // out of the listing entirely.
+        var headerEmitted = false
+        func emitSectionHeader() {
+            guard !headerEmitted else { return }
+            headerEmitted = true
+            emit("\n")
+            emit(palette.label(section.displayName + ":") + "\n")
+        }
+        // The referenced-data idiom (adrp + add/ldr) reads the line before
+        // the current one, so the previous record is carried forward (it is
+        // tracked across filtered-out lines too, so the idiom still resolves
+        // when only the completing instruction is in scope).
+        var preceding: Instruction?
         for instruction in stream {
+            defer { preceding = instruction }
+            guard addressFilter(instruction.address) else { continue }
+            emitSectionHeader()
             // Word-aligned labels only: a label can only attach to a
             // line, and lines sit at record addresses.
             if let label = labels[instruction.address] {
                 emit("\n")
                 emit(palette.label(label + ":") + "\n")
             }
-            emit(line(for: instruction, addressWidth: width, context: context) + "\n")
+            emit(line(for: instruction, addressWidth: width, context: context, preceding: preceding) + "\n")
         }
     }
 
@@ -145,19 +181,23 @@ public struct ListingRenderer: Sendable {
         let last = stream.baseAddress &+ (stream.byteCount > 0 ? stream.byteCount &- 1 : 0)
         let width = String(last, radix: 16).count
         for instruction in stream {
-            emit(line(for: instruction, addressWidth: width, context: nil) + "\n")
+            emit(line(for: instruction, addressWidth: width, context: nil, preceding: nil) + "\n")
         }
     }
 
-    /// Render one instruction line (no trailing newline).
+    /// Render one instruction line (no trailing newline). `preceding` is
+    /// the instruction before this one in the stream (the local idiom's
+    /// first half), `nil` at a section's start and in the direct-decode
+    /// modes.
     public func line(
         for instruction: Instruction,
         addressWidth: Int,
         context: Context?,
+        preceding: Instruction? = nil,
     ) -> String {
         let address = InstructionText.address(instruction.address, width: addressWidth)
         let word = wordColumn(for: instruction)
-        var body = bodyText(for: instruction, context: context)
+        var body = bodyText(for: instruction, context: context, preceding: preceding)
 
         if includeSemantics {
             let annotation = SemanticsAnnotation.annotation(for: instruction)
@@ -188,6 +228,7 @@ public struct ListingRenderer: Sendable {
     func bodyText(
         for instruction: Instruction,
         context: Context?,
+        preceding: Instruction? = nil,
     ) -> (plain: String, colored: String) {
         switch instruction.category {
         case .dataInCodeMarker:
@@ -211,7 +252,7 @@ public struct ListingRenderer: Sendable {
             )
         default:
             let text = InstructionText.absoluteBranchText(instruction)
-            let annotation = targetAnnotation(for: instruction, context: context).map { " ; " + $0 } ?? ""
+            let annotation = targetAnnotation(for: instruction, context: context, preceding: preceding).map { " ; " + $0 } ?? ""
             let mnemonic = InstructionText.mnemonicToken(of: text)
             let rest = text.dropFirst(mnemonic.count)
             return (
@@ -221,18 +262,43 @@ public struct ListingRenderer: Sendable {
         }
     }
 
-    /// The trailing comment for a non-sentinel line: branch-target
-    /// symbolication when the record branches, otherwise the formed
-    /// absolute PC-relative address (ADRP/ADR/literal loads) so the
-    /// listing shows the page/offset math the encoding implies.
-    func targetAnnotation(for instruction: Instruction, context: Context?) -> String? {
+    /// The trailing comment for a non-sentinel line, in priority order:
+    /// branch-target symbolication when the record branches; the
+    /// referenced datum (a quoted string, a data symbol, or a section
+    /// name) an address-forming instruction points at, including the
+    /// local `adrp`+`add`/`ldr` idiom completed with `preceding`; the
+    /// formed absolute PC-relative address (a bare `adrp` page, or a
+    /// target in no data section) so the page/offset math still shows;
+    /// then a printable-ASCII character hint for an immediate.
+    func targetAnnotation(for instruction: Instruction, context: Context?, preceding: Instruction?) -> String? {
         if let symbol = symbolAnnotation(for: instruction, context: context) {
             return symbol
+        }
+        if let context, let data = context.referencedData.resolve(instruction, preceding: preceding) {
+            return referencedDataComment(data)
         }
         if let pcRelative = instruction.pcRelativeTarget {
             return InstructionText.hex(pcRelative)
         }
+        if let character = CharLiteralHint.character(for: instruction) {
+            return "'\(character)'"
+        }
         return nil
+    }
+
+    /// The trailing-comment text for a resolved ``ReferencedData``: the
+    /// quoted string when one was read, else the data symbol when one
+    /// names the target, else the bare section name. String wins because
+    /// it is the most specific (the actual bytes), symbol next, section
+    /// last, the same specificity order `otool` annotates with.
+    func referencedDataComment(_ data: ReferencedData) -> String {
+        if let string = data.string {
+            return InstructionText.quotedString(string)
+        }
+        if let symbol = data.symbol {
+            return symbol
+        }
+        return data.section
     }
 
     /// The data-in-code kind covering this word, rendered in the
@@ -259,7 +325,7 @@ public struct ListingRenderer: Sendable {
     /// Branch-target symbolication: a stub forwarding to an import
     /// (`symbol stub for: _name`) takes precedence; otherwise the symbol
     /// exactly at the target, or the closest preceding symbol as
-    /// `name+0x<delta>` — the latter only when target and symbol lie in
+    /// `name+0x<delta>`, the latter only when target and symbol lie in
     /// the same code section (cross-section deltas would fabricate
     /// locality).
     func symbolAnnotation(for instruction: Instruction, context: Context?) -> String? {

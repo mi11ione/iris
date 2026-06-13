@@ -29,7 +29,7 @@ struct BESSystemMoveTests {
     }
 
     @Test func mrsRtXzr() {
-        // Rt = 31 → XZR (read sysreg, write XZR — semantically a no-op).
+        // Rt = 31 → XZR (read sysreg, write XZR, semantically a no-op).
         let d = decode(0xD53B_D05F, at: 0)
         #expect(d.mnemonic == .mrs)
         #expect(d.operands[0] == .register(.xzr()))
@@ -62,5 +62,31 @@ struct BESSystemMoveTests {
         let d = decode(0xD513_0000, at: 0)
         #expect(d.mnemonic == .msr)
         #expect(d.operands[0] == .systemRegister(SystemRegisterEncoding(op0: 2, op1: 3, crn: 0, crm: 0, op2: 0)))
+    }
+
+    /// Apple/IMPDEF system registers occupy the architecturally-reserved
+    /// CRn = 11 and CRn = 15 generic ranges. They carry no architectural
+    /// name, so decode preserves the raw (op0, op1, CRn, CRm, op2) tuple
+    /// exactly and the text layer renders the generic S-form. The whole
+    /// generic MSR/MRS space (131,072 words) and the Apple CRn ∈ {11,15}
+    /// range (16,384 words, Rt varied) were swept against llvm-mc 22.1.4 at
+    /// the maximal BES mattr with zero divergence; these cases pin the
+    /// representative IMPDEF encodings.
+    @Test func mrsAppleImpdefCRn11() {
+        // 0xD538B020 = MRS X0, S3_0_c11_c0_1 (op0=3, op1=0, CRn=11, CRm=0, op2=1).
+        let d = decode(0xD538_B020, at: 0)
+        #expect(d.mnemonic == .mrs)
+        #expect(d.operands[0] == .register(.x(0)))
+        #expect(d.operands[1] == .systemRegister(SystemRegisterEncoding(op0: 3, op1: 0, crn: 11, crm: 0, op2: 1)))
+        #expect(d.semanticWrites.contains(.x(0)))
+    }
+
+    @Test func msrAppleImpdefCRn15() {
+        // 0xD51BF3E5 = MSR S3_3_c15_c3_7, X5 (op0=3, op1=3, CRn=15, CRm=3, op2=7).
+        let d = decode(0xD51B_F3E5, at: 0)
+        #expect(d.mnemonic == .msr)
+        #expect(d.operands[0] == .systemRegister(SystemRegisterEncoding(op0: 3, op1: 3, crn: 15, crm: 3, op2: 7)))
+        #expect(d.operands[1] == .register(.x(5)))
+        #expect(d.semanticReads.contains(.x(5)))
     }
 }

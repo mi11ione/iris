@@ -9,7 +9,7 @@ import Iris
 /// object.
 @frozen
 public struct Census: Sendable {
-    /// Count per mnemonic name (sentinel records excluded — they are
+    /// Count per mnemonic name (sentinel records excluded, they are
     /// counted in the totals, not the mnemonic census).
     public private(set) var mnemonicCounts: [String: Int] = [:]
     /// Count per category name, sentinels included.
@@ -95,6 +95,28 @@ public struct Census: Sendable {
         var fields: [String] = []
         fields.append("\"schemaVersion\":\(JSONText.schemaVersion)")
         fields.append("\"kind\":\"census\"")
+        fields.append("\"totalWords\":\(totalWords)")
+        fields.append("\"undefinedWords\":\(undefinedWords)")
+        fields.append("\"dataWords\":\(dataWords)")
+        fields.append("\"truncatedTails\":\(truncatedTails)")
+        fields.append(
+            "\"extensions\":{\"pointerAuthentication\":\(pointerAuthenticationSites),"
+                + "\"memoryTagging\":\(memoryTaggingSites),"
+                + "\"amx\":\(amxSites),"
+                + "\"crypto\":\(cryptoSites)}",
+        )
+        fields.append("\"categories\":" + sortedObject(categoryCounts))
+        fields.append("\"mnemonics\":" + sortedObject(mnemonicCounts))
+        return "{" + fields.joined(separator: ",") + "}"
+    }
+
+    /// The `stats --json --slim` rendering: the census object with the two
+    /// constant fields (`schemaVersion`, `kind`) dropped, matching the
+    /// instruction-stream slim. Every count stays (a zero count is signal:
+    /// it is exactly what a CI gate like `pointerAuthentication > 0`
+    /// reads), so the census slims only by those two keys.
+    public func slimJsonObject() -> String {
+        var fields: [String] = []
         fields.append("\"totalWords\":\(totalWords)")
         fields.append("\"undefinedWords\":\(undefinedWords)")
         fields.append("\"dataWords\":\(dataWords)")

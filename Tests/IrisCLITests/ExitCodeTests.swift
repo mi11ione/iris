@@ -52,7 +52,7 @@ struct ExitCodeTests {
         let run = runCLI(["--version"])
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stdout == "iris \(CLI.version)\n")
-        #expect(CLI.version == "0.3.0")
+        #expect(CLI.version == "0.4.0")
         #expect(run.stderr.isEmpty)
     }
 

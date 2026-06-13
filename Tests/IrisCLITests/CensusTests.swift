@@ -55,6 +55,26 @@ struct CensusTests {
         #expect(extensions["pointerAuthentication"] == 0)
     }
 
+    @Test func slimCensusDropsConstantsKeepsEveryCount() throws {
+        let full = runCLI(["stats", "--json", cliFixturePath("dic-linked")])
+        let slim = runCLI(["stats", "--json", "--slim", cliFixturePath("dic-linked")])
+        #expect(slim.status == CLI.exitSuccess)
+        let fields = try #require(
+            (try? JSONSerialization.jsonObject(with: Data(slim.stdout.utf8))) as? [String: Any],
+        )
+        // The two constants are gone; every count survives (a zero count is
+        // the signal a CI gate reads).
+        #expect(fields["schemaVersion"] == nil)
+        #expect(fields["kind"] == nil)
+        #expect(fields["totalWords"] as? Int == 20)
+        #expect(fields["dataWords"] as? Int == 2)
+        let extensions = try #require(fields["extensions"] as? [String: Int])
+        #expect(extensions["pointerAuthentication"] == 0)
+        #expect(slim.stdout.utf8.count < full.stdout.utf8.count)
+        // The default census stream is untouched by the slim feature.
+        #expect(full.stdout == golden("dic-linked.stats.json"))
+    }
+
     @Test func arm64eBinaryCountsPACSites() throws {
         let binary = try #require(walkedBinary(cliFixturePath("hello-arm64e")))
         var census = Census()

@@ -96,7 +96,7 @@ struct FunctionViewTests {
         let first = try #require(run.stdout.split(separator: "\n").first)
         let prefix = "{\"schemaVersion\":1,\"kind\":\"function\",\"symbol\":\"_add42\","
             + "\"address\":\"0x100000328\",\"endAddress\":\"0x100000340\","
-            + "\"instructionCount\":6,\"instructions\":[{"
+            + "\"instructionCount\":6,\"usesPAC\":false,\"instructions\":[{"
         #expect(first.hasPrefix(prefix))
     }
 

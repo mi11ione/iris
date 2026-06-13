@@ -3,7 +3,7 @@
 //
 // Instruction. The ergonomic per-instruction value: a copied 40-byte
 // record plus a zero-based operand view over the stream's side buffer.
-// Forming one from a stream is a register-sized copy plus one retain —
+// Forming one from a stream is a register-sized copy plus one retain ,
 // zero heap allocation; standalone values (tier-0 decode, synthetic
 // instructions, test fixtures) own a private operand buffer through the
 // same type, so there is no stream-backed vs standalone mode split.
@@ -18,18 +18,18 @@
 /// ``decode(_:at:features:)`` function and the materializing initializer.
 ///
 /// Forming an `Instruction` from a stream copies the 40-byte record and
-/// wraps the stream's operand buffer in a view — one retain, zero heap
+/// wraps the stream's operand buffer in a view, one retain, zero heap
 /// allocation. Only ``text`` (returns a `String`) and the materializing
 /// initializer (owns a fresh operand array) allocate.
 ///
 /// **Equality is semantic.** Two `Instruction` values compare equal when
-/// their semantic record fields and operand *contents* match — the
+/// their semantic record fields and operand *contents* match, the
 /// record's `operandStart`/`operandCount` side-buffer indices are
 /// excluded, so semantically identical instructions from different
 /// streams compare equal. (On truncated-tail records the residual byte
 /// count, which `operandCount` carries, *does* participate.) This is
 /// deliberately different from ``InstructionRecord``, whose synthesized
-/// equality includes the side-buffer indices — index equality is the
+/// equality includes the side-buffer indices, index equality is the
 /// correct meaning for raw storage.
 ///
 /// The semantic predicates and properties layered on top (``isCall``,
@@ -60,7 +60,7 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
     /// contract, so the operand view forms empty for them regardless of
     /// `operands`; decode never materializes a tail this way (tails are
     /// produced by buffer-level decode, where `operandCount` carries the
-    /// residual byte count — see ``InstructionRecord/tailByteCount``).
+    /// residual byte count, see ``InstructionRecord/tailByteCount``).
     public init(
         address: UInt64 = 0,
         encoding: UInt32 = 0,
@@ -96,9 +96,9 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
             : Operands(base: operands, offset: 0, count: operands.count)
     }
 
-    // Projections — direct loads from the copied record, allocation-free.
+    // Projections, direct loads from the copied record, allocation-free.
 
-    /// Source VM address of the instruction word (modulo 2^64 — see
+    /// Source VM address of the instruction word (modulo 2^64, see
     /// ``InstructionStream``'s address model).
     @inlinable public var address: UInt64 {
         record.address
@@ -151,7 +151,7 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
     }
 
     /// Canonical llvm-mc-convention assembly text. Total: every record
-    /// renders — undefined and data-marker records render as
+    /// renders, undefined and data-marker records render as
     /// `.long 0x<hex>` (raw word, lowercase, unpadded), truncated-tail
     /// records as `.byte 0x.., …` over their residual bytes. Allocates
     /// (returns a `String`).
@@ -164,7 +164,7 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
         text
     }
 
-    // Custom semantic equality/hashing — see the type documentation.
+    // Custom semantic equality/hashing, see the type documentation.
     // Synthesized conformance is deliberately not used: it would compare
     // `operandStart` (a side-buffer index that differs across streams
     // for semantically identical instructions) and the operand views'
@@ -213,7 +213,7 @@ public extension Instruction {
     /// Equality and hashing are element-wise over the window's contents
     /// only (synthesized conformance would compare the entire backing
     /// arrays), so equal operand lists from different streams compare
-    /// equal — value semantics.
+    /// equal, value semantics.
     @frozen
     struct Operands: RandomAccessCollection, Sendable, Hashable {
         public typealias Element = Operand
@@ -231,7 +231,7 @@ public extension Instruction {
             self.count = count
         }
 
-        /// Always 0 — the view is zero-based.
+        /// Always 0, the view is zero-based.
         @inlinable public var startIndex: Int {
             0
         }
@@ -269,15 +269,15 @@ public extension Instruction {
 }
 
 public extension Instruction {
-    /// True when this record is the decoder's UNDEFINED witness — a
+    /// True when this record is the decoder's UNDEFINED witness, a
     /// reserved or unallocated encoding, or an encoding belonging to an
     /// extension absent from the decode ``Features``. The raw word is
     /// preserved in ``encoding``.
     ///
-    /// Does NOT claim the bytes are meaningless to other tooling — only
+    /// Does NOT claim the bytes are meaningless to other tooling, only
     /// that Iris decodes nothing there.
     @inlinable
     var isUndefined: Bool {
-        record.category == .undefined
+        record.projectedIsUndefined
     }
 }

@@ -49,9 +49,41 @@ public enum InstructionText {
         return text[..<hashIndex] + hex(target)
     }
 
+    /// A C string rendered for a listing comment: wrapped in double
+    /// quotes, with the C-style escapes for the characters that would
+    /// break a one-line comment (`\`, `"`, the whitespace controls) and
+    /// `\x<hh>` for any other non-printing byte, then capped at
+    /// `maxScalars` visible source characters with a trailing `…` when it
+    /// runs longer. The same shape `otool`'s `"…"` annotation uses, so a
+    /// listing reads like the disassemblers an analyst already knows.
+    public static func quotedString(_ value: String, maxScalars: Int = 64) -> String {
+        var out = "\""
+        var emitted = 0
+        for scalar in value.unicodeScalars {
+            if emitted >= maxScalars {
+                out += "…"
+                break
+            }
+            switch scalar {
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case let s where s.value < 0x20 || s.value == 0x7F:
+                let hex = String(s.value, radix: 16)
+                out += "\\x" + (hex.count < 2 ? "0" + hex : hex)
+            default:
+                out.unicodeScalars.append(scalar)
+            }
+            emitted += 1
+        }
+        return out + "\""
+    }
+
     /// Split a rendered instruction into per-operand fragments: the
     /// mnemonic token is dropped and the remainder is split on top-level
-    /// commas — commas inside `[...]` (memory operands) and `{...}`
+    /// commas, commas inside `[...]` (memory operands) and `{...}`
     /// (vector register lists) do not split. Derived from the canonical
     /// text, so the fragments can never drift from it.
     public static func operandFragments(of text: String) -> [String] {

@@ -281,4 +281,95 @@ struct CommandLineParsingTests {
         let plain = Invocation(verb: .decode, input: .word(0))
         #expect(plain.directDecodeFeatures == [])
     }
+
+    // MARK: - -slim
+
+    @Test func slimRidesWhereJSONIs() {
+        // --slim is accepted by every verb (it shapes --json), and parses
+        // alongside --json into the slim flag.
+        #expect(Verb.disasm.accepts("--slim") && Verb.decode.accepts("--slim")
+            && Verb.stats.accepts("--slim") && Verb.functions.accepts("--slim"))
+        let parsed = ParsedCommandLine.parse(["functions", "--json", "--slim", "a/binary"])
+        #expect(parsed == .run(Invocation(verb: .functions, input: .file(path: "a/binary"), json: true, slim: true)))
+        let decodeSlim = ParsedCommandLine.parse(["decode", "--json", "--slim", "0x1"])
+        #expect(decodeSlim == .run(Invocation(verb: .decode, input: .word(1), json: true, slim: true)))
+    }
+
+    @Test func slimWithoutJSONIsAUsageError() {
+        #expect(ParsedCommandLine.parse(["disasm", "--slim", "f"])
+            == .usageError("iris disasm: error: --slim shapes --json output; add --json (or drop --slim)"))
+        // Inferred verb keeps the plain scope.
+        #expect(ParsedCommandLine.parse(["--slim", "f"])
+            == .usageError("iris: error: --slim shapes --json output; add --json (or drop --slim)"))
+    }
+
+    // MARK: - -function / --range (disasm scoping)
+
+    @Test func disasmAcceptsFunctionAndRange() {
+        #expect(Verb.disasm.accepts("--function") && Verb.disasm.accepts("--range"))
+        #expect(!Verb.stats.accepts("--function") && !Verb.functions.accepts("--range"))
+        let byName = ParsedCommandLine.parse(["disasm", "--function", "_main", "f"])
+        #expect(byName == .run(Invocation(verb: .disasm, input: .file(path: "f"), function: "_main")))
+        let byRange = ParsedCommandLine.parse(["disasm", "--range", "0x1080:0x1170", "f"])
+        let range = Invocation.AddressRange(start: 0x1080, end: 0x1170)
+        #expect(byRange == .run(Invocation(verb: .disasm, input: .file(path: "f"), range: range)))
+    }
+
+    @Test func rangeAcceptsHexAndDecimal() {
+        let hex = ParsedCommandLine.parse(["disasm", "--range", "0x10:0x20", "f"])
+        #expect(hex == .run(Invocation(verb: .disasm, input: .file(path: "f"), range: .init(start: 0x10, end: 0x20))))
+        let decimal = ParsedCommandLine.parse(["disasm", "--range", "16:32", "f"])
+        #expect(decimal == .run(Invocation(verb: .disasm, input: .file(path: "f"), range: .init(start: 16, end: 32))))
+    }
+
+    @Test func functionAndRangeAreRejectedByNonDisasmVerbs() {
+        for verb in ["stats", "functions"] {
+            #expect(ParsedCommandLine.parse([verb, "--function", "_main", "f"])
+                == .usageError("iris \(verb): error: unknown option '--function'"))
+            #expect(ParsedCommandLine.parse([verb, "--range", "0x1:0x2", "f"])
+                == .usageError("iris \(verb): error: unknown option '--range'"))
+        }
+        #expect(ParsedCommandLine.parse(["decode", "--function", "_main", "0x1"])
+            == .usageError("iris decode: error: unknown option '--function'"))
+    }
+
+    @Test func malformedRangeErrors() {
+        for bad in ["notarange", "", "0x10", "0x10:0x20:0x30", "0x20:0x10", "0x10:", ":0x20", "0xzz:0x10"] {
+            #expect(ParsedCommandLine.parse(["disasm", "--range", bad, "f"])
+                == .usageError("iris disasm: error: --range wants start:end as 0x-hex or decimal with start < end, got '\(bad)'"))
+        }
+    }
+
+    @Test func missingFunctionAndRangeValuesError() {
+        #expect(ParsedCommandLine.parse(["disasm", "--function"])
+            == .usageError("iris disasm: error: --function needs a function name"))
+        #expect(ParsedCommandLine.parse(["disasm", "--range"])
+            == .usageError("iris disasm: error: --range needs a value (start:end, e.g. 0x1080:0x1170)"))
+    }
+
+    @Test func functionAndRangeTogetherAreAUsageError() {
+        #expect(ParsedCommandLine.parse(["disasm", "--function", "_main", "--range", "0x1:0x2", "f"])
+            == .usageError("iris disasm: error: --function and --range both scope the output; use one"))
+    }
+
+    @Test func functionNameIsSteppedOverDuringVerbInference() {
+        // --function takes a value, so a verb-word-shaped function name does
+        // not get mistaken for the verb, and a leading --function does not
+        // hide the path.
+        let parsed = ParsedCommandLine.parse(["--function", "_main", "a/binary"])
+        #expect(parsed == .run(Invocation(verb: .disasm, input: .file(path: "a/binary"), function: "_main")))
+    }
+
+    @Test func parseAddressRangeGrammar() {
+        #expect(ParsedCommandLine.parseAddressRange("0x10:0x20") == .init(start: 0x10, end: 0x20))
+        #expect(ParsedCommandLine.parseAddressRange("0:1") == .init(start: 0, end: 1))
+        #expect(ParsedCommandLine.parseAddressRange("0x10") == nil)
+        #expect(ParsedCommandLine.parseAddressRange("0x20:0x10") == nil)
+        #expect(ParsedCommandLine.parseAddressRange("a:b") == nil)
+        #expect(ParsedCommandLine.parseAddressRange("") == nil)
+        #expect(ParsedCommandLine.parseAddress("0xff") == 0xFF)
+        #expect(ParsedCommandLine.parseAddress("255") == 255)
+        #expect(ParsedCommandLine.parseAddress("0x") == nil)
+        #expect(ParsedCommandLine.parseAddress("zz") == nil)
+    }
 }

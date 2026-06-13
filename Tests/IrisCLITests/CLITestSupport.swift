@@ -296,6 +296,100 @@ struct MachOAssembler {
 let someInstructions: UInt32 = 0x0000_0400
 /// `S_ATTR_PURE_INSTRUCTIONS`.
 let pureInstructions: UInt32 = 0x8000_0000
+/// `S_CSTRING_LITERALS`, the section-type low byte for a `__cstring`.
+let cStringLiterals: UInt32 = 0x2
+
+/// A minimal arm64 Mach-O whose `__TEXT` segment carries one `__text`
+/// code section (a single `ret`) and one `__cstring` data section holding
+/// `bytes` at VM address `dataAddress`. Used to drive the referenced-data
+/// resolver through a real walk (the `DataSection` initializer is
+/// internal, so a fixture walk is the way to obtain one). The walked
+/// binary's `dataSections` holds the cstring section over `bytes`.
+func stringSectionBinary(address dataAddress: UInt64, bytes: [UInt8]) -> WalkedBinary {
+    dataSectionBinary(
+        segname: "__TEXT", sectname: "__cstring",
+        address: dataAddress, bytes: bytes, sectionFlags: cStringLiterals,
+    )
+}
+
+/// A minimal arm64 Mach-O carrying one `__text` code section (a single
+/// `ret`) and one data section (`segname,sectname`) of `bytes.count` bytes
+/// at `address` with the given `sectionFlags` (the section-type low byte
+/// selects cstring vs plain data). Drives the referenced-data resolver
+/// through a real walk, since the `DataSection` initializer is internal.
+func dataSectionBinary(
+    segname: String,
+    sectname: String,
+    address: UInt64,
+    bytes: [UInt8],
+    sectionFlags: UInt32,
+) -> WalkedBinary {
+    let textAddr: UInt64 = 0x1000
+    // Content sits past the two segment commands (header 32 + 2·152 = 336),
+    // so a generous 512-byte code offset keeps the ret word and the
+    // appended data bytes clear of the load-command region.
+    let codeOffset = 512
+    let dataOffset = codeOffset + 4 // after the one ret word
+    var a = MachOAssembler()
+    // Two segments: __TEXT holds the code, the data segment holds the
+    // section (a data section can name any segment, e.g. __DATA,__const).
+    let textCmdsize: UInt32 = 72 + 80
+    let dataCmdsize: UInt32 = 72 + 80
+    a.machHeader64(ncmds: 2, sizeofcmds: textCmdsize + dataCmdsize)
+    a.segmentCommand64(name: "__TEXT", vmaddr: textAddr, nsects: 1, cmdsize: textCmdsize)
+    a.section64(
+        sectname: "__text", segname: "__TEXT",
+        addr: textAddr, size: 4, offset: UInt32(codeOffset),
+        flags: pureInstructions | someInstructions,
+    )
+    a.segmentCommand64(name: segname, vmaddr: address, nsects: 1, cmdsize: dataCmdsize)
+    a.section64(
+        sectname: sectname, segname: segname,
+        addr: address, size: UInt64(bytes.count), offset: UInt32(dataOffset),
+        flags: sectionFlags,
+    )
+    a.pad(to: codeOffset)
+    withUnsafeBytes(of: UInt32(0xD65F_03C0).littleEndian) { a.bytes.append(contentsOf: $0) } // ret
+    a.bytes.append(contentsOf: bytes)
+    return walkedBinary(bytes: a.bytes)!
+}
+
+/// A minimal arm64 Mach-O whose `__text` holds one `adr x0, #256`
+/// (forming the absolute address `0x1100`) and whose `__DATA,__const`
+/// section at `0x1100` carries an external symbol `_datum` there. Drives
+/// the referenced-data annotation's data-symbol tier end to end: the
+/// listing annotates `; _datum`, the JSON carries `referencedSymbol`.
+/// `sectionSize` lets a caller inflate the `__const` size past the file
+/// to exercise the walker's data-section clamp.
+func dataSymbolReferenceBinary(sectionSize: UInt64 = 8) -> [UInt8] {
+    var a = MachOAssembler()
+    // One __TEXT segment with __text + __const, plus an LC_SYMTAB.
+    let segCmdsize: UInt32 = 72 + 160
+    let sizeofcmds: UInt32 = segCmdsize + 24
+    let codeOffset = 512
+    let dataOffset = codeOffset + 4
+    a.machHeader64(ncmds: 2, sizeofcmds: sizeofcmds)
+    a.segmentCommand64(name: "__TEXT", vmaddr: 0x1000, nsects: 2, cmdsize: segCmdsize)
+    a.section64(
+        sectname: "__text", segname: "__TEXT",
+        addr: 0x1000, size: 4, offset: UInt32(codeOffset),
+        flags: pureInstructions | someInstructions,
+    )
+    a.section64(
+        sectname: "__const", segname: "__DATA",
+        addr: 0x1100, size: sectionSize, offset: UInt32(dataOffset),
+        flags: 0,
+    )
+    let symoff = UInt32(dataOffset + 8)
+    let stroff = symoff + 16
+    a.symtabCommand(symoff: symoff, nsyms: 1, stroff: stroff, strsize: 8)
+    a.pad(to: codeOffset)
+    a.u32(0x1000_0800) // adr x0, #256 at 0x1000 -> target 0x1100
+    a.bytes.append(contentsOf: [0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x00]) // __const bytes (8)
+    a.nlist64(strx: 1, type: 0x0F, value: 0x1100) // _datum, external, at 0x1100
+    a.fixedString("\0_datum\0", length: 8)
+    return a.bytes
+}
 
 /// A minimal valid one-section arm64 Mach-O: `__TEXT,__text` holding
 /// `words` (little-endian instruction words) at file offset 256 /

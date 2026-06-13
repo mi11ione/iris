@@ -14,7 +14,7 @@
 # random under ld-prime), and the linker's ad-hoc signature is a pure
 # function of content + output filename. A different toolchain may
 # shift code bytes, in which case the goldens under
-# Tests/Fixtures/CLI/golden are re-locked from the rebuilt binaries —
+# Tests/Fixtures/CLI/golden are re-locked from the rebuilt binaries , 
 # goldens normalize nothing but the fixture's path.
 #
 # Well-formed fixtures:
@@ -30,10 +30,15 @@
 #                   (strcoll) so the linker emits a __stubs entry routed
 #                   through the indirect symbol table; a branch to it
 #                   annotates `; symbol stub for: _strcoll` (stub.c)
-#   stub-stripped   stub-arm64 with the symbol table stripped — the
+#   stub-stripped   stub-arm64 with the symbol table stripped, the
 #                   import name still resolves through LC_DYSYMTAB's
 #                   indirect symbol table (which strip preserves), so
 #                   stub symbolication survives stripping
+#   strings-arm64   thin arm64 with __cstring literals reached via
+#                   adrp+add and printable-ASCII char comparisons
+#                   (strings.c), the referenced-data annotation fixture:
+#                   `; "the string"`, `; 'c'`, and a __got load through
+#                   the _printf stub
 #   dic-arm64.o     assembly with .data_region markers -> real
 #                   LC_DATA_IN_CODE (jump-table-8 + data kinds). Kept as
 #                   MH_OBJECT deliberately: the current linker (ld-prime)
@@ -87,6 +92,7 @@ lipo -create -output "$bin/hello-fat" "$bin/hello-arm64" "$bin/hello-arm64e"
 lipo -create -fat64 -output "$bin/hello-fat64" "$bin/hello-arm64" "$bin/hello-arm64e"
 "$CC" -arch arm64 -O1 -fno-stack-protector -Wl,-reproducible -o "$bin/stub-arm64" "$src/stub.c"
 strip -o "$bin/stub-stripped" "$bin/stub-arm64" 2> /dev/null
+"$CC" -arch arm64 -O1 -fno-stack-protector -Wl,-reproducible -o "$bin/strings-arm64" "$src/strings.c"
 "$CC" -arch arm64 -c -o "$bin/dic-arm64.o" "$src/dic.s"
 "$CC" -arch arm64 -Wl,-ld_classic -Wl,-reproducible -nostartfiles -Wl,-e,_main \
     -o "$bin/dic-linked" "$bin/dic-arm64.o"
@@ -247,6 +253,15 @@ iris="$root/.build/debug/iris"
 "$iris" --color never Tests/Fixtures/CLI/bin/stub-arm64 > "$golden/stub-arm64.listing.txt"
 "$iris" --color never Tests/Fixtures/CLI/bin/stub-stripped > "$golden/stub-stripped.listing.txt"
 "$iris" --json Tests/Fixtures/CLI/bin/stub-arm64 > "$golden/stub-arm64.ndjson"
+# referenced-data annotation fixture: the listing carries `; "string"` /
+# `; 'c'` / `__got` comments, and the NDJSON the referencedSection /
+# referencedString / charLiteral fields. --slim and a --function scope
+# are locked here too so the new projections and scoping have goldens.
+"$iris" --color never Tests/Fixtures/CLI/bin/strings-arm64 > "$golden/strings-arm64.listing.txt"
+"$iris" --json Tests/Fixtures/CLI/bin/strings-arm64 > "$golden/strings-arm64.ndjson"
+"$iris" --json --slim Tests/Fixtures/CLI/bin/strings-arm64 > "$golden/strings-arm64.slim.ndjson"
+"$iris" functions --json --slim Tests/Fixtures/CLI/bin/strings-arm64 > "$golden/strings-arm64.functions.slim.ndjson"
+"$iris" disasm --function _greet --color never Tests/Fixtures/CLI/bin/strings-arm64 > "$golden/strings-arm64.greet.listing.txt"
 "$iris" --color never Tests/Fixtures/CLI/bin/dic-arm64.o > "$golden/dic-arm64.listing.txt"
 "$iris" --color never Tests/Fixtures/CLI/bin/dic-linked > "$golden/dic-linked.listing.txt"
 "$iris" --color never --semantics Tests/Fixtures/CLI/bin/hello-arm64 > "$golden/hello-arm64.semantics.txt"

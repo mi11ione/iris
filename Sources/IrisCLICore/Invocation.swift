@@ -32,17 +32,23 @@ public enum Verb: String, Sendable, Hashable, CaseIterable {
     /// this verb's accepted set. The globals `--help`/`-h`/`--version` are
     /// handled before per-verb parsing and are not listed here.
     ///
-    /// - `disasm`: `--arch --semantics --json --color --quiet`
-    /// - `decode`: `--features --semantics --json --color --bytes`
+    /// - `disasm`: `--arch --semantics --json --slim --color --quiet --function --range`
+    /// - `decode`: `--features --semantics --json --slim --color --bytes`
     /// - `stats`: `--arch --json --color --quiet`
-    /// - `functions`: `--arch --json --color --quiet`
+    /// - `functions`: `--arch --json --slim --color --quiet`
     ///
     /// `--bytes` is the decode input carrier (decode-only), so it is in
-    /// decode's set and absent from the file verbs.
+    /// decode's set and absent from the file verbs. `--slim` shapes the
+    /// JSON, so it rides wherever `--json` is accepted; `--function` and
+    /// `--range` scope the disasm listing/stream.
     @inlinable
     public func accepts(_ flag: String) -> Bool {
         switch flag {
         case "--json", "--color":
+            true
+        case "--slim":
+            // --slim only shapes --json, so it is accepted exactly where
+            // --json is (every verb), and rejected without --json below.
             true
         case "--quiet":
             self != .decode
@@ -52,6 +58,8 @@ public enum Verb: String, Sendable, Hashable, CaseIterable {
             readsFile
         case "--features", "--bytes":
             self == .decode
+        case "--function", "--range":
+            self == .disasm
         default:
             false
         }
@@ -80,6 +88,22 @@ public struct Invocation: Sendable, Equatable {
         }
     }
 
+    /// A `--range start:end` half-open VM-address window: instructions
+    /// with `start <= address < end` survive the `disasm` scope.
+    @frozen
+    public struct AddressRange: Sendable, Equatable {
+        /// Inclusive low bound.
+        public var start: UInt64
+        /// Exclusive high bound.
+        public var end: UInt64
+
+        @inlinable
+        public init(start: UInt64, end: UInt64) {
+            self.start = start
+            self.end = end
+        }
+    }
+
     /// The verb that selects the output mode.
     public var verb: Verb
     public var input: Input
@@ -89,12 +113,19 @@ public struct Invocation: Sendable, Equatable {
     public var features: Features?
     /// `--json`: NDJSON output.
     public var json: Bool
+    /// `--slim`: the compact `--json` projection (drops zero-signal
+    /// constants and empty/false fields). Only meaningful with `--json`.
+    public var slim: Bool
     /// `--semantics`: per-line semantic annotations (`disasm` / `decode`).
     public var semantics: Bool
     /// `--color` policy.
     public var color: ColorMode
     /// `--quiet`: suppress diagnostics on stderr (the file verbs).
     public var quiet: Bool
+    /// `--function <name>`: limit `disasm` to one function's instructions.
+    public var function: String?
+    /// `--range <start>:<end>`: limit `disasm` to a half-open VM window.
+    public var range: AddressRange?
 
     public init(
         verb: Verb,
@@ -102,18 +133,24 @@ public struct Invocation: Sendable, Equatable {
         arch: ArchSelection? = nil,
         features: Features? = nil,
         json: Bool = false,
+        slim: Bool = false,
         semantics: Bool = false,
         color: ColorMode = .auto,
         quiet: Bool = false,
+        function: String? = nil,
+        range: AddressRange? = nil,
     ) {
         self.verb = verb
         self.input = input
         self.arch = arch
         self.features = features
         self.json = json
+        self.slim = slim
         self.semantics = semantics
         self.color = color
         self.quiet = quiet
+        self.function = function
+        self.range = range
     }
 
     /// The features `decode` uses: explicit `--features` first, then plain
@@ -231,6 +268,7 @@ public extension ParsedCommandLine {
     static func isValueFlag(_ argument: String) -> Bool {
         argument == "--arch" || argument == "--features"
             || argument == "--color" || argument == "--bytes"
+            || argument == "--function" || argument == "--range"
     }
 
     /// Parse `arguments` (the tokens after any verb word) against `verb`'s
@@ -245,9 +283,12 @@ public extension ParsedCommandLine {
         var arch: ArchSelection?
         var features: Features?
         var json = false
+        var slim = false
         var semantics = false
         var color: ColorMode = .auto
         var quiet = false
+        var function: String?
+        var rangeArgument: String?
 
         // A flag this verb does not accept falls through every `where`
         // clause to the `default` unknown-option arm, the single rule that
@@ -259,10 +300,24 @@ public extension ParsedCommandLine {
             switch argument {
             case "--json" where verb.accepts("--json"):
                 json = true
+            case "--slim" where verb.accepts("--slim"):
+                slim = true
             case "--semantics" where verb.accepts("--semantics"):
                 semantics = true
             case "--quiet" where verb.accepts("--quiet"):
                 quiet = true
+            case "--function" where verb.accepts("--function"):
+                guard index < arguments.count else {
+                    return .usageError("\(label) --function needs a function name")
+                }
+                function = arguments[index]
+                index += 1
+            case "--range" where verb.accepts("--range"):
+                guard index < arguments.count else {
+                    return .usageError("\(label) --range needs a value (start:end, e.g. 0x1080:0x1170)")
+                }
+                rangeArgument = arguments[index]
+                index += 1
             case "--arch" where verb.accepts("--arch"):
                 guard index < arguments.count else {
                     return .usageError("\(label) --arch needs a value (arm64 or arm64e)")
@@ -315,7 +370,8 @@ public extension ParsedCommandLine {
 
         return resolveInput(
             verb: verb, label: label, positional: positional, bytesArgument: bytesArgument,
-            arch: arch, features: features, json: json, semantics: semantics, color: color, quiet: quiet,
+            arch: arch, features: features, json: json, slim: slim, semantics: semantics,
+            color: color, quiet: quiet, function: function, rangeArgument: rangeArgument,
         )
     }
 
@@ -330,10 +386,35 @@ public extension ParsedCommandLine {
         arch: ArchSelection?,
         features: Features?,
         json: Bool,
+        slim: Bool,
         semantics: Bool,
         color: ColorMode,
         quiet: Bool,
+        function: String?,
+        rangeArgument: String?,
     ) -> ParsedCommandLine {
+        // --slim only shapes the JSON projection; without --json it has no
+        // output to act on, so it is a usage error rather than a silent
+        // no-op (the same per-verb scoping the other flags get).
+        if slim, !json {
+            return .usageError("\(label) --slim shapes --json output; add --json (or drop --slim)")
+        }
+        // --function and --range are two ways to scope one disasm; asking
+        // for both at once is ambiguous, so it is a usage error rather than
+        // a silent precedence rule.
+        if function != nil, rangeArgument != nil {
+            return .usageError("\(label) --function and --range both scope the output; use one")
+        }
+        // --range start:end → a half-open VM window, validated at parse
+        // time (an empty or malformed value is a usage error here, before
+        // the file is even opened).
+        var range: Invocation.AddressRange?
+        if let rangeArgument {
+            guard let parsed = parseAddressRange(rangeArgument) else {
+                return .usageError("\(label) --range wants start:end as 0x-hex or decimal with start < end, got '\(rangeArgument)'")
+            }
+            range = parsed
+        }
         let input: Invocation.Input
         switch (positional, bytesArgument) {
         case (.some, .some):
@@ -376,10 +457,35 @@ public extension ParsedCommandLine {
             arch: arch,
             features: features,
             json: json,
+            slim: slim,
             semantics: semantics,
             color: color,
             quiet: quiet,
+            function: function,
+            range: range,
         ))
+    }
+
+    /// Parse a `--range` value `start:end` into a half-open
+    /// ``Invocation/AddressRange``. Each side is a `0x`-prefixed hex or a
+    /// plain decimal `UInt64`. `nil` for an empty value, a missing or
+    /// extra `:`, an unparseable side, or `start >= end` (an empty or
+    /// inverted window is a user error, not a silent no-output run).
+    static func parseAddressRange(_ argument: String) -> Invocation.AddressRange? {
+        let parts = argument.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        guard let start = parseAddress(parts[0]), let end = parseAddress(parts[1]), start < end else { return nil }
+        return Invocation.AddressRange(start: start, end: end)
+    }
+
+    /// A single `--range` bound: `0x`-prefixed hex, or plain decimal.
+    /// `nil` when empty or not a `UInt64` in the indicated base.
+    static func parseAddress(_ token: some StringProtocol) -> UInt64? {
+        if token.hasPrefix("0x") || token.hasPrefix("0X") {
+            let digits = token.dropFirst(2)
+            return digits.isEmpty ? nil : UInt64(digits, radix: 16)
+        }
+        return UInt64(token)
     }
 
     /// `0x`-prefixed 32-bit hex word.

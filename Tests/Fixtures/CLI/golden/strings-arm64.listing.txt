@@ -1,0 +1,45 @@
+Tests/Fixtures/CLI/bin/strings-arm64 (arm64):
+
+__TEXT,__text:
+
+_greet:
+100000460: d10083ff  sub sp, sp, #32
+100000464: a9017bfd  stp x29, x30, [sp, #16]
+100000468: 910043fd  add x29, sp, #16
+10000046c: 90000008  adrp x8, #0 ; 0x100000000
+100000470: 9113d108  add x8, x8, #1268 ; "world"
+100000474: f90003e8  str x8, [sp]
+100000478: 90000000  adrp x0, #0 ; 0x100000000
+10000047c: 9113a000  add x0, x0, #1256 ; "hello, %s!\n"
+100000480: 94000017  bl 0x1000004dc ; symbol stub for: _printf
+100000484: a9417bfd  ldp x29, x30, [sp, #16]
+100000488: 910083ff  add sp, sp, #32
+10000048c: d65f03c0  ret
+
+_classify:
+100000490: 52800028  mov w8, #1
+100000494: 52800069  mov w9, #3
+100000498: 5280004a  mov w10, #2
+10000049c: 7101e81f  cmp w0, #122 ; 'z'
+1000004a0: 1a8a13ea  csel w10, wzr, w10, ne
+1000004a4: 7101041f  cmp w0, #65 ; 'A'
+1000004a8: 1a8a0108  csel w8, w8, w10, eq
+1000004ac: 7100801f  cmp w0, #32 ; ' '
+1000004b0: 1a880120  csel w0, w9, w8, eq
+1000004b4: d65f03c0  ret
+
+_main:
+1000004b8: a9be4ff4  stp x20, x19, [sp, #-32]!
+1000004bc: a9017bfd  stp x29, x30, [sp, #16]
+1000004c0: 910043fd  add x29, sp, #16
+1000004c4: aa0003f3  mov x19, x0
+1000004c8: 97ffffe6  bl 0x100000460 ; _greet
+1000004cc: aa1303e0  mov x0, x19
+1000004d0: a9417bfd  ldp x29, x30, [sp, #16]
+1000004d4: a8c24ff4  ldp x20, x19, [sp], #32
+1000004d8: 17ffffee  b 0x100000490 ; _classify
+
+__TEXT,__stubs:
+1000004dc: 90000030  adrp x16, #16384 ; 0x100004000
+1000004e0: f9400210  ldr x16, [x16] ; __DATA_CONST,__got
+1000004e4: d61f0200  br x16

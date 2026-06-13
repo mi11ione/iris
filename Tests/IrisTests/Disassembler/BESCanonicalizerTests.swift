@@ -22,7 +22,7 @@ private func canonicalDraft(_ mnemonic: Mnemonic, operands: [Operand] = []) -> S
 
 /// Validates `BESCanonicalizer.format(draft:)` against llvm-mc-equivalent
 /// text at our parity mattr (`+v8.7a,+ssbs,+mte,+xs,+spe`). Covers every
-/// per-mnemonic rendering branch — bare vs operand'd forms, decimal vs
+/// per-mnemonic rendering branch, bare vs operand'd forms, decimal vs
 /// hex immediates for exception generators, SP-vs-XZR register text,
 /// PSTATE / barrier / sysreg / SYS-alias canonical names, BTI sub-target,
 /// HINT alias precedence, and the S-form sysreg fallback.
@@ -30,7 +30,7 @@ private func canonicalDraft(_ mnemonic: Mnemonic, operands: [Operand] = []) -> S
 struct BESCanonicalizerTests {
     @Test func undefinedRendersLongDirective() {
         // Undefined records render the raw word as `.long` (the text
-        // router owns sentinel rendering — text is total).
+        // router owns sentinel rendering, text is total).
         let undef = Instruction(address: 0, encoding: 0xFFFF_FFFF, mnemonic: .undefined, category: .undefined)
         #expect(undef.isUndefined)
         #expect(undef.text == ".long 0xffffffff")
@@ -77,7 +77,7 @@ struct BESCanonicalizerTests {
     }
 
     @Test func bcCondRenders() {
-        // BC.cond (FEAT_HBC) — named at the maximal feature set (+hbc).
+        // BC.cond (FEAT_HBC), named at the maximal feature set (+hbc).
         #expect(canonical(0x5400_0010) == "bc.eq #0")
     }
 
@@ -114,7 +114,7 @@ struct BESCanonicalizerTests {
 
     @Test func udfImm16Decimal() {
         // UDF (dispatcher-owned, op0=0 reserved tier) renders its imm16 in
-        // DECIMAL — llvm-mc 22.1.4 convention (`udf #0`, `udf #43981`),
+        // DECIMAL, llvm-mc 22.1.4 convention (`udf #0`, `udf #43981`),
         // unlike the hex SVC/BRK exception class. Pins verified against
         // llvm-mc -triple=arm64-apple-macos for every row.
         #expect(canonical(0x0000_0000) == "udf #0")
@@ -308,6 +308,15 @@ struct BESCanonicalizerTests {
         #expect(canonical(0xD53F_FFE0) == "mrs x0, s3_7_c15_c15_7")
     }
 
+    @Test func appleImpdefSysregSform() {
+        // Apple/IMPDEF registers live in the architecturally-reserved
+        // CRn ∈ {11, 15} generic ranges and carry no architectural name, so
+        // they render in the generic S-form. Spellings confirmed against
+        // llvm-mc 22.1.4 (`mrs x0, S3_0_C11_C0_1` / `msr S3_3_C15_C3_7, x5`).
+        #expect(canonical(0xD538_B020) == "mrs x0, s3_0_c11_c0_1")
+        #expect(canonical(0xD51B_F3E5) == "msr s3_3_c15_c3_7, x5")
+    }
+
     @Test func sysNamedAliases() {
         #expect(canonical(0xD508_711F) == "ic ialluis")
         #expect(canonical(0xD50B_7A25) == "dc cvac, x5")
@@ -352,7 +361,7 @@ struct BESCanonicalizerTests {
 
     /// Defensive crash-safety: a `.bcCond` draft with no operands can't come
     /// from the decoder (which always pairs the condition + label), but the
-    /// canonicalizer must not trap on a hand-constructed one — it falls to the
+    /// canonicalizer must not trap on a hand-constructed one, it falls to the
     /// `?` fallback like every other short-operand draft.
     @Test func bcCondDraftWithoutOperandsRendersSafely() {
         let draft = Instruction(
@@ -364,7 +373,7 @@ struct BESCanonicalizerTests {
         #expect(draft.text.hasPrefix("?"))
     }
 
-    /// Outer `formatNamed` default — mnemonic outside BES enumeration
+    /// Outer `formatNamed` default, mnemonic outside BES enumeration
     /// (e.g. DPI's `.add`) renders as `?<rawValue>`.
     @Test func unrecognisedMnemonicRendersWithRawValue() {
         let draft = Instruction(
@@ -448,7 +457,7 @@ struct BESCanonicalizerTests {
             address: 0, encoding: 0, mnemonic: .tbz,
             category: .branchesExceptionSystem,
             operands: [
-                .label(byteOffset: 0), // wrong — should be .register
+                .label(byteOffset: 0), // wrong, should be .register
                 .unsignedImmediate(value: 0, width: 6),
                 .label(byteOffset: 0),
             ],
@@ -467,7 +476,7 @@ struct BESCanonicalizerTests {
             operands: [.register(weirdReg)],
         )
         // Per the canonicalizer's documented rule, encoded-31 with .general
-        // role renders as xzr (defensive — not a normal decoder output).
+        // role renders as xzr (defensive, not a normal decoder output).
         #expect(draft.text == "br xzr")
     }
 
@@ -591,7 +600,7 @@ struct BESCanonicalizerTests {
     @Test func malformedOperandListsRenderTheGuardSentinel() {
         // Hand-built records whose operand lists are too short for the
         // mnemonic's shape render the `?<name>` sentinel rather than
-        // reading out of range — one row per defensive guard.
+        // reading out of range, one row per defensive guard.
         for m: Mnemonic in [.b, .bl, .cbz, .cbnz, .tbz, .tbnz, .svc, .hvc,
                             .dcps1, .hint, .smstart, .smstop, .wfet, .wfit, .cbgt, .cbbeq, .cbhne,
                             .udf]

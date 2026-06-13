@@ -12,7 +12,7 @@ import Iris
 /// diagnostics, never error messages.
 public enum CLI {
     /// The tool's release version, matching the package tag.
-    public static let version = "0.3.0"
+    public static let version = "0.4.0"
 
     /// Exit code for success.
     public static let exitSuccess: Int32 = 0
@@ -95,7 +95,10 @@ public enum CLI {
         let stream = InstructionStream(bytes: bytes, features: invocation.directDecodeFeatures)
         if invocation.json {
             for instruction in stream {
-                writeOutput(JSONText.instructionLine(instruction) + "\n")
+                let line = invocation.slim
+                    ? JSONText.slimInstructionLine(instruction)
+                    : JSONText.instructionLine(instruction)
+                writeOutput(line + "\n")
             }
             return exitSuccess
         }
@@ -151,7 +154,7 @@ public enum CLI {
                     }
                     census.add(stream)
                 }
-                emit(census: census, json: invocation.json, writeOutput: writeOutput)
+                emit(census: census, json: invocation.json, slim: invocation.slim, writeOutput: writeOutput)
             case .functions:
                 // Diagnostics route through `surface` exactly as the
                 // per-instruction paths do.
@@ -159,12 +162,27 @@ public enum CLI {
                 if invocation.json {
                     let jsonContext = JSONText.SymbolContext(binary: binary)
                     for function in carved {
-                        writeOutput(JSONText.functionLine(function, context: jsonContext) + "\n")
+                        let line = invocation.slim
+                            ? JSONText.slimFunctionLine(function, context: jsonContext)
+                            : JSONText.functionLine(function, context: jsonContext)
+                        writeOutput(line + "\n")
                     }
                 } else {
                     FunctionSummary.emit(functions: carved, binary: binary, palette: palette, emit: writeOutput)
                 }
             case .disasm, .decode:
+                // Resolve --function / --range to an address window before
+                // any output. A name that matches no function is a clean
+                // usage error (exit 1), reported and returned here.
+                let scope: AddressScope
+                switch resolveScope(invocation: invocation, binary: binary) {
+                case let .resolved(resolved):
+                    scope = resolved
+                case let .error(message):
+                    writeError(message + "\n")
+                    writeError("run 'iris disasm --help' for usage\n")
+                    return exitUsage
+                }
                 if invocation.json {
                     let jsonContext = JSONText.SymbolContext(binary: binary)
                     for section in binary.codeSections {
@@ -172,17 +190,77 @@ public enum CLI {
                         for diagnostic in stream.diagnostics {
                             surface(section, diagnostic)
                         }
+                        // The referenced-data idiom reads the preceding
+                        // record, carried forward across the section (across
+                        // filtered-out lines too, so the idiom still resolves
+                        // when only its completing half is in scope).
+                        var preceding: Instruction?
                         for instruction in stream {
-                            writeOutput(JSONText.instructionLine(instruction, context: jsonContext) + "\n")
+                            defer { preceding = instruction }
+                            guard scope.contains(instruction.address) else { continue }
+                            let line = invocation.slim
+                                ? JSONText.slimInstructionLine(instruction, context: jsonContext, preceding: preceding)
+                                : JSONText.instructionLine(instruction, context: jsonContext, preceding: preceding)
+                            writeOutput(line + "\n")
                         }
                     }
                 } else {
                     let renderer = ListingRenderer(palette: palette, includeSemantics: invocation.semantics)
-                    renderer.emitListing(for: binary, emit: writeOutput, onStreamDiagnostic: surface)
+                    renderer.emitListing(
+                        for: binary, emit: writeOutput,
+                        addressFilter: scope.contains, onStreamDiagnostic: surface,
+                    )
                 }
             }
             return exitSuccess
         }
+    }
+
+    /// A resolved `disasm` output scope: an inclusive-low, exclusive-high
+    /// VM-address predicate. The whole-binary default accepts every
+    /// address; `--range` and `--function` narrow it to one window.
+    struct AddressScope {
+        let lowerBound: UInt64
+        let upperBound: UInt64
+
+        /// The unscoped default (every address in scope).
+        static let all = AddressScope(lowerBound: 0, upperBound: .max)
+
+        /// Whether `address` is in `[lowerBound, upperBound)`.
+        func contains(_ address: UInt64) -> Bool {
+            address >= lowerBound && address < upperBound
+        }
+    }
+
+    /// Result of resolving a `disasm` scope: a window, or a usage error
+    /// (a `--function` name no function carries).
+    enum ScopeResolution {
+        case resolved(AddressScope)
+        case error(String)
+    }
+
+    /// Resolve `--function` / `--range` against the walked binary.
+    /// `--range` came pre-validated from the parser (start < end), so it
+    /// maps straight to a window. `--function` is resolved here, where the
+    /// function table exists: the named function's `[address, endAddress)`
+    /// span, or a usage error naming the closest the binary does carry.
+    /// With neither flag, the scope is the whole binary.
+    static func resolveScope(invocation: Invocation, binary: WalkedBinary) -> ScopeResolution {
+        if let name = invocation.function {
+            let functions = FunctionCarver.functions(of: binary)
+            guard let match = functions.first(where: { $0.symbol == name }) else {
+                let available = functions.map(\.symbol)
+                let hint = available.isEmpty
+                    ? " (this binary lists no functions)"
+                    : " (available: \(available.joined(separator: ", ")))"
+                return .error("iris disasm: error: no function named '\(name)' in '\(binary.path)'\(hint)")
+            }
+            return .resolved(AddressScope(lowerBound: match.address, upperBound: match.endAddress))
+        }
+        if let range = invocation.range {
+            return .resolved(AddressScope(lowerBound: range.start, upperBound: range.end))
+        }
+        return .resolved(.all)
     }
 
     /// The stderr line for one stream-level decode diagnostic, or `nil`
@@ -198,10 +276,11 @@ public enum CLI {
         }
     }
 
-    /// Census output: one JSON object or the table.
-    static func emit(census: Census, json: Bool, writeOutput: (String) -> Void) {
+    /// Census output: one JSON object (slim drops its two constant keys)
+    /// or the table.
+    static func emit(census: Census, json: Bool, slim: Bool, writeOutput: (String) -> Void) {
         if json {
-            writeOutput(census.jsonObject() + "\n")
+            writeOutput((slim ? census.slimJsonObject() : census.jsonObject()) + "\n")
         } else {
             for line in census.tableLines() {
                 writeOutput(line + "\n")
@@ -269,19 +348,36 @@ public enum CLI {
     The listing carries symbols and function starts from the binary, branch
     targets resolved and symbolicated, and data-in-code rendered as data.
 
+    The listing also annotates what an address-forming instruction points
+    at: an adrp+add or adrp+ldr pair, or a single literal load, reaching a
+    string shows `; "the string"`, a known data symbol shows `; _name`, and
+    anything else shows its `; <section>`. A printable-ASCII immediate
+    shows its character as `; 'c'`.
+
     options:
       --arch <arm64|arm64e>        select the slice of a fat binary
                                    (default: arm64e first, then arm64)
+      --function <name>            disassemble only that function (resolved
+                                   from the symbol table or a sub_<hex>
+                                   label), ending at the next function
+      --range <start>:<end>        disassemble only the half-open VM-address
+                                   window [start, end) (0x-hex or decimal),
+                                   e.g. --range 0x1080:0x1170
       --semantics                  append per-line semantic annotations
                                    (reads/writes/flags/memory/ordering/branch)
       --json                       emit NDJSON, one object per instruction
                                    (schema: the "JSON output" DocC article,
                                    which already carries the semantics)
+      --slim                       with --json, the compact projection that
+                                   drops the constant and empty fields
       --color <auto|always|never>  ANSI color (default: auto, a TTY only)
       --quiet                      suppress decode diagnostics on stderr
                                    (malformed-input warnings). Fatal errors
                                    such as a missing file are still reported.
       --help, -h                   print this help
+
+    --function and --range are two ways to scope one run, so use one. A
+    name that matches no function, or a malformed range, is a usage error.
 
     """
 
@@ -304,6 +400,8 @@ public enum CLI {
       --semantics                  append per-line semantic annotations
                                    (reads/writes/flags/memory/ordering/branch)
       --json                       emit NDJSON, one object per instruction
+      --slim                       with --json, the compact projection that
+                                   drops the constant and empty fields
       --color <auto|always|never>  ANSI color (default: auto, a TTY only)
       --help, -h                   print this help
 
@@ -323,6 +421,8 @@ public enum CLI {
       --arch <arm64|arm64e>        select the slice of a fat binary
                                    (default: arm64e first, then arm64)
       --json                       emit one census object instead of the table
+      --slim                       with --json, drop the census object's two
+                                   constant keys (every count is kept)
       --color <auto|always|never>  ANSI color (default: auto, a TTY only)
       --quiet                      suppress decode diagnostics on stderr
       --help, -h                   print this help
@@ -346,6 +446,11 @@ public enum CLI {
                                    (default: arm64e first, then arm64)
       --json                       emit one "kind":"function" object per
                                    function instead of the summary table
+      --slim                       with --json, the compact projection that
+                                   drops the constant and empty fields and
+                                   the per-instruction symbol (the function
+                                   object already names it). The model
+                                   payload to feed an LLM.
       --color <auto|always|never>  ANSI color (default: auto, a TTY only)
       --quiet                      suppress decode diagnostics on stderr
       --help, -h                   print this help

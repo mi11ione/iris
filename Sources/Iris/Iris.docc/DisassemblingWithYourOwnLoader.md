@@ -91,6 +91,15 @@ let stores = stream.withSession { session -> Int in
 print(stores)                                     // 1 (the stp)
 ```
 
+The example reaches into ``BorrowedInstruction/record`` only because it wants
+the exact ``MemoryAccess`` case (a store, not an atomic). Everything the
+ergonomic ``Instruction`` tier exposes, the borrowed view carries directly:
+``BorrowedInstruction/isCall``, `readsMemory`, `writesMemory`, `branchTarget`,
+the register sets, and the rest of the predicate and resolved-target surface
+all live on the view, so a call-graph or dataflow pass over a session never
+needs `record`. Drop to `record` only for a packed field the projections do
+not name.
+
 The closure scope is the safety contract: borrowed views must not escape it
 (the rules are documented on ``InstructionStream/withSession(_:)``).
 

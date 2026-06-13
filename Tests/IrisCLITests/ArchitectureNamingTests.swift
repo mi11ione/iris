@@ -73,4 +73,21 @@ struct ArchitectureNamingTests {
             #expect(CLI.helpText(for: verb).contains("--help, -h"))
         }
     }
+
+    @Test func disasmHelpNamesScopingAndAnnotationFlags() {
+        let help = CLI.helpText(for: .disasm)
+        #expect(help.contains("--function"))
+        #expect(help.contains("--range"))
+        #expect(help.contains("--slim"))
+        // The referenced-data annotation is described.
+        #expect(help.contains("\"the string\""))
+    }
+
+    @Test func slimIsDocumentedWhereverJSONIsAccepted() {
+        // --slim shapes --json, so the verbs that emit JSON name it; stats
+        // emits one census object, the others NDJSON.
+        for verb in [Verb.disasm, .decode, .stats, .functions] {
+            #expect(CLI.helpText(for: verb).contains("--slim"), "\(verb) help should name --slim")
+        }
+    }
 }

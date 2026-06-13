@@ -104,9 +104,9 @@ Exit codes, stdout/stderr separation, `--color auto|always|never`, and `--quiet`
 
 ## Feed an LLM
 
-Disassembly text is what model pipelines choke on. It carries too many tokens, too little structure, and too much room to hallucinate. Iris emits the dataflow already computed and produces byte-identical output for identical input, so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
+The win for a model pipeline is structure. Iris chunks a binary into functions, names the call edges between them, and produces byte-identical output for identical input so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
 
-`iris functions` chunks the binary into one JSON object per function, the unit a model prompt usually wants. Boundaries come from `LC_FUNCTION_STARTS` and section membership, so a function holds exactly its own instructions and never the trailing `__stubs` padding that grouping the per-instruction stream by symbol would sweep in:
+`iris functions` emits one JSON object per function, the unit a model prompt usually wants. Boundaries come from `LC_FUNCTION_STARTS` and section membership, so a function holds exactly its own instructions and never the trailing `__stubs` padding that grouping the per-instruction stream by symbol would sweep in:
 
 ```sh
 iris functions --json hello-arm64 | jq -c '{symbol, address, endAddress, instructionCount}'
@@ -125,6 +125,19 @@ iris --json MyApp | jq -c 'select(.branchClass=="call") | {from: .symbol, to: .t
 # {"from":"_helper","to":"_add42","at":"0x1000003b0"}
 # {"from":"_helper","to":"_sum_to","at":"0x1000003bc"}
 # {"from":"_main","to":"_helper","at":"0x1000003f8"}
+```
+
+For the payload you actually hand a model, reach for `iris functions --json --slim`. The default per-instruction object is heavier than our own `--semantics` text line, and about half of that weight is the same constant fields repeating on every line (`kind`, `schemaVersion`, the `none` and empty defaults). `--slim` drops those, drops the per-instruction `symbol` the function object already carries, and keeps every signal-bearing field, so the structure survives at a fraction of the size:
+
+```sh
+iris functions --json --slim MyApp
+```
+
+An address-forming instruction also gets the data it points at. A `__cstring` load reads back as a string and a printable-ASCII immediate reads back as a character, in the listing and in the JSON, so a model sees the format string and the character constant without inferring them:
+
+```sh
+iris functions --json --slim hello-arm64 | jq -c '.instructions[] | select(.referencedString) | {text, referencedString}'
+# {"text":"add x0, x0, #1256","referencedString":"hello, %s!\n"}
 ```
 
 ## Decode from Swift

@@ -1,0 +1,17 @@
+Tests/Fixtures/CLI/bin/strings-arm64 (arm64):
+
+__TEXT,__text:
+
+_greet:
+100000460: d10083ff  sub sp, sp, #32
+100000464: a9017bfd  stp x29, x30, [sp, #16]
+100000468: 910043fd  add x29, sp, #16
+10000046c: 90000008  adrp x8, #0 ; 0x100000000
+100000470: 9113d108  add x8, x8, #1268 ; "world"
+100000474: f90003e8  str x8, [sp]
+100000478: 90000000  adrp x0, #0 ; 0x100000000
+10000047c: 9113a000  add x0, x0, #1256 ; "hello, %s!\n"
+100000480: 94000017  bl 0x1000004dc ; symbol stub for: _printf
+100000484: a9417bfd  ldp x29, x30, [sp, #16]
+100000488: 910083ff  add sp, sp, #32
+10000048c: d65f03c0  ret

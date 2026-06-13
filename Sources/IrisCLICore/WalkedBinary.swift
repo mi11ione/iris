@@ -17,6 +17,10 @@ public struct WalkedBinary: Sendable {
     public let features: Features
     /// Executable sections in load-command walk order.
     public let codeSections: [CodeSection]
+    /// Non-code, file-backed sections (`__cstring`, `__const`, `__data`,
+    /// …) in load-command walk order, for resolving an address-forming
+    /// instruction's referenced data. Empty when the slice has none.
+    public let dataSections: [DataSection]
     /// Defined symbols, address-indexed.
     public let symbols: SymbolIndex
     /// Ascending `LC_FUNCTION_STARTS` addresses; empty when absent.
@@ -33,6 +37,7 @@ public struct WalkedBinary: Sendable {
         architecture: String,
         features: Features,
         codeSections: [CodeSection],
+        dataSections: [DataSection] = [],
         symbols: SymbolIndex,
         functionStarts: [UInt64],
         stubTargets: [UInt64: String] = [:],
@@ -42,10 +47,18 @@ public struct WalkedBinary: Sendable {
         self.architecture = architecture
         self.features = features
         self.codeSections = codeSections
+        self.dataSections = dataSections
         self.symbols = symbols
         self.functionStarts = functionStarts
         self.stubTargets = stubTargets
         self.diagnostics = diagnostics
+    }
+
+    /// A resolver over this binary's data sections and symbols, for the
+    /// referenced-data annotation (string / data-symbol / section name).
+    @inlinable
+    public var referencedDataResolver: ReferencedDataResolver {
+        ReferencedDataResolver(dataSections: dataSections, symbols: symbols)
     }
 }
 
