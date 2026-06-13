@@ -17,6 +17,21 @@ struct SlimJSONTests {
         (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any]
     }
 
+    /// Order-independent equality for two parsed JSON values. A nested
+    /// object (`flagEffect`) is an unordered Swift dictionary, so its
+    /// string interpolation orders keys differently across platforms;
+    /// scalars and arrays compare by value, objects compare key by key.
+    func sameJSON(_ a: Any?, _ b: Any?) -> Bool {
+        switch (a, b) {
+        case let (a as [String: Any], b as [String: Any]):
+            a.count == b.count && a.allSatisfy { sameJSON($0.value, b[$0.key]) }
+        case let (a as [Any], b as [Any]):
+            a.count == b.count && zip(a, b).allSatisfy { sameJSON($0, $1) }
+        default:
+            "\(a ?? "·")" == "\(b ?? "·")"
+        }
+    }
+
     // MARK: Goldens
 
     @Test func slimStreamMatchesGolden() {
@@ -148,7 +163,7 @@ struct SlimJSONTests {
             let of = try #require(object(f))
             let os = try #require(object(s))
             for (key, value) in os {
-                #expect("\(of[key] ?? "·")" == "\(value)", "slim \(key) diverges from default")
+                #expect(sameJSON(of[key], value), "slim \(key) diverges from default")
             }
             for (key, value) in of where os[key] == nil {
                 let droppable = ["kind", "schemaVersion"].contains(key)
