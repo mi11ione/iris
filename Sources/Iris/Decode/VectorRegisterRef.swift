@@ -74,6 +74,10 @@ public enum VectorArrangement: UInt8, Sendable, Hashable {
 }
 
 /// SIMD scalar-view element size — `B` / `H` / `S` / `D` / `Q`.
+///
+/// Reused as the vector-length-agnostic element size for SVE/SME operands —
+/// the same finite set with the same raw values, so the scalable grammar
+/// names its element size here rather than duplicating it.
 @frozen
 public enum ScalarSize: UInt8, Sendable, Hashable {
     /// 8-bit (`Bn`).
@@ -86,4 +90,15 @@ public enum ScalarSize: UInt8, Sendable, Hashable {
     case d = 3
     /// 128-bit (`Qn`).
     case q = 4
+}
+
+public extension ScalarSize {
+    /// Number of SME `ZA` tiles at this element size — `B`:1, `H`:2, `S`:4,
+    /// `D`:8, `Q`:16. A tile of element size `2^rawValue` bytes divides the
+    /// array into that many interleaved tiles.
+    @inlinable
+    @inline(__always)
+    var tileCount: UInt8 {
+        1 << rawValue
+    }
 }

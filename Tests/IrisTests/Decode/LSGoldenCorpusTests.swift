@@ -2,7 +2,8 @@
 // Licensed under the Apache License, Version 2.0
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 import Testing
 
 // ARM64E context so the corpus's LDRAA/LDRAB rows decode rather than

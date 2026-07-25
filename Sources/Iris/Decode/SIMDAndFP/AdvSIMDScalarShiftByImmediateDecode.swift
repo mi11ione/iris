@@ -74,7 +74,7 @@ enum AdvSIMDScalarShiftByImmediateDecode {
             srcSize = elementSize
         }
 
-        let destReadsItself = SIMDFPSemanticAttributes.destinationReadsItself(for: resolved.mnemonic)
+        let destReadsItself = simdFPDestinationReadsItself(resolved.mnemonic)
         var reads = simdfpInsertingVector(Rn, into: .empty)
         if destReadsItself {
             reads = simdfpInsertingVector(Rd, into: reads)

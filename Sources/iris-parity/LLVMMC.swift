@@ -8,7 +8,8 @@
 // with per-line correlation of `invalid instruction encoding` rejects.
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 
 enum LLVMMC {
     /// Locate llvm-mc. Order: `IRIS_LLVM_MC` env, Homebrew prefixes

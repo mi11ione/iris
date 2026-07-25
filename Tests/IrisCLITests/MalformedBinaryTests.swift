@@ -393,6 +393,7 @@ struct MalformedBinaryTests {
 
     @Test func explicitArchMismatchOnThinFile() throws {
         let outcome = walkBytes(minimalBinary(words: [0xD503_201F]), arch: .arm64e)
+        #expect(verdictName(outcome) == "archUnavailable")
         let unavailable = try #require(archUnavailableOutcome(outcome))
         #expect(unavailable.requested == .arm64e)
         #expect(unavailable.available == ["arm64"])
@@ -404,12 +405,7 @@ struct MalformedBinaryTests {
         let whole = try #require(FileManager.default.contents(atPath: cliFixturePath("dic-arm64.o")))
         var verdicts: Set<String> = []
         for length in 0 ... whole.count {
-            switch walkBytes(Array(whole.prefix(length))) {
-            case .binary: verdicts.insert("binary")
-            case .unreadable: verdicts.insert("unreadable")
-            case .notMachO: verdicts.insert("notMachO")
-            case .archUnavailable: verdicts.insert("archUnavailable")
-            }
+            verdicts.insert(verdictName(walkBytes(Array(whole.prefix(length)))))
         }
         #expect(verdicts.contains("unreadable")) // length 0
         #expect(verdicts.contains("notMachO")) // 1 ..< 32

@@ -51,7 +51,8 @@ jobs:
       - name: Test (with coverage)
         run: |
           set -o pipefail
-          swift test --enable-code-coverage 2>&1 | tee test.log
+          swift test --no-parallel --enable-code-coverage \
+            -Xswiftc -Xllvm -Xswiftc -instrprof-atomic-counter-update-all 2>&1 | tee test.log
       - name: Warnings are errors for the test build
         run: |
           if grep -E "warning:" test.log; then

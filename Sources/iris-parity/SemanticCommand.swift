@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 //
-// `iris-parity semantic` — run the `@_spi(Validation)` semantic
+// `iris-parity semantic` — run the `IrisValidation` semantic
 // checkers (the per-family expected-attribute tables) over a word set:
 // every row of the family's synthetic TSV corpus plus a seeded random
 // sweep of the family's partitions. Checkers verify the classification
@@ -13,7 +13,8 @@
 // gates.
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 
 func runSemanticCommand(_ args: [String]) -> Int32 {
     var familyName: String?

@@ -88,13 +88,14 @@ struct CryptoAppleExtensionsIntegrationTests {
         #expect(d.category == .memoryTagging)
     }
 
-    @Test func dpiDecoderEmitsUndefinedWhenMTEDPIRejects() {
-        // Encoding with op1=011 but bit 22 = 1 (reserved) — DPI routes
-        // to MTE-DPI which rejects via prefix mask, then DPI falls through
-        // to UNDEFINED.
+    @Test func dpiDecoderDecodesCSSCMinMaxWhereBit22IsSet() {
+        // op1=011 splits on bit 22: bit22=1 is FEAT_CSSC Min/Max (immediate),
+        // NOT the MTE ADDG/SUBG row (bit22=0). 0x91C3_0000 = opc=00 (SMAX),
+        // imm8=0xC0 → `smax x0, x0, #-64`, matching llvm-mc at +cssc.
         let d = decode(0x91C3_0000, at: 0)
-        #expect(d.mnemonic == .undefined)
-        #expect(d.category == .undefined)
+        #expect(d.mnemonic == .smax)
+        #expect(d.category == .dataProcessingImmediate)
+        #expect(d.text == "smax x0, x0, #-64")
     }
 
     @Test func dpiCanonicalizerRoutes27MnemonicsToCryptoCanonicalizer() {

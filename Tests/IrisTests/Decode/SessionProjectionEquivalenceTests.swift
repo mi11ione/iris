@@ -158,10 +158,15 @@ struct SessionProjectionEquivalenceTests {
         let perWord = stream.withSession { session -> [Bool] in
             (0 ..< stream.count).map { index in
                 let address = base &+ UInt64(index * 4)
-                guard let borrowed = session.instruction(at: address),
-                      let view = stream.instruction(at: address)
-                else { return false }
-                return !projectionAgreement(borrowed, view).contains(false)
+                // Both lookups resolve for every in-range address, so the
+                // agreement is read through `flatMap` rather than a guard whose
+                // failure arm the stream can never reach.
+                let agreed = session.instruction(at: address).flatMap { borrowed in
+                    stream.instruction(at: address).map { view in
+                        !projectionAgreement(borrowed, view).contains(false)
+                    }
+                }
+                return agreed == true
             }
         }
         #expect(perWord == Array(repeating: true, count: stream.count))
@@ -197,9 +202,12 @@ struct SessionProjectionBranchTests {
 
     @Test func pcRelativeTargetCoversEveryArmOnTheBorrowedTier() {
         let stream = makeProjectionStream()
+        // ADR resolves a PC-relative target but is not a branch, so the two
+        // projections stay distinct on the borrowed tier.
+        #expect(stream.withSession { $0[15].branchTarget } == nil)
         let results = stream.withSession { session -> [UInt64?] in
             [
-                session[15].branchTarget == nil ? session[15].pcRelativeTarget : nil, // adr  (label+adr arm)
+                session[15].pcRelativeTarget, // adr   (label+adr arm)
                 session[16].pcRelativeTarget, // adrp  (pageLabel arm)
                 session[17].pcRelativeTarget, // ldr literal  (memory .pc arm)
                 session[18].pcRelativeTarget, // prfm literal (memory .pc arm)

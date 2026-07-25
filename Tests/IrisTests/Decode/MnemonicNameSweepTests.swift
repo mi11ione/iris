@@ -22,6 +22,8 @@ struct MnemonicNameSweepTests {
         "Data Processing — Register": 66,
         "SIMD & Floating-Point": 313,
         "Crypto + Apple Extensions": 89,
+        "SVE / SVE2 tier": 418,
+        "SME / SME2 tier": 68,
     ]
 
     @Test func everyAllocatedRangeResolvesRealNamesAndExactFallbacks() {
@@ -44,7 +46,7 @@ struct MnemonicNameSweepTests {
     }
 
     @Test func rawValuesBeyondEveryAllocationUseTheFallback() {
-        for raw: UInt16 in [16384, 30000, 65534, 65535] {
+        for raw: UInt16 in [40960, 50000, 65534, 65535] {
             let m = Mnemonic(rawValue: raw)
             #expect(m.name == "?\(raw)")
             #expect(m.description == "?\(raw)")

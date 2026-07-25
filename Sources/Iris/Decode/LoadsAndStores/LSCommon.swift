@@ -111,7 +111,6 @@ let lsOp0Mask: UInt32 = (1 << 0x4) | (1 << 0x6) | (1 << 0xC) | (1 << 0xE)
 @inlinable
 @inline(__always)
 @_effects(readonly)
-@_spi(Validation)
 public func isLoadStoreEncoding(_ encoding: UInt32) -> Bool {
     let op0 = (encoding >> 25) & 0xF
     return (lsOp0Mask >> op0) & 1 == 1

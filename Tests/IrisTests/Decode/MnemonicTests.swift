@@ -53,8 +53,8 @@ struct MnemonicAllocationTests {
         #expect(range?.contains(Mnemonic.truncatedTail.rawValue) == true)
     }
 
-    @Test func sevenAllocationsExist() {
-        #expect(Mnemonic.allocations.count == 7)
+    @Test func allocationCountIsNine() {
+        #expect(Mnemonic.allocations.count == 9)
     }
 
     @Test func allocationLabelsAreDistinct() {
@@ -85,6 +85,8 @@ struct MnemonicAllocationTests {
             "Data Processing — Register",
             "SIMD & Floating-Point",
             "Crypto + Apple Extensions",
+            "SVE / SVE2 tier",
+            "SME / SME2 tier",
         ]
         #expect(Mnemonic.allocations.map(\.label) == labels)
     }
@@ -101,6 +103,8 @@ struct MnemonicAllocationTests {
             ("Data Processing — Register", 4096, 6143),
             ("SIMD & Floating-Point", 6144, 12287),
             ("Crypto + Apple Extensions", 12288, 16383),
+            ("SVE / SVE2 tier", 16384, 28671),
+            ("SME / SME2 tier", 28672, 40959),
         ]
         #expect(Mnemonic.allocations.count == expected.count)
         for (i, (label, lower, upper)) in expected.enumerated() {

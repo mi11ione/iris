@@ -61,7 +61,11 @@ enum DPICanonicalizer {
         case .vectorRegister, .floatImmediate, .memory, .shiftedRegister,
              .extendedRegister, .systemRegister, .conditionCode,
              .pstateField, .barrierOption, .prefetchOperation,
-             .systemOp, .amxField, .amxUnknown:
+             .systemOp, .amxField, .amxUnknown,
+             .scalableVector, .scalablePredicate, .scalableVectorGroup,
+             .predicateGroup, .zaTile, .zaTileSlice, .zaArrayVector,
+             .zt0, .scalableMemory, .svePredicatePattern,
+             .vectorLengthMultiplier:
             "?unsupported-operand"
         }
     }

@@ -62,7 +62,7 @@ enum AdvSIMDThreeDifferentDecode {
 
         var reads = simdfpInsertingVector(Rn, into: .empty)
         reads = simdfpInsertingVector(Rm, into: reads)
-        if SIMDFPSemanticAttributes.destinationReadsItself(for: m) {
+        if simdFPDestinationReadsItself(m) {
             reads = simdfpInsertingVector(Rd, into: reads)
         }
 

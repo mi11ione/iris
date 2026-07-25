@@ -52,4 +52,11 @@ public enum Category: UInt8, Sendable, Hashable {
 
     /// Memory Tagging Extension (MTE).
     case memoryTagging = 11
+
+    /// Scalable Vector Extension (SVE / SVE2) — the `op0=0b0010` tier.
+    case sve = 12
+
+    /// Scalable Matrix Extension (SME / SME2) — the `op0=0b0000`, bit31=1
+    /// region.
+    case sme = 13
 }

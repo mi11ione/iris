@@ -2,14 +2,23 @@
 # Copyright (c) 2026 Roman Zhuzhgov
 # Licensed under the Apache License, Version 2.0
 #
-# Coverage gate: 100% unit-test coverage on the Iris library target,
-# per file, across ALL reported columns (region, function, line — the
-# branch column carries no Swift instrumentation and reports `-`).
+# Coverage gate: 100% unit-test coverage on the library targets (Iris,
+# IrisValidation, IrisCLICore), per file, across ALL reported columns
+# (region, function, line — the branch column carries no Swift
+# instrumentation and reports `-`).
 # Coverage prevents crashes and dead code; correctness is owned by the
 # external oracles (`iris-parity`). The gate fails listing every file
 # and column below 100%, and cross-checks that every library source
 # file appears in the report so an uninstrumented file cannot slip
 # through as silently green.
+#
+# The test suites cover themselves 100% too, but only with the env-gated
+# system-binary smoke suite enabled (IRIS_CLI_SYSTEM_SMOKE=1), which needs
+# host binaries CI cannot rely on — so Tests/ is not gated here.
+#
+# Coverage is measured on the `native` build system: the Swift Build engine
+# inlines through `@_optimize(speed)` decoders hard enough to drop region
+# counters for arms that provably execute, which reads as a phantom gap.
 #
 # Usage: Scripts/coverage-gate.sh [--skip-tests]
 #   --skip-tests  reuse existing .build coverage data (CI runs tests
@@ -23,18 +32,34 @@ cd "$root" || exit 2
 skip_tests=0
 [ "${1:-}" = "--skip-tests" ] && skip_tests=1
 
+# Toolchains where Swift Build is the default still accept `--build-system
+# native`; ones that predate the flag reject it, so probe once and reuse.
+build_system=""
+if swift build --build-system native --show-bin-path > /dev/null 2>&1; then
+    build_system="--build-system native"
+fi
+
 if [ "$skip_tests" -eq 0 ]; then
-    echo "coverage-gate: running swift test --enable-code-coverage"
-    swift test --enable-code-coverage || {
+    echo "coverage-gate: running swift test $build_system --no-parallel --enable-code-coverage"
+    # Both flags are load-bearing for a reproducible report, not speed choices.
+    # Counter updates are non-atomic by default, so a region executed only once
+    # or twice can lose its increment and read back as an uncovered phantom;
+    # `-instrprof-atomic-counter-update-all` removes that race. `--no-parallel`
+    # keeps the run in one process — parallel workers write the same profraw
+    # path and clobber each other's counters, which no atomicity can fix.
+    # shellcheck disable=SC2086
+    swift test $build_system --no-parallel --enable-code-coverage \
+        -Xswiftc -Xllvm -Xswiftc -instrprof-atomic-counter-update-all || {
         echo "coverage-gate: FAIL — test run failed" >&2
         exit 1
     }
 fi
 
-bin_path="$(swift build --show-bin-path)" || exit 2
+# shellcheck disable=SC2086
+bin_path="$(swift build $build_system --show-bin-path 2> /dev/null)" || exit 2
 profdata="$bin_path/codecov/default.profdata"
 if [ ! -f "$profdata" ]; then
-    echo "coverage-gate: FAIL — no coverage data at $profdata (run swift test --enable-code-coverage)" >&2
+    echo "coverage-gate: FAIL — no coverage data at $profdata (run swift test $build_system --enable-code-coverage)" >&2
     exit 1
 fi
 
@@ -73,16 +98,18 @@ if [ -z "$report" ]; then
     exit 1
 fi
 
-# Rows are emitted with paths relative to the working directory (the
-# package root after the cd above), so library rows match Sources/Iris/.
-failures="$(printf '%s\n' "$report" | awk '
-    $1 ~ /^Sources\/Iris\/.*\.swift$/ {
+# Rows are emitted with paths relative to the working directory (the package
+# root after the cd above), so library rows match the target directories.
+# `Sources/Iris/` needs the trailing slash to not also swallow the siblings.
+lib_row='^Sources/(Iris|IrisValidation|IrisCLICore)/.*\.swift$'
+failures="$(printf '%s\n' "$report" | awk -v row="$lib_row" '
+    $1 ~ row {
         for (i = 2; i <= NF; i++) {
             if ($i ~ /%$/ && $i != "100.00%") { print $0; next }
         }
     }
 ')"
-seen_count="$(printf '%s\n' "$report" | awk '$1 ~ /^Sources\/Iris\/.*\.swift$/ { n++ } END { print n + 0 }')"
+seen_count="$(printf '%s\n' "$report" | awk -v row="$lib_row" '$1 ~ row { n++ } END { print n + 0 }')"
 
 status=0
 if [ -n "$failures" ]; then
@@ -105,8 +132,8 @@ missing_with_code=""
 files_list="/tmp/coverage-gate-files.$$"
 seen_list="/tmp/coverage-gate-seen.$$"
 missing_list="/tmp/coverage-gate-missing.$$"
-find Sources/Iris -name '*.swift' | sort > "$files_list"
-printf '%s\n' "$report" | awk '$1 ~ /^Sources\/Iris\/.*\.swift$/ { print $1 }' | sort > "$seen_list"
+find Sources/Iris Sources/IrisValidation Sources/IrisCLICore -name '*.swift' | sort > "$files_list"
+printf '%s\n' "$report" | awk -v row="$lib_row" '$1 ~ row { print $1 }' | sort > "$seen_list"
 # Line-wise read (not an unquoted $(comm ...) expansion) so a path
 # containing whitespace cannot word-split; the file redirect keeps the
 # loop in this shell so its variable updates survive (POSIX sh pipes
@@ -128,6 +155,6 @@ if [ -n "$missing_with_code" ]; then
 fi
 
 if [ "$status" -eq 0 ]; then
-    echo "coverage-gate: PASS — all $seen_count instrumented Sources/Iris files at 100% across all columns ($declaration_only declaration-only files verified free of executable declarations)"
+    echo "coverage-gate: PASS — all $seen_count instrumented library files at 100% across all columns ($declaration_only declaration-only files verified free of executable declarations)"
 fi
 exit "$status"

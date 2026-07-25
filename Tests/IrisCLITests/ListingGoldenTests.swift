@@ -101,9 +101,12 @@ struct ListingGoldenTests {
         // this fixture fits the fixed column, so they all start at
         // 9-digit address + ":" + space + 8-digit word + 2 spaces (21)
         // plus the 44-column body field.
-        let columns = Set(annotated.compactMap { line -> Int? in
-            guard let range = line.range(of: "; ", options: .backwards) else { return nil }
-            return line.distance(from: line.startIndex, to: range.lowerBound)
+        // (The filter above already pinned "; " into every line, so the range
+        // is read through `map` rather than a guard that cannot fail here.)
+        let columns = Set(annotated.compactMap { line in
+            line.range(of: "; ", options: .backwards).map {
+                line.distance(from: line.startIndex, to: $0.lowerBound)
+            }
         })
         #expect(columns == [21 + 44])
     }

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 import Testing
 
 /// Validates the SPI predicates and bit utilities that gate the

@@ -310,7 +310,7 @@ public struct ListingRenderer: Sendable {
         return span.map { kindName($0.kind) }
     }
 
-    /// Fixed vocabulary for ``DataInCodeSpan/Kind`` in annotations.
+    /// Fixed vocabulary for `DataInCodeSpan/Kind` in annotations.
     public func kindName(_ kind: DataInCodeSpan.Kind) -> String {
         switch kind {
         case .data: "data"

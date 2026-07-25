@@ -56,7 +56,7 @@ enum AdvSIMDThreeSameFP16Decode {
         let arrangement: VectorArrangement = Q == 1 ? .h8 : .h4
         var reads = simdfpInsertingVector(Rn, into: .empty)
         reads = simdfpInsertingVector(Rm, into: reads)
-        if SIMDFPSemanticAttributes.destinationReadsItself(for: m) {
+        if simdFPDestinationReadsItself(m) {
             reads = simdfpInsertingVector(Rd, into: reads)
         }
         return DecodedDraft(

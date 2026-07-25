@@ -95,4 +95,40 @@ public enum Operand: Sendable, Hashable {
     /// ``Instruction/pcRelativeTarget``, which performs the page math.
     /// Int64 width covers ADRP's ±4 GB byte range.
     case pageLabel(byteOffset: Int64)
+
+    /// SVE scalable-vector register — `Zn` / `Zn.<T>` / `Zn.<T>[i]`.
+    case scalableVector(ScalableVectorRef)
+
+    /// SVE/SME predicate — `Pn` / `Pn.<T>` / `Pn/z` / `Pn/m`, or the
+    /// predicate-as-counter `PNn`.
+    case scalablePredicate(ScalablePredicateRef)
+
+    /// Multi-vector register group — `{ Zn.<T>, ... }` (consecutive/strided).
+    case scalableVectorGroup(ScalableVectorGroup)
+
+    /// Predicate register group — `{ Pn.<T>, Pm.<T> }`.
+    case predicateGroup(firstIndex: UInt8, count: UInt8, element: ScalarSize)
+
+    /// SME `ZA` tile — `za` (whole array, `element == nil`) or `zaN.<T>`.
+    case zaTile(index: UInt8, element: ScalarSize?)
+
+    /// SME `ZA` tile-slice — `zaN{h|v}.<T>[Wv, #imm]`.
+    case zaTileSlice(ZATileSliceOperand)
+
+    /// SME2 `ZA`-array vector — `za.<T>[Wv, #imm{:hi}{, vgx2|vgx4}]`.
+    case zaArrayVector(ZAArrayVectorOperand)
+
+    /// SME2 lookup-table register `ZT0`, with an optional index.
+    case zt0(elementIndex: UInt8?)
+
+    /// SVE memory addressing — contiguous or gather/scatter.
+    case scalableMemory(ScalableMemoryOperand)
+
+    /// SVE predicate-count pattern — `all` / `pow2` / `vlN` / `mulN`.
+    case svePredicatePattern(SVEPredicatePattern)
+
+    /// SME2 vector-length multiplier — the trailing `vlx2` / `vlx4` on
+    /// predicate-as-counter `WHILE` and `CNTP`. The payload is the
+    /// multiplier value (2 or 4).
+    case vectorLengthMultiplier(UInt8)
 }

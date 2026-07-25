@@ -13,23 +13,18 @@ import Testing
 /// per-family sweeps (op0 ∈ 4…15) structurally could not cover.
 @Suite struct UDFDecodeTests {
     @Test func everyImm16DecodesToUDF() {
-        var firstDivergence: UInt32?
-        for imm in UInt32(0) ... 0xFFFF {
+        let divergences = (UInt32(0) ... 0xFFFF).filter { imm in
             let draft = decode(imm, at: 0)
-            let ok = draft.mnemonic == .udf
+            return !(draft.mnemonic == .udf
                 && draft.category == .branchesExceptionSystem
                 && draft.branchClass == .exception
                 && Array(draft.operands) == [.unsignedImmediate(value: UInt64(imm), width: 16)]
                 && draft.semanticReads == .empty
                 && draft.semanticWrites == .empty
-                && draft.encoding == imm
-            if !ok {
-                firstDivergence = imm
-                break
-            }
+                && draft.encoding == imm)
         }
-        #expect(firstDivergence == nil,
-                "UDF decode diverged at imm=\(firstDivergence.map(String.init) ?? "none")")
+        #expect(divergences.isEmpty,
+                "UDF decode diverged at imm=\(divergences.first.map(String.init) ?? "none")")
     }
 
     @Test func boundaryImmediates() {

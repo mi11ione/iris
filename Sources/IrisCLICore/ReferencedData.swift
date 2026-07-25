@@ -138,7 +138,7 @@ public struct ReferencedDataResolver: Sendable {
     /// `preceding`.
     ///
     /// A single ADR / literal-load / literal-PRFM already carries its full
-    /// target in ``Instruction/pcRelativeTarget``, so it returns that. An
+    /// target in `Instruction/pcRelativeTarget`, so it returns that. An
     /// `adrp` alone forms only a page base, so it is NOT resolved on its
     /// own (its low bits are completed by the next instruction). When
     /// `instruction` completes a preceding `adrp` into the same register

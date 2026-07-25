@@ -67,7 +67,7 @@ values on ``InstructionStream/diagnostics``, never silent and never fatal.
 
 ## The three access tiers
 
-The stream stores records in a flat 40-byte-per-instruction array with one
+The stream stores records in a flat 57-byte-per-instruction array with one
 shared operand buffer. That layout is the performance architecture, and all
 three access tiers are public API.
 

@@ -87,7 +87,7 @@ enum AdvSIMDThreeSameDecode {
         if !arrangementValidForIntOpcode(U: U, opcode: opcode, arrangement: arrangement) {
             return .undefined(at: address, encoding: encoding)
         }
-        let destReadsItself = SIMDFPSemanticAttributes.destinationReadsItself(for: m)
+        let destReadsItself = simdFPDestinationReadsItself(m)
         return makeThreeOperandRecord(
             address: address, encoding: encoding,
             mnemonic: m, Rd: Rd, Rn: Rn, Rm: Rm,
@@ -249,7 +249,7 @@ enum AdvSIMDThreeSameDecode {
         case (1, 0b11111, 1): m = .fscale
         default: return .undefined(at: address, encoding: encoding)
         }
-        let destReadsItself = SIMDFPSemanticAttributes.destinationReadsItself(for: m)
+        let destReadsItself = simdFPDestinationReadsItself(m)
         return makeThreeOperandRecord(
             address: address, encoding: encoding,
             mnemonic: m, Rd: Rd, Rn: Rn, Rm: Rm,

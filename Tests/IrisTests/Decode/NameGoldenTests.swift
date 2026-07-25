@@ -36,7 +36,7 @@ struct MnemonicNameGoldenTests {
     @Test func unallocatedRawValuesFallBackTotally() {
         #expect(Mnemonic(rawValue: 200).name == "?200") //     sentinel range, unallocated
         #expect(Mnemonic(rawValue: 999).name == "?999") //     DPI range, unallocated
-        #expect(Mnemonic(rawValue: 16500).name == "?16500") // future-extensions range
+        #expect(Mnemonic(rawValue: 50000).name == "?50000") // future-extensions range
         #expect(Mnemonic(rawValue: 65535).name == "?65535") // reserved sentinel
     }
 

@@ -19,7 +19,8 @@
 // caveat and still gate — silence is never assumed in Iris's favor.
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 
 struct TSVRowRecord: Sendable {
     let encoding: UInt32

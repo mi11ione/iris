@@ -24,9 +24,17 @@ var amxMagicValue: UInt32 {
 
 /// True iff the 32-bit encoding matches the AMX magic mask.
 @inlinable
-@_spi(Validation)
 public func isAMXEncoding(_ encoding: UInt32) -> Bool {
     (encoding & amxMagicMask) == amxMagicValue
+}
+
+/// True iff the encoding is in the SME region of `op0=0b0000` — `op0=0`
+/// with bit31=1. The architectural SME tier shares `op0=0` with Apple AMX
+/// (recognised by ``isAMXEncoding(_:)``, a disjoint magic-mask match) and
+/// UDF (`bits[31:16]==0`, handled before family dispatch).
+@inlinable
+public func isSMEEncoding(_ encoding: UInt32) -> Bool {
+    (encoding & 0x9E00_0000) == 0x8000_0000
 }
 
 /// True iff the encoding is a crypto / PAC / MTE / AMX row owned by the
@@ -36,7 +44,6 @@ public func isAMXEncoding(_ encoding: UInt32) -> Bool {
 /// Lets corpus tooling gate which words flow into the
 /// crypto/PAC/MTE/AMX corpus for oracle disassembly.
 @inlinable
-@_spi(Validation)
 public func isCryptoPACMTEEncoding(_ encoding: UInt32) -> Bool {
     isCryptoEncoding(encoding)
         || isPACStandaloneEncoding(encoding)
@@ -52,21 +59,18 @@ public func isCryptoPACMTEEncoding(_ encoding: UInt32) -> Bool {
 /// would over-include AdvSIMD vector instructions that share those
 /// prefixes and produce false-positive harvest rows.
 @inlinable
-@_spi(Validation)
 public func isCryptoEncoding(_ encoding: UInt32) -> Bool {
     isAESRow(encoding) || isSHA1OrSHA256Row(encoding) || isSHA3SHA512SMRow(encoding)
 }
 
 /// AES row prefix: bits[31:16] = 0x4E28 fixed, bits[11:10] = 10 fixed.
 @inlinable
-@_spi(Validation)
 public func isAESRow(_ encoding: UInt32) -> Bool {
     (encoding & 0xFFFF_0C00) == 0x4E28_0800
 }
 
 /// SHA-1 / SHA-256 row prefixes — 3-register or 2-register form.
 @inlinable
-@_spi(Validation)
 public func isSHA1OrSHA256Row(_ encoding: UInt32) -> Bool {
     // 3-register: bits[31:21] = `0101 1110 000`, bit 15 = 0,
     // bits[11:10] = 00.
@@ -83,7 +87,6 @@ public func isSHA1OrSHA256Row(_ encoding: UInt32) -> Bool {
 /// reserved across all crypto rows (rejected here, decoded as
 /// UNDEFINED downstream).
 @inlinable
-@_spi(Validation)
 public func isSHA3SHA512SMRow(_ encoding: UInt32) -> Bool {
     let topByte = (encoding >> 24) & 0xFF
     if topByte != 0xCE { return false }
@@ -100,7 +103,6 @@ public func isSHA3SHA512SMRow(_ encoding: UInt32) -> Bool {
 /// Row prefix: bits[31:21] = `1101 1010 110`, bits[20:16] = `00001`,
 /// S = 0 (bit 29 = 0), opc6 ∈ {0b000000…0b010001}.
 @inlinable
-@_spi(Validation)
 public func isPACOneSourceEncoding(_ encoding: UInt32) -> Bool {
     // bits[31:21] = 1101_1010_110 = 0xDAC top-shifted; this 11-bit
     // prefix already pins bit 29 (S) to 0, so no separate S check is
@@ -115,7 +117,6 @@ public func isPACOneSourceEncoding(_ encoding: UInt32) -> Bool {
 
 /// True iff the encoding is PACGA (DPR 2-source row).
 @inlinable
-@_spi(Validation)
 public func isPACGAEncoding(_ encoding: UInt32) -> Bool {
     // sf=1, S=0, prefix bits[31:21] = `1001 1010 110`,
     // opc6 (bits[15:10]) = `001100`.
@@ -125,7 +126,6 @@ public func isPACGAEncoding(_ encoding: UInt32) -> Bool {
 
 /// True iff the encoding is a PAC standalone (1-source or PACGA).
 @inlinable
-@_spi(Validation)
 public func isPACStandaloneEncoding(_ encoding: UInt32) -> Bool {
     isPACOneSourceEncoding(encoding) || isPACGAEncoding(encoding)
 }
@@ -137,9 +137,8 @@ public func isPACStandaloneEncoding(_ encoding: UInt32) -> Bool {
 /// Row prefix: bit[31] = 1 (sf), bit[29] = 0, bits[28:23] = `100011`,
 /// bits[22] = 0; ADDG: bit[30] = 0; SUBG: bit[30] = 1.
 @inlinable
-@_spi(Validation)
 public func isMTEAddSubGEncoding(_ encoding: UInt32) -> Bool {
-    (encoding & 0x9F80_0000) == 0x9180_0000
+    (encoding & 0x9FC0_0000) == 0x9180_0000
 }
 
 /// True iff the encoding is one of IRG / GMI / SUBP / SUBPS in the DPR
@@ -149,7 +148,6 @@ public func isMTEAddSubGEncoding(_ encoding: UInt32) -> Bool {
 /// opc6 (bits[15:10]) ∈ {`000000`, `000100`, `000101`}; bit 29 = S
 /// (0 for IRG/GMI/SUBP; 1 for SUBPS).
 @inlinable
-@_spi(Validation)
 public func isMTEDataProcessingRegisterEncoding(_ encoding: UInt32) -> Bool {
     // Match bit[31]=1, bit[30]=0, bits[28:21]=11010110.
     let topMask: UInt32 = 0xDFE0_0000
@@ -166,7 +164,6 @@ public func isMTEDataProcessingRegisterEncoding(_ encoding: UInt32) -> Bool {
 /// prefix check only — the decoder arbitrates the exact (opc1, op2)
 /// values when it claims or rejects the word.
 @inlinable
-@_spi(Validation)
 public func isMTELoadStoreEncoding(_ encoding: UInt32) -> Bool {
     let topByte = (encoding >> 24) & 0xFF
     if topByte != 0xD9 { return false }
@@ -175,7 +172,6 @@ public func isMTELoadStoreEncoding(_ encoding: UInt32) -> Bool {
 
 /// True iff the encoding is any MTE op (DPI, DPR, or L/S).
 @inlinable
-@_spi(Validation)
 public func isMTEEncoding(_ encoding: UInt32) -> Bool {
     isMTEAddSubGEncoding(encoding)
         || isMTEDataProcessingRegisterEncoding(encoding)

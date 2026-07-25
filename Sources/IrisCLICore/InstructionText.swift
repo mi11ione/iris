@@ -40,7 +40,7 @@ public enum InstructionText {
     /// label rewritten to its absolute target (`bl #0x40` at 0x1000 →
     /// `bl 0x1040`). Direct-branch encodings place the label last, so
     /// the rewrite replaces the text's final `#`-token; instructions
-    /// without a resolved ``Instruction/branchTarget`` pass through
+    /// without a resolved `Instruction/branchTarget` pass through
     /// unchanged.
     public static func absoluteBranchText(_ instruction: Instruction) -> String {
         guard let target = instruction.branchTarget else { return instruction.text }

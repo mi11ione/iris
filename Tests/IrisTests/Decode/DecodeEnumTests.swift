@@ -149,13 +149,13 @@ struct CategoryTests {
     }
 
     @Test func rawValueRoundTrip() {
-        for raw: UInt8 in 0 ... 11 {
+        for raw: UInt8 in 0 ... 13 {
             #expect(Iris.Category(rawValue: raw)?.rawValue == raw)
         }
     }
 
     @Test func outOfRangeRawValueReturnsNil() {
-        #expect(Iris.Category(rawValue: 12) == nil)
+        #expect(Iris.Category(rawValue: 14) == nil)
     }
 }
 

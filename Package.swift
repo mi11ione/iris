@@ -23,6 +23,14 @@ let package = Package(
                 .swiftLanguageMode(.v6),
             ],
         ),
+        // The validation oracle
+        .target(
+            name: "IrisValidation",
+            dependencies: ["Iris"],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ],
+        ),
         // CLI logic lives in a non-product library target so it is unit-testable;
         // the Mach-O walker inside it is deliberately NOT public API.
         .target(
@@ -43,14 +51,14 @@ let package = Package(
         // Not a published product.
         .executableTarget(
             name: "iris-parity",
-            dependencies: ["Iris"],
+            dependencies: ["Iris", "IrisValidation"],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ],
         ),
         .testTarget(
             name: "IrisTests",
-            dependencies: ["Iris"],
+            dependencies: ["Iris", "IrisValidation"],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ],

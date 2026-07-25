@@ -11,7 +11,7 @@ import Iris
 ///
 ///     reads=x0,x1 writes=x2 flags=r:c,w:nzcv mem=load order=acquire branch=call
 ///
-/// Vocabulary: register names are ``RegisterRef/name`` at architectural
+/// Vocabulary: register names are `RegisterRef/name` at architectural
 /// width; flags letters are `n`/`z`/`c`/`v` with `r:`/`w:` halves;
 /// `mem` is one of `load`, `store`, `atomic`, `exclusive-load`,
 /// `exclusive-store`, `prefetch`; `order` is `acquire`, `release`, or

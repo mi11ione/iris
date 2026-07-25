@@ -114,6 +114,18 @@ func archUnavailableOutcome(_ outcome: WalkOutcome) -> (requested: ArchSelection
     return (requested, available)
 }
 
+/// The outcome's discriminator name. One naming table shared by every suite
+/// that reports on an outcome kind, so each arm is exercised by whichever suite
+/// actually produces that outcome.
+func verdictName(_ outcome: WalkOutcome) -> String {
+    switch outcome {
+    case .binary: "binary"
+    case .unreadable: "unreadable"
+    case .notMachO: "notMachO"
+    case .archUnavailable: "archUnavailable"
+    }
+}
+
 /// The walked binary of a fixture, or `nil` for any failure outcome.
 func walkedBinary(_ path: String, arch: ArchSelection? = nil) -> WalkedBinary? {
     binaryOutcome(MachOWalker.walk(path: path, arch: arch))

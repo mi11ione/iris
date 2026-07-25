@@ -139,7 +139,21 @@ struct InstructionSentinelProductionTests {
 /// hash equal — including across differently-laid-out streams.
 @Suite("Instruction / semantic equality and hashing")
 struct InstructionEqualityTests {
-    @Test func equalInstructionsFromDifferentStreamsCompareEqual() {
+    /// Operand lists of equal length are compared element-wise, so a difference
+    /// in content is reported and not masked by the count check passing.
+    @Test func operandListsOfEqualLengthAreComparedElementWise() {
+        func add(_ immediate: UInt64) -> Instruction {
+            Instruction(
+                mnemonic: .add, category: .dataProcessingImmediate,
+                operands: [.register(.x(0)), .unsignedImmediate(value: immediate, width: 12)],
+            )
+        }
+        #expect(add(1).operands == add(1).operands)
+        #expect(add(1).operands != add(2).operands)
+        #expect(add(1) != add(2))
+    }
+
+    @Test func equalInstructionsFromDifferentStreamsCompareEqual() throws {
         // The same ADD word sits at different operand-buffer offsets in
         // the two streams (stream B has a NOP-free prefix instruction
         // with operands), so the records' operandStart differ while the
@@ -148,10 +162,8 @@ struct InstructionEqualityTests {
         let prefix: [UInt8] = [0x41, 0x08, 0x00, 0xB1] //    adds x1, x2, #2
         let a = InstructionStream(bytes: wordBytes, at: 0x1000)
         let b = InstructionStream(bytes: prefix + wordBytes, at: 0xFFC)
-        let lhs = a.instruction(at: 0x1000)?.record
-        let rhs = b.instruction(at: 0x1000)?.record
-        #expect(lhs != nil && rhs != nil)
-        guard let lhs, let rhs else { return }
+        let lhs = try #require(a.instruction(at: 0x1000)?.record)
+        let rhs = try #require(b.instruction(at: 0x1000)?.record)
         #expect(lhs.operandStart != rhs.operandStart)
         let lhsInstruction = Instruction(
             address: lhs.address, encoding: lhs.encoding, mnemonic: lhs.mnemonic,

@@ -11,7 +11,8 @@
 // classified against KNOWN-DEVIATIONS.md; unclassified rows gate.
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 
 func runLiveCommand(_ args: [String]) -> Int32 {
     var familyName: String?

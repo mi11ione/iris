@@ -11,7 +11,8 @@
 // fade into the background.
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 
 /// Which parity instrument an entry classifies for: text-parity
 /// divergences (`tsv`/`live`) or semantic-checker issues (`semantic`).

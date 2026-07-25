@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 //
-// Instruction. The ergonomic per-instruction value: a copied 40-byte
+// Instruction. The ergonomic per-instruction value: a copied 57-byte
 // record plus a zero-based operand view over the stream's side buffer.
 // Forming one from a stream is a register-sized copy plus one retain ,
 // zero heap allocation; standalone values (tier-0 decode, synthetic
@@ -17,7 +17,7 @@
 /// by the stream's address lookups, or standalone by the tier-0
 /// ``decode(_:at:features:)`` function and the materializing initializer.
 ///
-/// Forming an `Instruction` from a stream copies the 40-byte record and
+/// Forming an `Instruction` from a stream copies the 57-byte record and
 /// wraps the stream's operand buffer in a view, one retain, zero heap
 /// allocation. Only ``text`` (returns a `String`) and the materializing
 /// initializer (owns a fresh operand array) allocate.
@@ -73,6 +73,9 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
         flagEffect: FlagEffect = .none,
         category: Category,
         operands: [Operand] = [],
+        scalableReads: ScalableRegisterSet = .empty,
+        scalableWrites: ScalableRegisterSet = .empty,
+        scalableEffect: ScalableEffect = .none,
     ) {
         record = InstructionRecord(
             address: address,
@@ -87,6 +90,9 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
             flagEffect: flagEffect,
             category: category,
             operandCount: UInt8(truncatingIfNeeded: operands.count),
+            scalableReads: scalableReads,
+            scalableWrites: scalableWrites,
+            scalableEffect: scalableEffect,
         )
         // Explicit truncated-tail branch: tail records carry no operands
         // (their operandCount is the residual byte count), so the view
@@ -125,6 +131,18 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
         record.semanticWrites
     }
 
+    /// Scalable (SVE/SME) state semantically read — predicates, FFR, ZT0,
+    /// `ZA`. Empty on every base-ISA instruction.
+    @inlinable public var scalableReads: ScalableRegisterSet {
+        record.scalableReads
+    }
+
+    /// Scalable (SVE/SME) state semantically written. Empty on every
+    /// base-ISA instruction.
+    @inlinable public var scalableWrites: ScalableRegisterSet {
+        record.scalableWrites
+    }
+
     /// Control-flow classification.
     @inlinable public var branchClass: BranchClass {
         record.branchClass
@@ -143,6 +161,13 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
     /// PSTATE.NZCV write effect.
     @inlinable public var flagEffect: FlagEffect {
         record.flagEffect
+    }
+
+    /// Per-instruction scalable/streaming effect flags (partial-write,
+    /// streaming-mode relationship, fault behavior). `.none` on every
+    /// base-ISA instruction.
+    @inlinable public var scalableEffect: ScalableEffect {
+        record.scalableEffect
     }
 
     /// Encoding-family attribution / provenance witness.
@@ -176,10 +201,13 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
             && lhs.record.mnemonic == rhs.record.mnemonic
             && lhs.record.semanticReads == rhs.record.semanticReads
             && lhs.record.semanticWrites == rhs.record.semanticWrites
+            && lhs.record.scalableReads == rhs.record.scalableReads
+            && lhs.record.scalableWrites == rhs.record.scalableWrites
             && lhs.record.branchClass == rhs.record.branchClass
             && lhs.record.memoryAccess == rhs.record.memoryAccess
             && lhs.record.memoryOrdering == rhs.record.memoryOrdering
             && lhs.record.flagEffect == rhs.record.flagEffect
+            && lhs.record.scalableEffect == rhs.record.scalableEffect
             && lhs.record.category == rhs.record.category
             && lhs.record.tailByteCount == rhs.record.tailByteCount
             && lhs.operands == rhs.operands
@@ -191,10 +219,13 @@ public struct Instruction: Sendable, Hashable, CustomStringConvertible {
         hasher.combine(record.mnemonic)
         hasher.combine(record.semanticReads)
         hasher.combine(record.semanticWrites)
+        hasher.combine(record.scalableReads)
+        hasher.combine(record.scalableWrites)
         hasher.combine(record.branchClass)
         hasher.combine(record.memoryAccess)
         hasher.combine(record.memoryOrdering)
         hasher.combine(record.flagEffect)
+        hasher.combine(record.scalableEffect)
         hasher.combine(record.category)
         hasher.combine(record.tailByteCount)
         operands.hash(into: &hasher)

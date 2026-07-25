@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 import Testing
 
 /// Validates shared SIMD/FP helpers exposed by SIMDFPCommon.swift —
@@ -219,6 +220,12 @@ struct VFPExpandImmTests {
         let word = 0x1E20_1000 | (ftype << 22) | (imm8 << 13)
         guard case let .floatImmediate(bits, _) = decode(word).operands.last else { return nil }
         return bits
+    }
+
+    /// `ftype=0b10` is UNALLOCATED for FMOV-immediate, so the word decodes to a
+    /// hole with no operands at all — there is no expansion to read back.
+    @Test func unallocatedFtypeHasNoImmediateOperand() {
+        #expect(expandedBits(imm8: 0x70, ftype: 0b10) == nil)
     }
 
     @Test func singlePrecisionOnePointZero() {

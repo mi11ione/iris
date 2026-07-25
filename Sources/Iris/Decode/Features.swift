@@ -35,7 +35,22 @@ public struct Features: OptionSet, Sendable, Hashable {
     /// BRAA/RETAA) decode regardless of this flag.
     public static let pointerAuthentication = Features(rawValue: 1 << 0)
 
+    /// Scalable Vector Extension (SVE / SVE2 and the SVE2.1+ tiers). Gates
+    /// the `op0=0b0010` scalable-vector encoding tier; absent, those words
+    /// decode as honest UNDEFINED.
+    public static let sve = Features(rawValue: 1 << 1)
+
+    /// Scalable Matrix Extension (SME / SME2). Gates the `op0=0b0000`
+    /// bit31=1 streaming/`ZA` region; absent, those words decode as honest
+    /// UNDEFINED. SME implies its shared SVE streaming state, so enabling
+    /// ``sme`` also enables ``sve``-tier decoding through ``scalable``.
+    public static let sme = Features(rawValue: 1 << 2)
+
     /// Target-flavor preset: everything an arm64e slice implies.
     /// Today identical to ``pointerAuthentication``.
     public static let arm64e: Features = .pointerAuthentication
+
+    /// Preset enabling both scalable tiers (SVE and SME). The spelling a
+    /// caller uses to decode the full scalable surface.
+    public static let scalable: Features = [.sve, .sme]
 }

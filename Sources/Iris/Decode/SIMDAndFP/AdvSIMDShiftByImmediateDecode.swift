@@ -98,7 +98,7 @@ enum AdvSIMDShiftByImmediateDecode {
         // (SSHR/SSRA/etc.) don't have *2 variants — only shape-changing
         // ones do.
         let mnemonic = q1SuffixedMnemonic(resolved.mnemonic, Q: Q)
-        let destReadsItself = SIMDFPSemanticAttributes.destinationReadsItself(for: mnemonic)
+        let destReadsItself = simdFPDestinationReadsItself(mnemonic)
         var reads = simdfpInsertingVector(Rn, into: .empty)
         if destReadsItself {
             reads = simdfpInsertingVector(Rd, into: reads)

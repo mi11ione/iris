@@ -46,5 +46,8 @@ public func decode(
         flagEffect: draft.flagEffect,
         category: draft.category,
         operands: draft.operands,
+        scalableReads: draft.scalableReads,
+        scalableWrites: draft.scalableWrites,
+        scalableEffect: draft.scalableEffect,
     )
 }

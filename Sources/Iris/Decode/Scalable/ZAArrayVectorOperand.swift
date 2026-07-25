@@ -1,0 +1,63 @@
+// Copyright (c) 2026 Roman Zhuzhgov
+// Licensed under the Apache License, Version 2.0
+//
+// ZA-array vector operand (SME2) — za.T[Wv, #imm{:hi}{, vgx2|vgx4}].
+// The tile-agnostic view of ZA as an array of SVL-bit vectors; the
+// vector-select register Wv is a GPR read (W8-W11). Because the row index is
+// dynamic (Wv) and tile-agnostic, the touched ZA storage is the whole array.
+
+/// An SME2 `ZA`-array vector operand — `za.<T>[Wv, #imm]`, optionally a range
+/// `#lo:hi` and/or a vector-group qualifier `vgx2`/`vgx4`.
+///
+/// Carried by ``Operand/zaArrayVector(_:)``. ``selectRegister`` (`Wv`) is a
+/// GPR read; ``zaMask`` is ``ZATileMask/whole`` (tile-agnostic dynamic
+/// access touches the whole array).
+@frozen
+public struct ZAArrayVectorOperand: Sendable, Hashable {
+    /// Element size of the array vectors; `nil` for the size-less whole-array
+    /// view `za[Wv, #imm]` that `LDR`/`STR ZA` spill and fill
+    /// — mirroring ``Operand/zaTile(index:element:)`` where `element == nil`
+    /// is the suffix-less whole `za`. SME2 supplies the sized
+    /// `za.<T>[Wv, #imm]` forms.
+    public let element: ScalarSize?
+    /// Vector-select GPR `Wv` — a semantic read.
+    public let selectRegister: RegisterRef
+    /// Row offset immediate.
+    public let offset: UInt8
+    /// High end of a range (`#lo:hi`); `nil` for a single vector.
+    public let offsetHigh: UInt8?
+    /// Vector-group multiplier.
+    public let group: VectorGroup
+
+    @inlinable
+    @inline(__always)
+    public init(
+        element: ScalarSize? = nil,
+        selectRegister: RegisterRef,
+        offset: UInt8,
+        offsetHigh: UInt8? = nil,
+        group: VectorGroup = .none,
+    ) {
+        self.element = element
+        self.selectRegister = selectRegister
+        self.offset = offset
+        self.offsetHigh = offsetHigh
+        self.group = group
+    }
+
+    /// Vector-group multiplier on an SME2 multi-vector `ZA`-array access.
+    @frozen
+    public enum VectorGroup: UInt8, Sendable, Hashable {
+        case none = 0
+        case vgx2 = 1
+        case vgx4 = 2
+    }
+
+    /// The `ZA` storage this access may touch — the whole array (tile-
+    /// agnostic dynamic index).
+    @inlinable
+    @inline(__always)
+    public var zaMask: ZATileMask {
+        .whole
+    }
+}

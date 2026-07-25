@@ -92,10 +92,16 @@ extension InstructionRecord {
     }
 
     /// Backs ``Instruction/isUndefined`` and
-    /// ``BorrowedInstruction/isUndefined``, `category == .undefined`.
+    /// ``BorrowedInstruction/isUndefined``: the decoder recognised nothing,
+    /// so the mnemonic is the `.undefined` sentinel. This covers both the
+    /// base reserved tier (category `.undefined`) and an in-scope but
+    /// unallocated SVE/SME-tier hole (category `.sve`/`.sme` with mnemonic
+    /// `.undefined`). Data markers and truncated tails carry their own
+    /// sentinels, never `.undefined`, so they are excluded — matching the
+    /// prior `category == .undefined` result on every non-scalable record.
     @usableFromInline
     var projectedIsUndefined: Bool {
-        category == .undefined
+        mnemonic == .undefined
     }
 
     // Operand-dependent projections: generic over the operand sequence so

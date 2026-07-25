@@ -11,16 +11,17 @@
 // 22.1.4) — NOT the harvest-era TSV mattr, which for some corpora is
 // narrower (the real_text TSV headers record what their expected-text
 // column was captured with; `tsv --reanchor` resolves the gap live).
-// DPI deliberately stays at +v8.2a,+mte: at +v9.6a the oracle decodes
-// CSSC immediate forms (SMAX/SMIN/UMAX/UMIN #imm) in the DPI partition
-// that the family decoder intentionally does not cover, while every
-// MTE ADDG/SUBG word routed into this partition needs +mte. The
-// reserved tier excludes +sve/+sme by design: Apple Silicon implements
-// neither, and with them the oracle would decode op0 0-3 encodings the
-// library intentionally reports UNDEFINED (the documented scope wall).
+// DPI runs at the maximal mattr: the family decoder covers the CSSC
+// immediate forms (SMAX/SMIN/UMAX/UMIN #imm, via MinMaxImmDecode) and the
+// MTE ADDG/SUBG words in its op1=0b011 row, so the oracle can carry the
+// full feature set with no blind spot. The reserved tier (op0 1,3) keeps
+// +sve/+sme OFF and the library leaves those words UNDEFINED — matching
+// the oracle; op0=2 (SVE) and the op0=0 SME region are validated by the
+// dedicated `sve`/`sme` families at the maximal scalable mattr.
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 
 /// One word-generation template: `fixed` bits plus a random fill of
 /// `freeMask` bits. Tiers whose discriminant is not a pure op0 slab
@@ -62,7 +63,7 @@ struct ParityFamily: Sendable {
     /// Per-family maximal mattr strings (the oracle contract — see the
     /// header note). Named so the crypto-apple tiers can reference their
     /// HOST partition's mattr without duplication.
-    static let dpiMattr = "+v8.2a,+mte"
+    static let dpiMattr = scalableMattr
     static let besMattr = "+v9.6a,+sme,+sme2,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,"
         + "+predres,+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+sve"
     static let lsMattr = besMattr + ",+lse,+lor,+rcpc,+rcpc-immo,+rcpc3,+mops,+ls64,+lse128"
@@ -74,6 +75,22 @@ struct ParityFamily: Sendable {
         + "+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+lse,+lor,"
         + "+rcpc,+rcpc-immo,+rcpc3,+mops,+ls64,+lse128,+fullfp16,+bf16,+i8mm,"
         + "+aes,+sha2,+sha3,+sm4"
+    /// The maximal Apple-ISA decode mattr INCLUDING SVE/SME — Aperture's
+    /// single-source-of-truth oracle contract (`appleMaximalDecodeMattr`),
+    /// copied verbatim (every SVE/SME/f8 feature llvm-mc 22.1.4 accepts), so
+    /// the oracle can never scope below a decoded scalable feature.
+    static let scalableMattr = "+v9.6a,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,+specres2,"
+        + "+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+lse,+lor,+rcpc,+rcpc-immo,"
+        + "+rcpc3,+mops,+ls64,+lse128,+fullfp16,+bf16,+i8mm,+aes,+sha2,+sha3,+sm4,"
+        + "+sve,+sve2,+sme,+sme2,+sme-i16i64,+sme-f64f64,"
+        + "+faminmax,+lut,+fp8,+fp8fma,+fp8dot2,+fp8dot4,+f8f16mm,+f8f32mm,+cpa,"
+        + "+sve2p1,+sve2p2,+sve2p3,+sve-aes,+sve-aes2,+sve2-aes,+sve-bitperm,"
+        + "+sve2-bitperm,+sve-sha3,+sve2-sha3,+sve-sm4,+sve2-sm4,+sve-b16b16,"
+        + "+sve-b16mm,+sve-bfscale,+sve-f16f32mm,+sme2p1,+sme2p2,+sme2p3,"
+        + "+sme-b16b16,+sme-f16f16,+sme-f8f16,+sme-f8f32,+sme-fa64,+sme-lutv2,"
+        + "+sme-mop4,+sme-tmop,+ssve-aes,+ssve-bitperm,+ssve-fexpa,"
+        + "+ssve-fp8dot2,+ssve-fp8dot4,+ssve-fp8fma,"
+        + "+f16mm,+f32mm,+f64mm"
 
     /// All registered families, keyed by `--family` name.
     static let all: [ParityFamily] = [
@@ -126,7 +143,7 @@ struct ParityFamily: Sendable {
             mattr: cryptoAppleMattr,
             features: .arm64e,
             syntheticFixture: "synthetic-crypto-apple.tsv",
-            // Tier templates derived from the @_spi partition pre-filter
+            // Tier templates derived from the IrisValidation partition pre-filter
             // masks (CryptoAppleExtensionsCommon). Each free mask is the
             // complement of the predicate's fixed-bit mask, so the sweep
             // hits in-row valid words AND the row's reserved arms.
@@ -145,19 +162,43 @@ struct ParityFamily: Sendable {
         ),
         ParityFamily(
             name: "reserved",
-            op0Partitions: [0x0, 0x1, 0x2, 0x3],
-            // Maximal Apple ISA minus SVE/SME (unimplemented on Apple
-            // Silicon; with them the oracle decodes op0 0-3 space the
-            // library intentionally leaves UNDEFINED).
+            op0Partitions: [0x0, 0x1, 0x3],
+            // op0=0,1,3 with SVE/SME OFF: these words decode UNDEFINED on
+            // both sides (reservedMattr carries no +sve/+sme, and this family
+            // does not enable the scalable Features). op0=2 (the SVE tier) and
+            // the op0=0 bit31=1 SME region are covered by the `sve` / `sme`
+            // families below, at the maximal scalable mattr.
             mattr: reservedMattr,
             features: .arm64e,
             syntheticFixture: nil,
             // op0 slabs plus focused UDF (bits[31:16] == 0) and AMX
             // tiers — both far too sparse for uniform sampling to reach.
-            generationTiers: op0Tiers([0x0, 0x1, 0x2, 0x3]) + [
+            generationTiers: op0Tiers([0x0, 0x1, 0x3]) + [
                 GenerationTier(fixed: 0x0000_0000, freeMask: 0x0000_FFFF), // UDF
                 GenerationTier(fixed: 0x0020_1000, freeMask: 0x0000_03FF), // AMX
             ],
+        ),
+        ParityFamily(
+            name: "sve",
+            op0Partitions: [],
+            mattr: scalableMattr,
+            features: .scalable,
+            syntheticFixture: "synthetic-sve.tsv",
+            // The whole op0=0b0010 SVE / SVE2 tier (bit31=1 is the memory
+            // region). Feature-gated on .scalable so the decoder produces real
+            // records; the oracle carries the maximal scalable mattr.
+            generationTiers: op0Tiers([0x2]),
+        ),
+        ParityFamily(
+            name: "sme",
+            op0Partitions: [],
+            mattr: scalableMattr,
+            features: .scalable,
+            syntheticFixture: "synthetic-sme.tsv",
+            // SME lives at op0=0 with bit31=1 (disjoint from AMX's magic mask
+            // and UDF's bits[31:16]==0). Target it directly — an op0=0 slab
+            // sweep would spend nearly every word on holes.
+            generationTiers: [GenerationTier(fixed: 0x8000_0000, freeMask: 0x61FF_FFFF)],
         ),
     ]
 
@@ -235,7 +276,7 @@ struct ParityFamily: Sendable {
     }
 }
 
-/// Route a decoded record to its family's `@_spi(Validation)` semantic
+/// Route a decoded record to its family's `IrisValidation` semantic
 /// checker by category attribution (each record self-identifies; PAC /
 /// MTE / crypto / AMX records carry their own categories regardless of
 /// which op0 slab routed them). Returns nil for clean or undefined
@@ -254,6 +295,8 @@ func semanticIssue(for instruction: Instruction) -> (field: String, actual: Stri
         SIMDFPSemanticChecker.verify(instruction).map { ($0.field, $0.actual, $0.expected) }
     case .pointerAuthentication, .crypto, .amx, .memoryTagging:
         CryptoAppleExtensionsSemanticChecker.verify(instruction).map { ($0.field, $0.actual, $0.expected) }
+    case .sve, .sme:
+        scalableSemanticIssue(for: instruction)
     case .undefined, .dataInCodeMarker, .truncatedTail:
         nil
     }

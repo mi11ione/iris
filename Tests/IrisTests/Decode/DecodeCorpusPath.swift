@@ -15,9 +15,15 @@ import Foundation
 /// per-row parity checks against that external corpus instead of the
 /// in-repo copy. The large real-binary TSVs such a tree may also carry
 /// are not consumed by these suites.
-func decodeCorpusTSVPath(family: String) -> String {
-    if let external = ProcessInfo.processInfo.environment["IRIS_DECODE_CORPUS"] {
-        return URL(fileURLWithPath: external)
+/// `externalRoot` defaults to the environment variable, so every call site reads
+/// as a plain `decodeCorpusTSVPath(family:)`; passing it explicitly lets the
+/// external layout be exercised on a host that has no such corpus.
+func decodeCorpusTSVPath(
+    family: String,
+    externalRoot: String? = ProcessInfo.processInfo.environment["IRIS_DECODE_CORPUS"],
+) -> String {
+    if let externalRoot {
+        return URL(fileURLWithPath: externalRoot)
             .appendingPathComponent("decode-\(family)/synthetic.tsv").path
     }
     let root = URL(fileURLWithPath: #filePath)

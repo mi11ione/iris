@@ -50,7 +50,7 @@ enum AdvSIMDTwoRegMiscDecode {
         guard let (m, dstArrangement, srcArrangement) = mnemonicAndShape else {
             return .undefined(at: address, encoding: encoding)
         }
-        let destReadsItself = SIMDFPSemanticAttributes.destinationReadsItself(for: m)
+        let destReadsItself = simdFPDestinationReadsItself(m)
         var reads = simdfpInsertingVector(Rn, into: .empty)
         if destReadsItself {
             reads = simdfpInsertingVector(Rd, into: reads)

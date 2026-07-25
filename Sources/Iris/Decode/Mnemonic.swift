@@ -20,7 +20,9 @@
 //   4096  ..< 6144  — Data Processing — Register
 //   6144  ..< 12288 — SIMD & Floating-Point
 //   12288 ..< 16384 — Crypto + Apple Extensions
-//   16384 ..< 65535 — reserved for future extensions
+//   16384 ..< 28672 — SVE / SVE2 tier
+//   28672 ..< 40960 — SME / SME2 tier
+//   40960 ..< 65535 — reserved for future extensions
 //   65535            — invalid; reserved sentinel for "uninitialized"
 
 /// Closed-form identity for an ARM64 instruction mnemonic.
@@ -83,6 +85,8 @@ public extension Mnemonic {
         ("Data Processing — Register", 4096 ... 6143),
         ("SIMD & Floating-Point", 6144 ... 12287),
         ("Crypto + Apple Extensions", 12288 ... 16383),
+        ("SVE / SVE2 tier", 16384 ... 28671),
+        ("SME / SME2 tier", 28672 ... 40959),
     ]
 }
 
@@ -110,6 +114,16 @@ extension Mnemonic: CustomStringConvertible {
         case 4096 ... 6143: Mnemonic.dataProcessingRegisterName(self)
         case 6144 ... 12287: Mnemonic.simdAndFPName(self)
         case 12288 ... 16383: Mnemonic.cryptoAppleExtensionsName(self)
+        // The SVE/SME tiers subdivide their slabs into the per-region
+        // canonicalizers that own the token text (contiguous, non-overlapping
+        // ranges pinned by MnemonicTests). Raw values above the last declared
+        // constant in a tier fall through to the "?"-sentinel default.
+        case 16384 ... 16468: SVEPredicateControlCanonicalizer.name(self)
+        case 16469 ... 16626: SVEIntegerCanonicalizer.name(self)
+        case 16627 ... 16683: SVEFloatingPointCanonicalizer.name(self)
+        case 16684 ... 16801: SVEPermuteMemoryCanonicalizer.name(self)
+        case 28672 ... 28688: SMECanonicalizer.name(self)
+        case 28689 ... 28739: SME2Canonicalizer.name(self)
         default: "?\(rawValue)"
         }
     }

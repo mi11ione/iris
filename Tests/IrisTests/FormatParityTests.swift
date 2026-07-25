@@ -248,15 +248,16 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
         @Test func doubleRandomSweepMatchesReference() {
             var generator = SplitMix64(state: 0xA5A5_5A5A_DEAD_BEEF)
             for _ in 0 ..< 20000 {
-                let bits = generator.next()
-                if bits == 0 { continue }
+                // `| 1` keeps the draw away from all-zero bits (+0.0 renders
+                // through the special-case list above), without a skip arm the
+                // generator never takes.
+                let bits = generator.next() | 1
                 let expected = "fmov #" + referenceFloatText(bits: bits, kind: .double)
                 #expect(fmovText(bits: bits, kind: .double) == expected, "double bits 0x\(String(bits, radix: 16))")
             }
             // Bias a sweep toward small exponents (fraction-heavy renderings).
             for _ in 0 ..< 20000 {
-                let bits = generator.next() & 0x403F_FFFF_FFFF_FFFF
-                if bits == 0 { continue }
+                let bits = generator.next() & 0x403F_FFFF_FFFF_FFFF | 1
                 let expected = "fmov #" + referenceFloatText(bits: bits, kind: .double)
                 #expect(fmovText(bits: bits, kind: .double) == expected, "double bits 0x\(String(bits, radix: 16))")
             }

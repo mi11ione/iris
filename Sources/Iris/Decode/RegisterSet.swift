@@ -58,6 +58,16 @@ public struct RegisterSet: Sendable, Hashable {
         return RegisterSet(mask: mask | (UInt64(1) << reg.canonicalIndex))
     }
 
+    /// A new set containing the SIMD/`Z` bit for `ref`. An SVE `Z_n`
+    /// register aliases `V_n` and rides SIMD bit `32+n`, so scalable-vector
+    /// participation accumulates into the same 64-bit mask as its NEON peer
+    /// — dataflow over `Z`/`V` is one bitset, not two.
+    @inlinable
+    @inline(__always)
+    public func inserting(_ ref: ScalableVectorRef) -> RegisterSet {
+        RegisterSet(mask: mask | (UInt64(1) << ref.canonicalIndex))
+    }
+
     /// A new set without `reg`'s canonical-index. References whose
     /// canonical-index >= 64 are ignored.
     @inlinable

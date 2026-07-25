@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 //
-// BorrowedInstruction. The session tier's element: a copied 40-byte
+// BorrowedInstruction. The session tier's element: a copied 57-byte
 // record plus a borrowed slice of a pinned operand buffer. Formation
 // performs no reference counting and no allocation, the measured
 // property the session API ships for (the borrowing-view experiment,
@@ -14,7 +14,7 @@
 /// ``InstructionStream/withSession(_:)``. It carries the same packed
 /// ``record``, with ``operands`` presented as an `UnsafeBufferPointer`
 /// slice of the session's pinned side buffer instead of a retained view.
-/// Forming one is a 40-byte copy plus a (pointer, length) pair, no
+/// Forming one is a 57-byte copy plus a (pointer, length) pair, no
 /// reference counting, no heap allocation, which is what makes session
 /// access faster and context-independent compared to forming
 /// ``Instruction`` values (the measured contract is documented on
@@ -43,7 +43,7 @@
 /// copy the ``record`` out when text is needed.
 @frozen
 public struct BorrowedInstruction {
-    /// The packed 40-byte record, copied by value, safe to copy out of
+    /// The packed 57-byte record, copied by value, safe to copy out of
     /// the session scope.
     public let record: InstructionRecord
 

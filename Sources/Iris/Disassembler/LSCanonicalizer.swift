@@ -112,7 +112,11 @@ enum LSCanonicalizer {
         case .vectorRegister, .floatImmediate, .label, .shiftedRegister,
              .extendedRegister, .systemRegister, .conditionCode,
              .pstateField, .barrierOption, .systemOp, .amxField,
-             .amxUnknown, .shiftAmount, .pageLabel:
+             .amxUnknown, .shiftAmount, .pageLabel,
+             .scalableVector, .scalablePredicate, .scalableVectorGroup,
+             .predicateGroup, .zaTile, .zaTileSlice, .zaArrayVector,
+             .zt0, .scalableMemory, .svePredicatePattern,
+             .vectorLengthMultiplier:
             "?unsupported-operand"
         }
     }

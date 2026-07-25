@@ -17,7 +17,7 @@
 // `sys #op1, c<n>, c<m>, #op2 {, xN}` form, matching the oracle.
 
 /// How an alias renders its operand(s) and how the decoder models Rt.
-enum BESSysAliasKind: Sendable {
+public enum BESSysAliasKind: Sendable {
     /// `name, xN` — Rt is always part of the syntax (xzr when Rt == 31).
     case reg
     /// `name xN` — single-op alias with a space separator (no operation
@@ -32,17 +32,17 @@ enum BESSysAliasKind: Sendable {
 }
 
 /// One entry in the SYS / SYSL / SYSP alias tables.
-struct BESSysAlias: Sendable {
+public struct BESSysAlias: Sendable {
     /// Lowercase canonical text up to (but excluding) any Rt operand
     /// (e.g. "ic iallu", "dc cvac", "cfp rctx", "tlbip vae1").
-    let name: String
+    public let name: String
     /// How the alias renders Rt and how the decoder models the operand.
-    let kind: BESSysAliasKind
+    public let kind: BESSysAliasKind
 
     /// Whether the alias reads/writes Rt for a given encoded Rt value.
     /// `.reg` / `.bareReg` always touch Rt; `.noreg` never does (it's only
     /// selected when Rt == 31 = XZR); `.optReg` touches Rt only when != 31.
-    func touchesRt(_ rt: UInt8) -> Bool {
+    public func touchesRt(_ rt: UInt8) -> Bool {
         switch kind {
         case .reg, .bareReg: true
         case .noreg: false
@@ -52,9 +52,9 @@ struct BESSysAlias: Sendable {
 }
 
 /// SYS alias lookup (L == 0), keyed by (op1, CRn, CRm, op2).
-enum BESSysAliasTable {
+public enum BESSysAliasTable {
     @_effects(readonly)
-    static func lookup(
+    public static func lookup(
         op1: UInt8, CRn: UInt8, CRm: UInt8, op2: UInt8,
     ) -> BESSysAlias? {
         switch (op1, CRn, CRm, op2) {
@@ -290,9 +290,9 @@ enum BESSysAliasTable {
 }
 
 /// SYSL alias lookup (L == 1), keyed by (op1, CRn, CRm, op2).
-enum BESSyslAliasTable {
+public enum BESSyslAliasTable {
     @_effects(readonly)
-    static func lookup(
+    public static func lookup(
         op1: UInt8, CRn: UInt8, CRm: UInt8, op2: UInt8,
     ) -> BESSysAlias? {
         switch (op1, CRn, CRm, op2) {
@@ -306,9 +306,9 @@ enum BESSyslAliasTable {
 
 /// SYSP (128-bit SYS pair) alias lookup, keyed by (op1, CRn, CRm, op2).
 /// All entries render `name, xN, xN+1` (a consecutive X-register pair).
-enum BESSyspAliasTable {
+public enum BESSyspAliasTable {
     @_effects(readonly)
-    static func lookup(
+    public static func lookup(
         op1: UInt8, CRn: UInt8, CRm: UInt8, op2: UInt8,
     ) -> BESSysAlias? {
         switch (op1, CRn, CRm, op2) {

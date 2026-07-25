@@ -4,7 +4,7 @@
 // FlagEffect. The PSTATE.NZCV read/write effect, modeled as a
 // packed byte: bits 0-3 are the four flags this instruction WRITES, bits 4-7
 // the four it READS. A bitmask — not an enum with an associated value — keeps
-// the type one byte, so it fits the existing slot in the 40-byte
+// the type one byte, so it fits the existing slot in the 57-byte
 // InstructionRecord layout while expressing both which flags are written
 // (exactly, including the strict-subset writers RMIF / SETF8 / SETF16, which
 // preserve C) and which are consumed (ADC/SBC read C; CCMP/CCMN, the CSEL

@@ -49,6 +49,24 @@ public extension BorrowedInstruction {
         record.semanticWrites
     }
 
+    /// Scalable (SVE/SME) state semantically read — predicates, FFR, ZT0,
+    /// `ZA`. Empty on every base-ISA instruction.
+    @inlinable var scalableReads: ScalableRegisterSet {
+        record.scalableReads
+    }
+
+    /// Scalable (SVE/SME) state semantically written. Empty on every
+    /// base-ISA instruction.
+    @inlinable var scalableWrites: ScalableRegisterSet {
+        record.scalableWrites
+    }
+
+    /// Per-instruction scalable/streaming effect flags. `.none` on every
+    /// base-ISA instruction.
+    @inlinable var scalableEffect: ScalableEffect {
+        record.scalableEffect
+    }
+
     /// Control-flow classification.
     @inlinable var branchClass: BranchClass {
         record.branchClass

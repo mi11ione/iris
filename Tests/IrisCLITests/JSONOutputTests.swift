@@ -217,6 +217,8 @@ struct JSONOutputTests {
         #expect(JSONText.categoryName(.crypto) == "crypto")
         #expect(JSONText.categoryName(.amx) == "amx")
         #expect(JSONText.categoryName(.memoryTagging) == "memoryTagging")
+        #expect(JSONText.categoryName(.sve) == "sve")
+        #expect(JSONText.categoryName(.sme) == "sme")
     }
 
     @Test func jsonModeNeverColors() {

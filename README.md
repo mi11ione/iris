@@ -1,4 +1,4 @@
-# Iris
+# iris
 
 An ARM64/ARM64E disassembler with a semantic layer validated against LLVM. A command-line tool first, a Swift library underneath.
 
@@ -104,7 +104,7 @@ Exit codes, stdout/stderr separation, `--color auto|always|never`, and `--quiet`
 
 ## Feed an LLM
 
-The win for a model pipeline is structure. Iris chunks a binary into functions, names the call edges between them, and produces byte-identical output for identical input so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
+The win for a model pipeline is structure. iris chunks a binary into functions, names the call edges between them, and produces byte-identical output for identical input so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
 
 `iris functions` emits one JSON object per function, the unit a model prompt usually wants. Boundaries come from `LC_FUNCTION_STARTS` and section membership, so a function holds exactly its own instructions and never the trailing `__stubs` padding that grouping the per-instruction stream by symbol would sweep in:
 
@@ -179,7 +179,7 @@ The DocC articles on the [Swift Package Index](https://swiftpackageindex.com/mi1
 | Memory tagging (MTE) | full tag-management set |
 | Atomics | exclusives, LSE, LSE128, RCpc orderings |
 | Apple AMX | decoded (Apple's undocumented coprocessor ISA, validated structurally since llvm-mc has no AMX target) |
-| SVE / SME / SVE2 | UNDEFINED at 0.x. Apple silicon now ships SME, so this is first on the post-1.0 roadmap and the flagship contribution area |
+| SVE / SME / SVE2 | full — SVE & SVE2 (integer, floating-point, predicate/control, permute & memory incl. gather/scatter and fault variants) and SME & SME2 (ZA tiles & array, outer products, multi-vector, ZT0), behind `Features.sve` / `Features.sme`, validated against `llvm-mc` at the maximal scalable `-mattr` |
 
 Every possible 32-bit word decodes to a well-formed record. Unknown encodings yield UNDEFINED with the raw word preserved, never a plausible-looking guess and never a crash.
 
@@ -193,7 +193,7 @@ Every possible 32-bit word decodes to a well-formed record. Unknown encodings yi
 
 Correctness is defined by external oracles, never asserted from inside:
 
-- The in-repo `iris-parity` tool diffs Iris against `llvm-mc` at each encoding partition's maximal feature set: ≈600M rows harvested from real shipped Apple code, zero true divergences. It runs on every PR and on your machine.
+- The in-repo `iris-parity` tool diffs iris against `llvm-mc` at each encoding partition's maximal feature set: ≈600M rows harvested from real shipped Apple code, zero true divergences. It runs on every PR and on your machine.
 - Nightly CI decodes the entire 2³² word space twice and asserts the digests match: every word decodes, deterministically, forever.
 - Every known divergence from `llvm-mc` lives in [`KNOWN-DEVIATIONS.md`](KNOWN-DEVIATIONS.md) with evidence. There is exactly one (Apple AMX, which LLVM cannot decode at all), and anything uncatalogued fails the build.
 - No decoder change merges without that battery green ([CONTRIBUTING.md](CONTRIBUTING.md)).
@@ -210,7 +210,7 @@ A nightly smoke guards these numbers with checked-in thresholds.
 
 ## Scope
 
-Iris is a disassembler. ARM64 only, decode only, one direction. It does not assemble, build CFGs, lift, recover types, or emulate, and it ships no Mach-O parsing as library API: the CLI's walker is internal, the library takes raw bytes, your loader owns file formats.
+iris is a disassembler. ARM64 only, decode only, one direction. It does not assemble, build CFGs, lift, recover types, or emulate, and it ships no Mach-O parsing as library API: the CLI's walker is internal, the library takes raw bytes, your loader owns file formats.
 
 ## License
 

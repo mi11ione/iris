@@ -115,7 +115,11 @@ enum CryptoAppleExtensionsCanonicalizer {
         // so the @frozen Operand switch stays exhaustive.
         case .floatImmediate, .label, .shiftedRegister, .extendedRegister,
              .systemRegister, .conditionCode, .pstateField, .barrierOption,
-             .prefetchOperation, .systemOp, .shiftAmount, .pageLabel:
+             .prefetchOperation, .systemOp, .shiftAmount, .pageLabel,
+             .scalableVector, .scalablePredicate, .scalableVectorGroup,
+             .predicateGroup, .zaTile, .zaTileSlice, .zaArrayVector,
+             .zt0, .scalableMemory, .svePredicatePattern,
+             .vectorLengthMultiplier:
             "?unsupported-operand"
         }
     }

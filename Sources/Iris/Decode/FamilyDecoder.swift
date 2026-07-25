@@ -74,6 +74,11 @@ struct FamilyDecoderSet: Sendable {
         DataProcessingRegisterDecoder(),
         LoadsAndStoresDecoder(),
         SIMDAndFPDecoder(),
-        AMXDecoder(),
+        // op0=0 hosts Apple AMX + architectural SME (+ UDF, handled by the
+        // dispatcher before family lookup): Op0ZeroDecoder multiplexes them.
+        // op0=2 is the SVE / SVE2 tier. Both were formerly reserved →
+        // UNDEFINED; SME/SVE decode is gated on the respective Features.
+        Op0ZeroDecoder(),
+        SVEDecoder(),
     ])
 }

@@ -46,6 +46,10 @@ enum DisassemblyText {
             return SIMDFPCanonicalizer.format(instruction)
         case .pointerAuthentication, .crypto, .amx, .memoryTagging:
             return CryptoAppleExtensionsCanonicalizer.format(instruction)
+        case .sve:
+            return SVEDisassembly.render(instruction)
+        case .sme:
+            return SMEDisassembly.render(instruction)
         }
     }
 }

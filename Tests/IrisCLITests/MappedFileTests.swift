@@ -37,13 +37,12 @@ struct MappedFileTests {
         let path = FileManager.default.temporaryDirectory
             .appendingPathComponent("iris-cli-test-\(UUID().uuidString)").path
         #expect(FileManager.default.createFile(atPath: path, contents: Data([1, 2, 3]), attributes: [.posixPermissions: 0o000]))
-        if geteuid() == 0 {
-            // Root bypasses permission bits (CI containers run as root),
-            // so mode 000 is still readable here and mapping succeeds.
-            #expect(MappedFile(path: path) != nil)
-        } else {
-            #expect(MappedFile(path: path) == nil)
-        }
+        // Root bypasses permission bits (CI containers run as root), so mode
+        // 000 is still readable there and mapping succeeds; unprivileged hosts
+        // get nil. Folded into one expectation so neither host is an
+        // unexercised arm.
+        let mappable = MappedFile(path: path) != nil
+        #expect(mappable == (geteuid() == 0))
         try FileManager.default.removeItem(atPath: path)
     }
 
@@ -137,19 +136,15 @@ struct MappedFileTests {
             .appendingPathComponent("iris-cli-test-\(UUID().uuidString)").path
         #expect(FileManager.default.createFile(atPath: path, contents: nil))
         let handle = try #require(FileHandle(forWritingAtPath: path))
-        do {
-            try handle.truncate(atOffset: 200 << 40)
-        } catch {
-            // The filesystem cannot create the sparse vehicle (ext4 caps
-            // regular files at 16 TiB, so Linux CI rejects the truncate).
-            // The mmap-failure arm is exercised on hosts that can.
-            try handle.close()
-            try FileManager.default.removeItem(atPath: path)
-            return
-        }
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        // A filesystem that cannot create the sparse vehicle (ext4 caps regular
+        // files at 16 TiB, so Linux CI rejects the truncate) leaves nothing to
+        // assert; the mmap-failure arm is exercised on hosts that can.
+        let sparse = (try? handle.truncate(atOffset: 200 << 40)) != nil
         try handle.close()
-        #expect(MappedFile(path: path) == nil)
-        try FileManager.default.removeItem(atPath: path)
+        if sparse {
+            #expect(MappedFile(path: path) == nil)
+        }
     }
 
     @Test func mappingSurvivesUnlink() {

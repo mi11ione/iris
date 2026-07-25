@@ -346,6 +346,8 @@ public enum JSONText {
         case .crypto: "crypto"
         case .amx: "amx"
         case .memoryTagging: "memoryTagging"
+        case .sve: "sve"
+        case .sme: "sme"
         }
     }
 }

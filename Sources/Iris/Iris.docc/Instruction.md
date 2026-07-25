@@ -50,5 +50,5 @@
 
 ### Constructing one
 
-- ``init(address:encoding:mnemonic:semanticReads:semanticWrites:branchClass:memoryAccess:memoryOrdering:flagEffect:category:operands:)``
+- ``init(address:encoding:mnemonic:semanticReads:semanticWrites:branchClass:memoryAccess:memoryOrdering:flagEffect:category:operands:scalableReads:scalableWrites:scalableEffect:)``
 - ``Operands``

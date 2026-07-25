@@ -41,7 +41,7 @@ subcommands:
       release build: `swift run -c release iris-parity exhaustive all`.
 
   semantic --family <f|all> [--count N] [--seed S]
-      Run the @_spi(Validation) semantic checkers over the family's
+      Run the IrisValidation semantic checkers over the family's
       synthetic corpus rows plus a seeded random partition sweep.
 
 families: dpi, bes, ls, dpr, simd-fp, crypto-apple, reserved

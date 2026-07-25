@@ -1,33 +1,30 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 //
-// AMX top-level FamilyDecoder. Registers for op0 = 0 (the reserved
-// tier — Apple's AMX coprocessor occupies parts of the formally-
-// unallocated encoding space, and the dispatcher explicitly permits
-// registration there). Recognises AMX by the canonical mask
-// `(encoding & 0xFFFFFC00) == 0x00201000` and dispatches the 5-bit
-// opcode field (bits[9:5]) through the corsix/amx-documented 23-opcode
-// table. Encodings whose top mask matches but whose opcode is outside
-// [0..22] — or opcode 17 with operand outside {0, 1} — are surfaced as
-// `.amxUnknownOp` with an `.amxUnknown(rawFields:)` operand carrying
-// the full 32-bit word for downstream analysis.
+// AMX sub-decoder for the op0 = 0 reserved tier — Apple's AMX coprocessor
+// occupies parts of the formally-unallocated encoding space, and the
+// dispatcher explicitly permits a decoder there. Reached from
+// `Op0ZeroDecoder` once `isAMXEncoding` holds (the canonical mask
+// `(encoding & 0xFFFFFC00) == 0x00201000`), so every word arriving here is
+// already an AMX word; it dispatches the 5-bit opcode field (bits[9:5])
+// through the corsix/amx-documented 23-opcode table. Encodings whose top mask
+// matches but whose opcode is outside [0..22] — or opcode 17 with operand
+// outside {0, 1} — are surfaced as `.amxUnknownOp` with an
+// `.amxUnknown(rawFields:)` operand carrying the full 32-bit word for
+// downstream analysis.
 
-struct AMXDecoder: FamilyDecoder {
-    static let amxOp0Values: Set<UInt8> = [0]
-
+/// Decodes one Apple AMX word.
+///
+/// Not a registered ``FamilyDecoder``: the composite ``Op0ZeroDecoder`` holds
+/// the `op0=0` slot and delegates here after ``isAMXEncoding(_:)`` holds,
+/// which is this decoder's precondition.
+struct AMXDecoder: Sendable {
     init() {}
-
-    var op0Values: Set<UInt8> {
-        Self.amxOp0Values
-    }
 
     @_optimize(speed)
     func decode(
         encoding: UInt32, address: UInt64, features _: Features,
     ) -> DecodedDraft {
-        guard isAMXEncoding(encoding) else {
-            return .undefined(at: address, encoding: encoding)
-        }
         let field = AMXField(rawBits: encoding)
         let opcode = field.opcode
         let operandField = field.operandField

@@ -275,17 +275,16 @@ func simdfpGprOperand(
 /// True iff the 4-byte ARM64 word `encoding` belongs to the SIMD &
 /// Floating-Point in-scope encoding surface:
 ///   - top-level op0 ∈ {0x7, 0xF} (the SIMD/FP arithmetic/FP/conversion
-///     classes that ``SIMDAndFPDecoder/decode(encoding:address:features:)``
+///     classes that `SIMDAndFPDecoder.decode(encoding:address:features:)`
 ///     dispatches), OR
 ///   - top-level op0 ∈ {0x4, 0x6, 0xC, 0xE} with bit[26] (V) = 1 (the
 ///     SIMD/FP load/store classes delegated from the integer L/S decoder
-///     via ``SIMDAndFPDecoder/decodeVectorLoadStore(encoding:address:)``).
+///     via `SIMDAndFPDecoder.decodeVectorLoadStore(encoding:address:)`).
 ///
 /// Lets corpus tooling pre-filter code buffers to SIMD/FP encodings.
 @inlinable
 @inline(__always)
 @_effects(readonly)
-@_spi(Validation)
 public func isSIMDAndFPEncoding(_ encoding: UInt32) -> Bool {
     let op0 = (encoding >> 25) & 0xF
     if op0 == 0x7 || op0 == 0xF { return true }

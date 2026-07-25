@@ -26,7 +26,7 @@ public struct CodeSection: Sendable {
     public let byteCount: UInt64
     /// Data-in-code spans intersecting this section, rebased so that
     /// offset 0 is the section's first byte — the exact shape
-    /// ``InstructionStream/init(bytes:at:features:dataInCode:)`` accepts.
+    /// `InstructionStream/init(bytes:at:features:dataInCode:)` accepts.
     public let dataInCode: [DataInCodeSpan]
 
     @usableFromInline let slice: MappedFile

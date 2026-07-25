@@ -48,7 +48,7 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
 
     // Collection conformance: a stream is a random-access collection of
     // Instruction values, one per record (the truncated-tail record is
-    // an ordinary element). Forming an element is a 40-byte record copy
+    // an ordinary element). Forming an element is a 57-byte record copy
     // plus an operand view over the shared buffer — zero heap allocation.
 
     public typealias Element = Instruction
@@ -382,6 +382,9 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
                 flagEffect: draft.flagEffect,
                 category: draft.category,
                 operandCount: UInt8(truncatingIfNeeded: draft.operands.count),
+                scalableReads: draft.scalableReads,
+                scalableWrites: draft.scalableWrites,
+                scalableEffect: draft.scalableEffect,
             ))
         }
     }

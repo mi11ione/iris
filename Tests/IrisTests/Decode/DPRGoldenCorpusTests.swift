@@ -2,7 +2,8 @@
 // Licensed under the Apache License, Version 2.0
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 import Testing
 
 /// Golden-corpus parity check at the unit-test level. Reads the DPR
@@ -10,6 +11,24 @@ import Testing
 /// that for every row, decode → canonicalize → compare against the
 /// harvested `expected_text` matches exactly — so regressions are
 /// caught by `swift test` alone.
+/// The corpus resolver itself: the in-repo fixture by default, the external
+/// `decode-<family>/synthetic.tsv` layout when a root is supplied. Pinning both
+/// keeps the `IRIS_DECODE_CORPUS` contract honest on hosts that have no such
+/// tree — the override is otherwise never taken by `swift test`.
+@Suite("Decode corpus path resolution")
+struct DecodeCorpusPathTests {
+    @Test func theDefaultIsTheTrackedInRepoFixture() {
+        let path = decodeCorpusTSVPath(family: "dpr")
+        #expect(path.hasSuffix("Tests/Fixtures/Decode/synthetic-dpr.tsv"))
+        #expect(FileManager.default.isReadableFile(atPath: path))
+    }
+
+    @Test func anExternalRootUsesThePerFamilyDirectoryLayout() {
+        #expect(decodeCorpusTSVPath(family: "sve", externalRoot: "/corpus")
+            == "/corpus/decode-sve/synthetic.tsv")
+    }
+}
+
 @Suite("DPR / golden synthetic corpus parity (every row)")
 struct DPRGoldenCorpusParityTests {
     /// In-repo fixture by default; an external corpus tree when

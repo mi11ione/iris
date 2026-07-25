@@ -18,7 +18,8 @@
 // UNDEFINED).
 
 import Foundation
-@_spi(Validation) import Iris
+import Iris
+import IrisValidation
 
 private struct ChunkOutcome: Sendable {
     let index: Int

@@ -20,10 +20,13 @@ struct DecodedDraft: Sendable, Equatable {
     var mnemonic: Mnemonic
     var semanticReads: RegisterSet
     var semanticWrites: RegisterSet
+    var scalableReads: ScalableRegisterSet
+    var scalableWrites: ScalableRegisterSet
     var branchClass: BranchClass
     var memoryAccess: MemoryAccess
     var memoryOrdering: MemoryOrdering
     var flagEffect: FlagEffect
+    var scalableEffect: ScalableEffect
     var category: Category
     var operands: [Operand]
 
@@ -39,16 +42,22 @@ struct DecodedDraft: Sendable, Equatable {
         flagEffect: FlagEffect = .none,
         category: Category,
         operands: [Operand] = [],
+        scalableReads: ScalableRegisterSet = .empty,
+        scalableWrites: ScalableRegisterSet = .empty,
+        scalableEffect: ScalableEffect = .none,
     ) {
         self.address = address
         self.encoding = encoding
         self.mnemonic = mnemonic
         self.semanticReads = semanticReads
         self.semanticWrites = semanticWrites
+        self.scalableReads = scalableReads
+        self.scalableWrites = scalableWrites
         self.branchClass = branchClass
         self.memoryAccess = memoryAccess
         self.memoryOrdering = memoryOrdering
         self.flagEffect = flagEffect
+        self.scalableEffect = scalableEffect
         self.category = category
         self.operands = operands
     }

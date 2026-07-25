@@ -41,7 +41,12 @@ struct DataProcessingImmediateDecoder: FamilyDecoder {
             return AddSubImmDecode.decode(encoding: encoding, address: address)
         }
         if op1 == 0b011 {
-            // ADDG / SUBG (MTE) — the MTE decoder owns this row.
+            // op1=0b011 splits on bit[22]: bit22=1 is FEAT_CSSC Min/Max
+            // (immediate) — SMAX/SMIN/UMAX/UMIN #imm8; bit22=0 is ADDG/SUBG
+            // (MTE), which the MTE decoder owns.
+            if (encoding >> 22) & 1 == 1 {
+                return MinMaxImmDecode.decode(encoding: encoding, address: address)
+            }
             if let mteDraft = MemoryTaggingDecode.decodeDPI(
                 encoding: encoding, address: address,
             ) {

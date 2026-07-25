@@ -260,7 +260,7 @@ enum SIMDFPCanonicalizer {
     /// values (including -0.0) keep their sign; infinities render
     /// `inf`/`-inf`; NaNs render unsigned `nan` — all matching Darwin
     /// libc, verified exhaustively by the format-parity tests.
-    private static func fixedEightFractionText(_ value: Double) -> String {
+    static func fixedEightFractionText(_ value: Double) -> String {
         let bits = value.bitPattern
         let negative = (bits >> 63) != 0
         let biasedExponent = Int((bits >> 52) & 0x7FF)

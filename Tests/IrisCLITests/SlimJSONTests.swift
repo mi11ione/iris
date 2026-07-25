@@ -32,6 +32,14 @@ struct SlimJSONTests {
         }
     }
 
+    /// The comparator's own contract, including the absent-value sentinel: two
+    /// missing values are equal, a missing value differs from a present one.
+    @Test func sameJSONComparesAbsentValues() {
+        #expect(sameJSON(nil, nil))
+        #expect(!sameJSON(nil, 1))
+        #expect(!sameJSON(1, nil))
+    }
+
     // MARK: Goldens
 
     @Test func slimStreamMatchesGolden() {
@@ -54,8 +62,10 @@ struct SlimJSONTests {
             let fields = try #require(object(line))
             #expect(fields["kind"] == nil)
             #expect(fields["schemaVersion"] == nil)
-            // A relaxed ordering / no-flag effect / false witness is gone.
-            if let ordering = fields["ordering"] as? [Any] { #expect(!ordering.isEmpty) }
+            // A relaxed ordering / no-flag effect / false witness is gone. The
+            // hello fixture has no ordered access at all, so `ordering` is
+            // asserted as "absent, or present and non-empty".
+            #expect((fields["ordering"] as? [Any])?.isEmpty != true)
             if let branch = fields["branchClass"] as? String { #expect(branch != "none") }
             if let memory = fields["memoryAccess"] as? String { #expect(memory != "none") }
             #expect(fields["isData"] == nil) // false is omitted; only true appears

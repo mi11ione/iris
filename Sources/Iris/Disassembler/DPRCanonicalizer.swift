@@ -101,7 +101,11 @@ enum DPRCanonicalizer {
         case .vectorRegister, .floatImmediate, .label, .memory,
              .systemRegister, .pstateField, .barrierOption,
              .prefetchOperation, .systemOp, .amxField, .amxUnknown,
-             .shiftAmount, .pageLabel:
+             .shiftAmount, .pageLabel,
+             .scalableVector, .scalablePredicate, .scalableVectorGroup,
+             .predicateGroup, .zaTile, .zaTileSlice, .zaArrayVector,
+             .zt0, .scalableMemory, .svePredicatePattern,
+             .vectorLengthMultiplier:
             "?unsupported-operand"
         }
     }
