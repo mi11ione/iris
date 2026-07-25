@@ -5,7 +5,7 @@ import Iris
 import Testing
 
 private func decode(_ e: UInt32) -> Instruction {
-    Iris.decode(e, at: 0, features: .scalable)
+    Iris.decode(e, at: 0)
 }
 
 private func text(_ e: UInt32) -> String {

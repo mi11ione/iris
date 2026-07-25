@@ -5,7 +5,7 @@ import Iris
 import Testing
 
 private func text(_ encoding: UInt32) -> String {
-    Iris.decode(encoding, at: 0, features: .scalable).text
+    Iris.decode(encoding, at: 0).text
 }
 
 /// A draft with a hand-built operand list, for the shape-violation paths.

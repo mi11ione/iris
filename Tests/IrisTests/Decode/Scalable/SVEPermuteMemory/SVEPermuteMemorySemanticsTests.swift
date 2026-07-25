@@ -6,7 +6,7 @@ import IrisValidation
 import Testing
 
 private func decode(_ encoding: UInt32) -> Instruction {
-    Iris.decode(encoding, at: 0, features: .scalable)
+    Iris.decode(encoding, at: 0)
 }
 
 /// Validates that the independently-derived semantic model agrees with every

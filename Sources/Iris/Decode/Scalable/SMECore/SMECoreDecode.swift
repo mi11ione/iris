@@ -11,7 +11,7 @@
 // Shared field extractors, operand builders, and mask builders used by every
 // group decoder (outer product / move-zero / memory) live here. Records the
 // operand structure only — ZA matrix-shape and effective-address computation
-// are Piece 4's.
+// are the caller's.
 
 /// The SME core decoder for SME-core.
 enum SMECoreDecode {

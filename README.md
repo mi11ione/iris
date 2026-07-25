@@ -15,23 +15,16 @@ _helper:
 1000003d4: d65f0fff  retab                                       ; reads=x30,sp branch=return
 ```
 
-Symbols and function starts from the binary, branch targets resolved and symbolicated, data-in-code rendered as data instead of garbage instructions, and a semantic column nothing else prints: registers read and written, memory behavior, branch class, all computed during decode and validated against `llvm-mc`.
+Symbols and function starts from the binary, branch targets resolved and symbolicated, data-in-code rendered as data instead of garbage instructions — and a semantic column nothing else prints: registers read and written, memory behavior, branch class, all computed during decode and validated against `llvm-mc`.
 
 ## Install
 
-Prebuilt binary (macOS universal, Linux x86_64/aarch64):
-
 ```sh
-curl -fsSL https://raw.githubusercontent.com/mi11ione/iris/main/install.sh | sh
-```
-
-or through Homebrew:
-
-```sh
+curl -fsSL https://raw.githubusercontent.com/mi11ione/iris/main/install.sh | sh   # macOS universal, Linux x86_64/aarch64
 brew install mi11ione/tap/iris
 ```
 
-## Inspect a binary
+## Use it
 
 ```sh
 $ iris MyApp.app/Contents/MacOS/MyApp           # full listing: symbols, function starts,
@@ -44,15 +37,11 @@ $ iris 0xd503233f                               # 0: d503233f  paciasp
 $ iris --bytes "1f 20 03 d5"                    # 0: d503201f  nop
 ```
 
-`iris <file>` is the disassemble verb (its name, `disasm`, is optional). `stats`,
-`functions`, and `decode` are the other three. `iris 0x<word>` and `iris --bytes`
-are `decode` without the word. The single-word forms answer "what is this
-instruction" from a hex dump in one command. Run `iris --help` for the verb list,
-or `iris <verb> --help` for a verb's options.
+There are four verbs. `disasm` is the default, so `iris <file>` is the full listing; `iris 0x<word>` and `iris --bytes` infer `decode`, answering "what is this instruction" from a hex dump in one command. `stats` and `functions` are the other two. Run `iris <verb> --help` for a verb's options.
 
 ## Triage a crash from raw bytes
 
-A crash report gives you a faulting PC and the bytes around it, and the binary is not on your machine. Decode the window anywhere, including a Linux backend, and read what faulted straight off the semantics:
+A crash report gives you a faulting PC and the bytes around it, and the binary is not on your machine. Decode the window anywhere — a Linux backend included — and read what faulted off the semantics:
 
 ```
 $ iris --bytes "e0 07 40 f9 08 08 40 f9 c0 03 5f d6" --semantics
@@ -61,11 +50,9 @@ $ iris --bytes "e0 07 40 f9 08 08 40 f9 c0 03 5f d6" --semantics
 8: d65f03c0  ret                                         ; reads=x30 branch=return
 ```
 
-If the fault was at offset 4, the record says it directly: a load through `x0`, sixteen bytes in. The bad pointer is `x0`.
+Fault at offset 4? The record says it outright: a load through `x0`, sixteen bytes in. The bad pointer is `x0`.
 
 ## Audit what ships in your build
-
-`iris stats` censuses a binary for pointer authentication, MTE, AMX, and crypto sites:
 
 ```
 $ iris stats hello-arm64e
@@ -81,7 +68,7 @@ extension sites:
 ...
 ```
 
-Gate CI on the answer, for example "fail the build if PAC adoption ever drops to zero":
+Gate CI on the answer — say, fail the build if PAC adoption ever drops to zero:
 
 ```sh
 iris stats --json MyApp | jq -e '.extensions.pointerAuthentication > 0'
@@ -89,7 +76,7 @@ iris stats --json MyApp | jq -e '.extensions.pointerAuthentication > 0'
 
 ## Script it from any language
 
-`--json` emits NDJSON under a versioned schema: one self-contained object per instruction, byte-stable across runs, so it pipes, diffs, and caches. Every call site of a binary:
+`--json` emits NDJSON under a versioned schema: one self-contained object per instruction, byte-stable across runs, so it pipes, diffs, and caches.
 
 ```sh
 $ iris --json hello-arm64e | jq -r 'select(.branchClass=="call") | .address'
@@ -98,46 +85,27 @@ $ iris --json hello-arm64e | jq -r 'select(.branchClass=="call") | .address'
 0x1000003f8
 ```
 
-Byte-stable output also makes patch review mechanical: run `iris --json` over two versions of a patched binary and `diff` the streams. The only lines that differ are the instructions that changed.
-
-Exit codes, stdout/stderr separation, `--color auto|always|never`, and `--quiet` are scripting-clean.
+Byte-stability makes patch review mechanical: run `iris --json` over two versions of a binary and `diff` the streams — the only lines that differ are the instructions that changed. Exit codes, stdout/stderr separation, `--color auto|always|never`, and `--quiet` are all scripting-clean.
 
 ## Feed an LLM
 
-The win for a model pipeline is structure. iris chunks a binary into functions, names the call edges between them, and produces byte-identical output for identical input so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved, so a model is never handed a confident wrong instruction.
+The win for a model pipeline is structure. iris chunks a binary into functions, names the call edges between them, and produces byte-identical output for identical input, so prompts cache and evals reproduce. Unknown encodings stay UNDEFINED with the raw word preserved — a model is never handed a confident wrong instruction.
 
-`iris functions` emits one JSON object per function, the unit a model prompt usually wants. Boundaries come from `LC_FUNCTION_STARTS` and section membership, so a function holds exactly its own instructions and never the trailing `__stubs` padding that grouping the per-instruction stream by symbol would sweep in:
+`iris functions` emits one object per function, the unit a prompt usually wants. Boundaries come from `LC_FUNCTION_STARTS` and section membership, so a function holds exactly its own instructions and never the trailing `__stubs` padding that grouping by symbol would sweep in. Each instruction names its function in `symbol` and carries a `targetSymbol` when a branch resolves, imports through a `__stubs` entry included — so a call graph reads straight off the stream:
 
 ```sh
-iris functions --json hello-arm64 | jq -c '{symbol, address, endAddress, instructionCount}'
-# {"symbol":"_add42","address":"0x100000328","endAddress":"0x100000340","instructionCount":6}
-# {"symbol":"_sum_to","address":"0x100000340","endAddress":"0x100000398","instructionCount":22}
-# {"symbol":"_helper","address":"0x100000398","endAddress":"0x1000003d4","instructionCount":15}
-# {"symbol":"_main","address":"0x1000003d4","endAddress":"0x100000400","instructionCount":11}
+$ iris --json MyApp | jq -c 'select(.branchClass=="call") | {from: .symbol, to: .targetSymbol, at: .address}'
+{"from":"_helper","to":"_add42","at":"0x1000003b0"}
+{"from":"_helper","to":"_sum_to","at":"0x1000003bc"}
+{"from":"_main","to":"_helper","at":"0x1000003f8"}
 ```
 
-Each function object wraps its instruction objects, and each of those names its function in a `symbol` field and carries a `targetSymbol` when a branch resolves to a known name, including imports reached through a `__stubs` entry. That gives a model function context and named call edges with no extra passes. The per-instruction stream carries the same fields, so a call-graph pass reads straight off it:
+Add `--slim` for the payload you actually hand a model: about half the default object's weight is constants repeating on every line, and slim drops them while keeping every signal-bearing field. Address-forming instructions carry the data they point at, so a model sees the format string without inferring it:
 
 ```sh
-# named call-graph edges: from = caller function, to = resolved callee
-# (an absent targetSymbol means the target had no known name)
-iris --json MyApp | jq -c 'select(.branchClass=="call") | {from: .symbol, to: .targetSymbol, at: .address}'
-# {"from":"_helper","to":"_add42","at":"0x1000003b0"}
-# {"from":"_helper","to":"_sum_to","at":"0x1000003bc"}
-# {"from":"_main","to":"_helper","at":"0x1000003f8"}
-```
-
-For the payload you actually hand a model, reach for `iris functions --json --slim`. The default per-instruction object is heavier than our own `--semantics` text line, and about half of that weight is the same constant fields repeating on every line (`kind`, `schemaVersion`, the `none` and empty defaults). `--slim` drops those, drops the per-instruction `symbol` the function object already carries, and keeps every signal-bearing field, so the structure survives at a fraction of the size:
-
-```sh
-iris functions --json --slim MyApp
-```
-
-An address-forming instruction also gets the data it points at. A `__cstring` load reads back as a string and a printable-ASCII immediate reads back as a character, in the listing and in the JSON, so a model sees the format string and the character constant without inferring them:
-
-```sh
-iris functions --json --slim hello-arm64 | jq -c '.instructions[] | select(.referencedString) | {text, referencedString}'
-# {"text":"add x0, x0, #1256","referencedString":"hello, %s!\n"}
+$ iris functions --json --slim strings-arm64 | jq -c '.instructions[] | select(.referencedString) | {text, referencedString}'
+{"text":"add x8, x8, #1268","referencedString":"world"}
+{"text":"add x0, x0, #1256","referencedString":"hello, %s!\n"}
 ```
 
 ## Decode from Swift
@@ -158,15 +126,17 @@ for inst in stream where inst.isCall {
 // bl #12 -> 4010
 ```
 
-Every `Instruction` carries bit-exact register read/write sets, memory access and ordering, per-flag effects, ADR/ADRP page math, and precisely-scoped predicates. It is the precomputed layer that CFG builders, emulators, and decompilers otherwise write first. The library has no dependencies and no imports, so it runs anywhere Swift compiles: macOS, Linux, Windows, Android, and on-device iOS. CI builds it on every one of them.
+Every `Instruction` carries bit-exact register read/write sets, memory access and ordering, per-flag effects, ADR/ADRP page math, and precisely-scoped predicates — with scalable code treated in its own vocabulary (predicate, FFR, and ZA state in `scalableReads`/`scalableWrites`, streaming behavior in `scalableEffect`). It is the precomputed layer CFG builders, emulators, and decompilers otherwise write first.
+
+No dependencies and no imports, so it runs anywhere Swift compiles: macOS, Linux, Windows, Android, and on-device iOS. CI builds every one.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mi11ione/iris", from: "0.3.0")
+    .package(url: "https://github.com/mi11ione/iris", from: "0.6.0")
 ]
 ```
 
-The DocC articles on the [Swift Package Index](https://swiftpackageindex.com/mi11ione/iris/documentation) cover the full surface, including the retain-free `withSession` tier for hot loops.
+The [DocC articles](https://swiftpackageindex.com/mi11ione/iris/documentation) cover the full surface, including the retain-free `withSession` tier for hot loops.
 
 ## ISA coverage
 
@@ -174,14 +144,17 @@ The DocC articles on the [Swift Package Index](https://swiftpackageindex.com/mi1
 |---|---|
 | Base ARM64 (DPI, branches/exception/system, loads & stores, DPR) | full, through the v9.6-era extensions llvm-mc recognizes (CSSC, FlagM, HBC, CHK, MOPS, LS64, RCPC tiers, D128, …) |
 | NEON & floating point | full AdvSIMD + FP, including FP16, BF16, FP8, i8mm |
+| SVE / SVE2 | full: integer, floating point, predicate/control, permute, and memory including gather/scatter and the fault variants |
+| SME / SME2 | full: ZA tiles and array, outer products, multi-vector, ZT0 |
 | Crypto | AES, SHA1/SHA256, SHA3/SHA512, SM3/SM4 |
-| Pointer authentication | full. Hint-space and authenticated branches on the base ISA, LDRAA/LDRAB behind `Features.arm64e` |
+| Pointer authentication | full: hint-space and authenticated branches on the base ISA, LDRAA/LDRAB behind `arm64e` |
 | Memory tagging (MTE) | full tag-management set |
 | Atomics | exclusives, LSE, LSE128, RCpc orderings |
 | Apple AMX | decoded (Apple's undocumented coprocessor ISA, validated structurally since llvm-mc has no AMX target) |
-| SVE / SME / SVE2 | full — SVE & SVE2 (integer, floating-point, predicate/control, permute & memory incl. gather/scatter and fault variants) and SME & SME2 (ZA tiles & array, outer products, multi-vector, ZT0), behind `Features.sve` / `Features.sme`, validated against `llvm-mc` at the maximal scalable `-mattr` |
 
-Every possible 32-bit word decodes to a well-formed record. Unknown encodings yield UNDEFINED with the raw word preserved, never a plausible-looking guess and never a crash.
+All of it decodes with no flags to set, bar one: the ARM64E load tier (LDRAA/LDRAB), whose encodings mean something else on plain ARM64, follows the slice — automatic on an arm64e binary, `--features arm64e` on a raw word.
+
+Every possible 32-bit word decodes to a well-formed record. Unknown encodings yield UNDEFINED with the raw word preserved: never a plausible-looking guess, never a crash.
 
 ## Why you can trust it
 
@@ -193,17 +166,17 @@ Every possible 32-bit word decodes to a well-formed record. Unknown encodings yi
 
 Correctness is defined by external oracles, never asserted from inside:
 
-- The in-repo `iris-parity` tool diffs iris against `llvm-mc` at each encoding partition's maximal feature set: ≈600M rows harvested from real shipped Apple code, zero true divergences. It runs on every PR and on your machine.
+- The in-repo `iris-parity` tool diffs iris against `llvm-mc` at each encoding partition's maximal feature set — ≈600M rows harvested from real shipped Apple code, zero true divergences. It runs on every PR and on your machine.
 - Nightly CI decodes the entire 2³² word space twice and asserts the digests match: every word decodes, deterministically, forever.
-- Every known divergence from `llvm-mc` lives in [`KNOWN-DEVIATIONS.md`](KNOWN-DEVIATIONS.md) with evidence. There is exactly one (Apple AMX, which LLVM cannot decode at all), and anything uncatalogued fails the build.
+- Every known divergence from `llvm-mc` lives in [`KNOWN-DEVIATIONS.md`](KNOWN-DEVIATIONS.md) with evidence. There is exactly one — Apple AMX, which LLVM cannot decode at all — and anything uncatalogued fails the build.
 - No decoder change merges without that battery green ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Performance
 
-Apple M4, release build, 256 MiB mixed buffer, medians over 5 runs. Methodology and reproduction commands in [`Benchmarks/README.md`](Benchmarks/README.md).
+Apple M4, release build, 256 MiB mixed buffer, medians over 5 runs. Methodology and reproduction in [`Benchmarks/README.md`](Benchmarks/README.md).
 
 - Bulk decode: 16.1M words/s single-thread, 117.7M words/s parallel.
-- Address lookups: 11.0 ns stable (the library's pinned-session tier), 5.2 ns raw index arithmetic.
+- Address lookups: 11.0 ns stable (the pinned-session tier), 5.2 ns raw index arithmetic.
 - Against Capstone v5 on identical input: **~10.3× faster** at decode while computing more than its detail mode, ~3.3× faster at text-output parity ([methodology](Benchmarks/CapstoneComparison/README.md)).
 
 A nightly smoke guards these numbers with checked-in thresholds.

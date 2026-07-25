@@ -90,19 +90,27 @@ struct BESSystemPairTests {
     }
 
     @Test func smstartSmstopDecodeEveryTargetForm() {
-        let rows: [(crm: UInt32, mnemonic: Mnemonic, text: String)] = [
-            (0b010, .smstop, "smstop sm"),
-            (0b011, .smstart, "smstart sm"),
-            (0b100, .smstop, "smstop za"),
-            (0b101, .smstart, "smstart za"),
-            (0b110, .smstop, "smstop"),
-            (0b111, .smstart, "smstart"),
+        // The CRm target bits also say which PSTATE field the transition
+        // writes (ARM ARM C6): SM for `sm`, ZA for `za`, both for the bare
+        // form. Neither is a register, so the write lands on scalableEffect.
+        let rows: [(crm: UInt32, mnemonic: Mnemonic, text: String, effect: ScalableEffect)] = [
+            (0b010, .smstop, "smstop sm", .writesStreamingMode),
+            (0b011, .smstart, "smstart sm", .writesStreamingMode),
+            (0b100, .smstop, "smstop za", .writesZAEnable),
+            (0b101, .smstart, "smstart za", .writesZAEnable),
+            (0b110, .smstop, "smstop", [.writesStreamingMode, .writesZAEnable]),
+            (0b111, .smstart, "smstart", [.writesStreamingMode, .writesZAEnable]),
         ]
         for row in rows {
             let d = decode(msrImmWord(op1: 0b011, crm: row.crm, op2: 0b011))
             #expect(d.mnemonic == row.mnemonic)
             #expect(d.category == .branchesExceptionSystem)
             #expect(d.text == row.text)
+            #expect(d.scalableEffect == row.effect, "\(row.text) effect")
+            // The transition is not a general-register write, and the
+            // streaming-mode flags are the only scalable state it touches.
+            #expect(d.semanticWrites.isEmpty)
+            #expect(d.scalableReads.isEmpty && d.scalableWrites.isEmpty)
         }
     }
 

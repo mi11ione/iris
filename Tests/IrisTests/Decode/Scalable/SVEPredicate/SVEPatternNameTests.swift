@@ -25,7 +25,7 @@ private func ptrue(pattern raw: UInt8) -> UInt32 {
 }
 
 private func patternText(_ raw: UInt8) -> String {
-    Iris.decode(ptrue(pattern: raw), features: .scalable).text
+    Iris.decode(ptrue(pattern: raw)).text
 }
 
 /// Validates the 5-bit count-pattern name table shared by PTRUE and the whole

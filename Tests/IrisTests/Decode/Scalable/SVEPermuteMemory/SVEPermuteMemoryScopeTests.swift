@@ -29,7 +29,7 @@ struct SVEPermuteMemoryScopeTests {
             0x8000_0000, // op0=0 bit31=1 — SME, not SVE memory
             0xD000_0000, // op0=0 tier, bit31=1
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).category != .sve,
+            #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -41,7 +41,7 @@ struct SVEPermuteMemoryScopeTests {
         for topByte: UInt32 in [0x84, 0x85, 0xA4, 0xA5, 0xC4, 0xC5, 0xE4, 0xE5] {
             for low: UInt32 in [0x000000, 0x004000, 0x123456, 0xFFFFFF] {
                 let encoding = (topByte << 24) | low
-                #expect(Iris.decode(encoding, features: .scalable).category == .sve,
+                #expect(Iris.decode(encoding).category == .sve,
                         "0x\(String(encoding, radix: 16)) memory must be scalable")
             }
         }
@@ -65,7 +65,7 @@ struct SVEPermuteMemoryScopeTests {
             (0x4520_F400, "rax1 (0x45)"),
         ]
         for (encoding, label) in owned {
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "\(label) must be claimed")
         }
     }
@@ -83,7 +83,7 @@ struct SVEPermuteMemoryScopeTests {
             (0xE400_0000, "store structured nregs=0 (0xE4)"),
         ]
         for (encoding, label) in holes {
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.mnemonic == .undefined, "\(label) must decode to UNDEFINED")
             #expect(draft.category == .sve, "\(label) must stay categorized as SVE")
             #expect(draft.operands.isEmpty, "\(label) must carry no operands")
@@ -123,7 +123,7 @@ struct SVEPermuteMemoryScopeAgreementTests {
     @Test func everyOwnedWordCarriesTheScalableCategoryAndItsRawEncoding() {
         for topByte in Self.memoryTopBytes + Self.computeTopBytes {
             Self.sweep(topByte: topByte) { encoding in
-                let draft = Iris.decode(encoding, at: 0x4000, features: .scalable)
+                let draft = Iris.decode(encoding, at: 0x4000)
                 #expect(draft.category == .sve)
                 #expect(draft.encoding == encoding)
                 #expect(draft.address == 0x4000)
@@ -137,7 +137,7 @@ struct SVEPermuteMemoryScopeAgreementTests {
         // reference assembler's silence for a rejected word).
         for topByte in Self.memoryTopBytes + Self.computeTopBytes {
             Self.sweep(topByte: topByte) { encoding in
-                let draft = Iris.decode(encoding, at: 0, features: .scalable)
+                let draft = Iris.decode(encoding, at: 0)
                 let text = draft.text
                 if draft.mnemonic == .undefined {
                     #expect(text == ".long 0x\(String(encoding, radix: 16))",

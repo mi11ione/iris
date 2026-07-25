@@ -141,7 +141,8 @@ enum SVEPredicateControlDecode {
 
     @inline(__always)
     static func decodePredicateLogical(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        let opc = UInt8((((e >> 23) & 1) << 3) | (((e >> 22) & 1) << 2) | (((e >> 9) & 1) << 1) | ((e >> 4) & 1))
+        let opcBits: UInt32 = (((e >> 23) & 1) << 3) | (((e >> 22) & 1) << 2) | (((e >> 9) & 1) << 1) | ((e >> 4) & 1)
+        let opc = UInt8(opcBits)
         if opc == 0b0111 { return undefined(e, a) } // SELS slot, unallocated
         let pm = UInt8((e >> 16) & 0xF)
         let pg = UInt8((e >> 10) & 0xF)

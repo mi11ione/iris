@@ -54,6 +54,17 @@ enum MSRImmediateDecode {
             let startStop = CRm & 1 // 1 → start, 0 → stop
             let target = CRm >> 1 // 01 → sm, 10 → za, 11 → both
             let mnemonic: Mnemonic = (startStop == 1) ? .smstart : .smstop
+            // These are the aliases of MSR SVCRSM / SVCRZA / SVCRSMZA, and
+            // the target bits say which PSTATE field the write lands on
+            // (ARM ARM C6, SMSTART/SMSTOP): SM for `sm`, ZA for `za`, both
+            // for the bare form. The transition is a scalable effect rather
+            // than a register write — PSTATE.SM and PSTATE.ZA are not in any
+            // register set — so it is recorded on `scalableEffect`, whose
+            // `writesZAEnable` already carries the architectural
+            // enable-and-zero of ZA.
+            var effect: ScalableEffect = []
+            if target & 0b01 != 0 { effect.insert(.writesStreamingMode) }
+            if target & 0b10 != 0 { effect.insert(.writesZAEnable) }
             // target carried as a small unsigned immediate the canonicalizer
             // maps to the "sm" / "za" suffix (3 = both → no suffix).
             return DecodedDraft(
@@ -62,6 +73,7 @@ enum MSRImmediateDecode {
                 mnemonic: mnemonic,
                 category: .branchesExceptionSystem,
                 operands: [.unsignedImmediate(value: UInt64(target), width: 2)],
+                scalableEffect: effect,
             )
         }
         // ALLINT (FEAT_NMI): op1=001, op2=000, CRm = 000x (imm = x).

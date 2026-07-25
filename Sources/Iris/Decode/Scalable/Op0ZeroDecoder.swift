@@ -37,11 +37,6 @@ struct Op0ZeroDecoder: FamilyDecoder, Sendable {
             return Self.amx.decode(encoding: encoding, address: address, features: features)
         }
         if isSMEEncoding(encoding) {
-            // The SME region (bit31=1) decodes only with the SME feature
-            // enabled; absent it, it reads as honest UNDEFINED.
-            guard features.contains(.sme) else {
-                return .undefined(at: address, encoding: encoding)
-            }
             return Self.sme.decode(encoding: encoding, address: address, features: features)
         }
         // Genuine op0=0 hole (non-UDF, non-AMX, non-SME) — UNDEFINED. UDF is

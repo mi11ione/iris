@@ -9,9 +9,16 @@
 // Digest: FNV-1a 64 over the per-word tuple (mnemonic raw, category
 // raw, branchClass raw, operand count, text hash) — text included for
 // EVERY word, no subsampling — accumulated per fixed-size chunk, then
-// folded over the ordered chunk digests. Order is fixed, so any decode
-// or rendering difference between passes (or between runs on the same
-// library version) changes the digest.
+// folded over the ordered chunk digests. Order is fixed, so any
+// difference in instruction IDENTITY or RENDERING between passes (or
+// between runs on the same library version) changes the digest.
+//
+// The tuple is deliberately identity-and-text: the semantic attributes
+// (register sets, flag effects, memory class and ordering, scalable
+// state) are owned by the `semantic` subcommand's per-mnemonic checkers,
+// which validate them against expectation tables rather than against a
+// digest that could only prove two runs agreed. A semantic-only change
+// therefore leaves this digest untouched by design.
 //
 // Decode runs at `.arm64e` features — the superset surface (the only
 // feature-gated tier is LDRAA/LDRAB, which plain features would leave

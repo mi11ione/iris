@@ -152,21 +152,27 @@ enum SME2ArithmeticDecode {
     }
 
     /// The `Zm` element index for an indexed accumulate form, per its layout.
+    ///
+    /// The arms are pinned to `UInt32` and narrowed once at the end. Left
+    /// as a switch of bare `UInt8(…)` conversions, the whole expression is
+    /// one constraint system over every integer type at once, which the
+    /// type checker solves slowly enough to time out on a cold CI host.
     @inline(__always)
     private static func accumIndex(_ e: UInt32, _ kind: IndexKind) -> UInt8 {
-        switch kind {
-        case .i1: UInt8((e >> 10) & 0x1)
-        case .i2: UInt8((e >> 10) & 0x3)
-        case .i2vt: UInt8(((e >> 10) & 0x1) << 1 | ((e >> 3) & 0x1))
-        case .i3s: UInt8(((e >> 10) & 0x3) << 1 | ((e >> 3) & 0x1))
-        case .i3L1: UInt8(((e >> 15) & 0x1) << 2 | ((e >> 10) & 0x3))
-        case .i3L2: UInt8(((e >> 10) & 0x3) << 1 | ((e >> 2) & 0x1))
-        case .i3LLd2: UInt8(((e >> 10) & 0x1) << 2 | ((e >> 1) & 0x3))
-        case .i4LL1: UInt8(((e >> 15) & 0x1) << 3 | ((e >> 10) & 0x7))
-        case .i4LL2: UInt8(((e >> 10) & 0x3) << 2 | ((e >> 1) & 0x3))
-        case .i4f8L1: UInt8(((e >> 15) & 0x1) << 3 | ((e >> 10) & 0x3) << 1 | ((e >> 3) & 0x1))
-        case .i4f8L2: UInt8(((e >> 10) & 0x3) << 2 | ((e >> 2) & 0x3))
+        let bits: UInt32 = switch kind {
+        case .i1: (e >> 10) & 0x1
+        case .i2: (e >> 10) & 0x3
+        case .i2vt: ((e >> 10) & 0x1) << 1 | ((e >> 3) & 0x1)
+        case .i3s: ((e >> 10) & 0x3) << 1 | ((e >> 3) & 0x1)
+        case .i3L1: ((e >> 15) & 0x1) << 2 | ((e >> 10) & 0x3)
+        case .i3L2: ((e >> 10) & 0x3) << 1 | ((e >> 2) & 0x1)
+        case .i3LLd2: ((e >> 10) & 0x1) << 2 | ((e >> 1) & 0x3)
+        case .i4LL1: ((e >> 15) & 0x1) << 3 | ((e >> 10) & 0x7)
+        case .i4LL2: ((e >> 10) & 0x3) << 2 | ((e >> 1) & 0x3)
+        case .i4f8L1: ((e >> 15) & 0x1) << 3 | ((e >> 10) & 0x3) << 1 | ((e >> 3) & 0x1)
+        case .i4f8L2: ((e >> 10) & 0x3) << 2 | ((e >> 2) & 0x3)
         }
+        return UInt8(bits)
     }
 
     /// Look up a ZA-accumulate record identity by its (mask,value),

@@ -4,7 +4,7 @@
 // SVE memory addressing operand — contiguous ([Xn, #imm, mul vl] /
 // [Xn, Xm, lsl #k]) and gather/scatter ([Xn, Zm.<T>, extend #scale] /
 // [Zn.<T>, #imm]). Records operand structure only; the effective address is
-// Piece 4's. Displacement is Int32 (SVE addressing immediates are small),
+// the caller's. Displacement is Int32 (SVE addressing immediates are small),
 // keeping Operand within its size bound.
 
 /// An SVE memory-addressing operand — contiguous or gather/scatter.

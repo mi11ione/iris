@@ -107,7 +107,7 @@ struct CensusTests {
 
     @Test func undefinedWordsCount() {
         var census = Census()
-        census.add(InstructionStream(bytes: [0x00, 0x00, 0x00, 0x04]))
+        census.add(InstructionStream(bytes: [0x00, 0x00, 0x00, 0x02]))
         #expect(census.undefinedWords == 1)
         #expect(census.totalWords == 1)
         #expect(census.mnemonicCounts.isEmpty)

@@ -111,7 +111,7 @@ public enum SVEPredicateControlSemanticChecker {
 /// Per-mnemonic / per-operand SVE predicate-control semantic-attribute
 /// lookups. Pure functions over the decoded mnemonic and operand list.
 public enum SVEPredicateControlSemanticAttributes {
-    /// Architecturally-correct ``FlagEffect``: `.nzcv` for the S-suffixed
+    /// Architecturally-correct `FlagEffect`: `.nzcv` for the S-suffixed
     /// forms + PTEST/PFIRST/PNEXT/all WHILE; CTERM writes N,V and reads C
     /// (its own set); everything else `.none`.
     @_effects(readonly)
@@ -130,7 +130,7 @@ public enum SVEPredicateControlSemanticAttributes {
         }
     }
 
-    /// Architecturally-correct ``ScalableEffect``. `readsStreamingMode` is set
+    /// Architecturally-correct `ScalableEffect`. `readsStreamingMode` is set
     /// for every in-scope form except CTERM and the SVL-form twins (RDSVL/
     /// ADDSVL/ADDSPL). `partialWrite` is set for exactly BRKA/M, BRKB/M,
     /// PFIRST, MOVPRFX/M — the four lane-preserving RMW forms.

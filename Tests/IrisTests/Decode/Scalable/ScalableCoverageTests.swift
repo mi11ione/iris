@@ -26,7 +26,7 @@ struct ScalableCoverageTests {
 
     @Test func textRoutesThroughEveryScalableRegion() {
         for c in Self.regionCases {
-            let inst = decode(c.word, at: 0, features: .scalable)
+            let inst = decode(c.word, at: 0)
             #expect(inst.text == c.text, "0x\(String(c.word, radix: 16)): got `\(inst.text)`")
         }
     }
@@ -34,12 +34,12 @@ struct ScalableCoverageTests {
     @Test func scalableTierHolesRenderLongDirective() {
         // An in-scope but unallocated word: category stays .sve/.sme, mnemonic
         // is the UNDEFINED sentinel, and the router renders the raw `.long`.
-        let sve = decode(0x2540_4210, at: 0, features: .scalable)
+        let sve = decode(0x2540_4210, at: 0)
         #expect(sve.category == .sve)
         #expect(sve.isUndefined)
         #expect(sve.text == ".long 0x25404210")
 
-        let sme = decode(0x802D_E5FA, at: 0, features: .scalable)
+        let sme = decode(0x802D_E5FA, at: 0)
         #expect(sme.category == .sme)
         #expect(sme.isUndefined)
         #expect(sme.text == ".long 0x802de5fa")
@@ -57,15 +57,15 @@ struct ScalableCoverageTests {
     @Test func scalableProjectionsReadBackOnBothTiers() {
         // A predicated SVE op populates scalableReads (governing predicate) and
         // scalableEffect (streaming-mode); an SME outer product writes ZA.
-        let subr = decode(0x04C3_03E1, at: 0, features: .scalable)
+        let subr = decode(0x04C3_03E1, at: 0)
         #expect(!subr.scalableReads.isEmpty)
         #expect(subr.scalableEffect != .none)
-        let fmopa = decode(0x8080_FC00, at: 0, features: .scalable)
+        let fmopa = decode(0x8080_FC00, at: 0)
         #expect(!fmopa.scalableWrites.isEmpty)
 
         // The borrowed session tier mirrors the three projections.
         let bytes: [UInt8] = [0xE1, 0x03, 0xC3, 0x04] // 0x04c303e1, little-endian
-        let stream = InstructionStream(bytes: bytes, at: 0, features: .scalable)
+        let stream = InstructionStream(bytes: bytes, at: 0)
         var sawReads = false, sawEffect = false
         stream.withSession { session in
             for view in session {
@@ -123,7 +123,7 @@ struct ScalableScopePredicateTotalityTests {
         #expect(!isSVECounterPredicateEncoding(nop))
         #expect(!isSMECoreEncoding(nop))
         // And the decoded record agrees it is not scalable.
-        #expect(decode(nop, features: .scalable).category == .branchesExceptionSystem)
+        #expect(decode(nop).category == .branchesExceptionSystem)
     }
 
     /// The 0x04 top byte is the coarse "integer" region, but SVE-predicate owns

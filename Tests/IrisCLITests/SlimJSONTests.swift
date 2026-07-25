@@ -95,7 +95,7 @@ struct SlimJSONTests {
     }
 
     @Test func slimDataAndUndefinedWitnessesAppearOnlyWhenTrue() throws {
-        let undefined = try #require(object(runCLI(["decode", "--json", "--slim", "0x04000000"]).stdout))
+        let undefined = try #require(object(runCLI(["decode", "--json", "--slim", "0x02000000"]).stdout))
         #expect(undefined["isUndefined"] as? Bool == true)
         #expect(undefined["isData"] == nil)
 
@@ -198,5 +198,18 @@ struct SlimJSONTests {
         let full = runCLI(["functions", "--json", cliFixturePath("strings-arm64")]).stdout
         let slim = runCLI(["functions", "--json", "--slim", cliFixturePath("strings-arm64")]).stdout
         #expect(slim.utf8.count < full.utf8.count)
+    }
+
+    @Test func slimKeepsScalableStateVerbatim() throws {
+        // The scalable fields are already absent-when-empty in the default
+        // form, so slim has nothing to drop: what survives is identical,
+        // and a base-ISA line still carries none of them.
+        let slim = try #require(object(runCLI(["decode", "--json", "--slim", "0x04C303E1"]).stdout))
+        let full = try #require(object(runCLI(["decode", "--json", "0x04C303E1"]).stdout))
+        #expect((slim["scalableReads"] as? [String: Any])?["predicates"] as? [String] == ["p0"])
+        #expect(slim["scalableEffect"] as? [String] == full["scalableEffect"] as? [String])
+
+        let base = try #require(object(runCLI(["decode", "--json", "--slim", "0xd503201f"]).stdout))
+        #expect(base["scalableReads"] == nil && base["scalableEffect"] == nil)
     }
 }

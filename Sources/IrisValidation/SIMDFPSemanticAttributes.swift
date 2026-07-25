@@ -151,7 +151,7 @@ public enum SIMDFPSemanticChecker {
 /// Per-mnemonic semantic-attribute lookups. Pure functions; constant-
 /// folded at module load.
 public enum SIMDFPSemanticAttributes {
-    /// The architecturally-correct ``FlagEffect`` for a SIMD/FP mnemonic.
+    /// The architecturally-correct `FlagEffect` for a SIMD/FP mnemonic.
     @_effects(readonly)
     public static func expectedFlagEffect(for m: Mnemonic) -> FlagEffect {
         switch m {
@@ -169,7 +169,7 @@ public enum SIMDFPSemanticAttributes {
         }
     }
 
-    /// The architecturally-correct ``MemoryAccess`` for a SIMD/FP
+    /// The architecturally-correct `MemoryAccess` for a SIMD/FP
     /// mnemonic.
     @_effects(readonly)
     public static func expectedMemoryAccess(for m: Mnemonic) -> MemoryAccess {
@@ -185,7 +185,7 @@ public enum SIMDFPSemanticAttributes {
         }
     }
 
-    /// The architecturally-correct ``MemoryOrdering`` for a SIMD/FP
+    /// The architecturally-correct `MemoryOrdering` for a SIMD/FP
     /// mnemonic. Only the LRCPC2 SIMD forms (STLUR/LDAPUR) carry ordering.
     @_effects(readonly)
     public static func expectedMemoryOrdering(for m: Mnemonic) -> MemoryOrdering {

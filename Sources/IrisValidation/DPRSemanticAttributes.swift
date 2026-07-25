@@ -142,7 +142,7 @@ public enum DPRSemanticChecker {
 /// Per-mnemonic semantic-attribute lookups.
 /// Pure functions; constant-folded at module load.
 public enum DPRSemanticAttributes {
-    /// The architecturally-correct ``FlagEffect`` for a DPR record — both the
+    /// The architecturally-correct `FlagEffect` for a DPR record — both the
     /// flags written and the flags read. Carry-consuming arithmetic (the
     /// ADC/SBC family) reads C; conditional compare and select read the full
     /// condition; RMIF writes only its mask-selected flags and SETF8/SETF16

@@ -13,7 +13,7 @@
 // `.firstFaulting`/`.nonFaulting` + FFR read/write for LDFF1/LDNF1 and
 // `.nonTemporal` for LDNT1/STNT1. `flagEffect .none`, `readsStreamingMode`
 // set, loads are full-writes (not partialWrite). Addresses are recorded as
-// operand structure only — never computed (Piece 4).
+// operand structure only — never computed.
 
 extension SVEPermuteMemoryDecode {
     // MARK: memory region router

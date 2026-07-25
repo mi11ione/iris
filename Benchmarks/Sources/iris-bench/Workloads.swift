@@ -8,10 +8,10 @@
 // then one SplitMix64 word from the run's seed. This mirrors the
 // implementation-gate harness recipe ("real-prologue pattern
 // interleaved 3:1 with seeded random words") at a larger default size.
-// The random quarter exercises the undefined/exotic paths (≈35% of
-// uniform words decode defined per the exhaustive 2^32 census), the
-// pattern quarters exercise
-// hot real-code paths; the blend decodes ≈84% defined. Features:
+// The random quarter exercises the undefined/exotic paths (≈40% of
+// uniform words decode defined per the exhaustive 2^32 census:
+// 1,732,903,592 of 4,294,967,296), the pattern quarters exercise
+// hot real-code paths; the blend decodes ≈85% defined. Features:
 // `.arm64e` throughout (the parity and exhaustive instruments'
 // configuration).
 
@@ -374,7 +374,7 @@ func benchSessionWalk(stream: InstructionStream, config: BenchConfig) -> BenchRe
 }
 
 /// Text rendering throughput: `.text` for every `textStride`-th record
-/// across the whole stream (mixed ≈84% defined / 16% `.long` sentinel);
+/// across the whole stream (mixed ≈85% defined / 15% `.long` sentinel);
 /// metric = rendered instructions / second.
 func benchText(stream: InstructionStream, config: BenchConfig) -> BenchResult {
     let sampleCount = (stream.count + config.textStride - 1) / config.textStride

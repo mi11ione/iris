@@ -12,7 +12,7 @@ import Iris
 /// diagnostics, never error messages.
 public enum CLI {
     /// The tool's release version, matching the package tag.
-    public static let version = "0.4.0"
+    public static let version = "0.6.0"
 
     /// Exit code for success.
     public static let exitSuccess: Int32 = 0

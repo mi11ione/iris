@@ -26,10 +26,10 @@ struct ListingRenderingTests {
     }
 
     @Test func undefinedWordRendersAsSentinel() {
-        // 0x04000000 sits in the SVE space — honest UNDEFINED at v1;
-        // the note separates it from a data-in-code .long.
-        let run = runCLI(["0x04000000"])
-        #expect(run.stdout == "0: 04000000  .long 0x4000000 ; undefined\n")
+        // 0x02000000 sits in op0=1, architecturally unallocated — honest
+        // UNDEFINED; the note separates it from a data-in-code .long.
+        let run = runCLI(["0x02000000"])
+        #expect(run.stdout == "0: 02000000  .long 0x2000000 ; undefined\n")
     }
 
     @Test func markerLineWithoutContextOmitsKind() throws {

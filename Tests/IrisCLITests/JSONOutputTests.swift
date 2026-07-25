@@ -137,7 +137,7 @@ struct JSONOutputTests {
     }
 
     @Test func undefinedWordLine() throws {
-        let run = runCLI(["--json", "0x04000000"])
+        let run = runCLI(["--json", "0x02000000"])
         let fields = try #require(object(run.stdout.trimmingCharacters(in: .newlines)))
         #expect(fields["isUndefined"] as? Bool == true)
         #expect(fields["category"] as? String == "undefined")
@@ -224,5 +224,76 @@ struct JSONOutputTests {
     @Test func jsonModeNeverColors() {
         let run = runCLI(["--json", "--color", "always", "0xd503201f"], tty: true)
         #expect(!run.stdout.contains("\u{1B}"))
+    }
+
+    // MARK: Scalable state
+
+    @Test func baseISALinesCarryNoScalableFields() throws {
+        // The scalable fields are absent-when-empty, so every pre-scalable
+        // consumer sees a byte-identical line.
+        let line = try #require(object(runCLI(["--json", "0xd503201f"]).stdout))
+        #expect(line["scalableReads"] == nil)
+        #expect(line["scalableWrites"] == nil)
+        #expect(line["scalableEffect"] == nil)
+    }
+
+    @Test func predicatedSVEWritesItsGoverningPredicate() throws {
+        // subr z1.d, p0/m, z1.d, z31.d — p0 governs, so the write is
+        // partial and the record says so.
+        let line = try #require(object(runCLI(["--json", "0x04C303E1"]).stdout))
+        let reads = try #require(line["scalableReads"] as? [String: Any])
+        #expect(reads["predicates"] as? [String] == ["p0"])
+        #expect(line["scalableWrites"] == nil)
+        #expect(line["scalableEffect"] as? [String] == ["partial-write", "reads-streaming-mode"])
+    }
+
+    @Test func smeOuterProductCarriesItsZAMask() throws {
+        // fmopa za0.s — tile 0 at .S is the .Q positions {0,4,8,12}, the
+        // 0x1111 residue mask, read and written alike.
+        let line = try #require(object(runCLI(["--json", "0x8080FC00"]).stdout))
+        let reads = try #require(line["scalableReads"] as? [String: Any])
+        let writes = try #require(line["scalableWrites"] as? [String: Any])
+        #expect(reads["predicates"] as? [String] == ["p7"])
+        #expect(reads["za"] as? String == "0x1111")
+        #expect(writes["za"] as? String == "0x1111")
+    }
+
+    @Test func faultingLoadsCarryFFRAndTheirFaultClass() throws {
+        // A first-fault gather reads and writes FFR; the fault class is the
+        // effect flag that tells the two apart.
+        let firstFault = try #require(object(runCLI(["--json", "0x844F7FC0"]).stdout))
+        #expect((firstFault["scalableReads"] as? [String: Any])?["ffr"] as? Bool == true)
+        #expect((firstFault["scalableWrites"] as? [String: Any])?["ffr"] as? Bool == true)
+        #expect((firstFault["scalableEffect"] as? [String])?.contains("first-faulting") == true)
+
+        let nonFault = try #require(object(runCLI(["--json", "0xA410A000"]).stdout))
+        #expect((nonFault["scalableEffect"] as? [String])?.contains("non-faulting") == true)
+
+        let nonTemporal = try #require(object(runCLI(["--json", "0xA400E000"]).stdout))
+        #expect((nonTemporal["scalableEffect"] as? [String])?.contains("non-temporal") == true)
+    }
+
+    @Test func zt0AppearsOnBothSidesOfMOVT() throws {
+        let fromZT0 = try #require(object(runCLI(["--json", "0xC04C03E0"]).stdout))
+        #expect((fromZT0["scalableReads"] as? [String: Any])?["zt0"] as? Bool == true)
+
+        let toZT0 = try #require(object(runCLI(["--json", "0xC04E03E0"]).stdout))
+        #expect((toZT0["scalableWrites"] as? [String: Any])?["zt0"] as? Bool == true)
+    }
+
+    @Test func scalableRenderersCoverTheirWholeVocabulary() {
+        #expect(JSONText.scalableSet(.empty) == nil)
+        #expect(JSONText.scalableEffectNames(.none).isEmpty)
+        // Every flag, in bit order. The two streaming-mode transition flags
+        // have no decoder that sets them today, so they are pinned here on a
+        // built value rather than on a word.
+        let all: ScalableEffect = [
+            .partialWrite, .readsStreamingMode, .writesStreamingMode, .writesZAEnable,
+            .firstFaulting, .nonFaulting, .nonTemporal,
+        ]
+        #expect(JSONText.scalableEffectNames(all) == [
+            "partial-write", "reads-streaming-mode", "writes-streaming-mode",
+            "writes-za-enable", "first-faulting", "non-faulting", "non-temporal",
+        ])
     }
 }

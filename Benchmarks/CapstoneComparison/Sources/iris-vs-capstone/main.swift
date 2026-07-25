@@ -10,7 +10,7 @@
 //
 // - Same deterministic buffer for every contender (byte-identical to
 //   the iris-bench recipe: 3:1 llvm-mc-verified prologue pattern :
-//   SplitMix64 random words; ≈84% defined).
+//   SplitMix64 random words; ≈85% defined).
 // - `capstone-text`: cs_disasm_iter, detail OFF, SKIPDATA ON (4-byte
 //   steps on AArch64 — undecodable words become `.byte` pseudo-insns,
 //   the closest analogue of Iris's honest-UNDEFINED `.long` records).

@@ -34,6 +34,12 @@
 - ``semanticReads``
 - ``semanticWrites``
 
+### Scalable state (SVE / SME)
+
+- ``scalableReads``
+- ``scalableWrites``
+- ``scalableEffect``
+
 ### Condition flags
 
 - ``readsFlags``

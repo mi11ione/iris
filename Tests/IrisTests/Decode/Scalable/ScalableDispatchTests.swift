@@ -4,7 +4,7 @@
 import Iris
 import Testing
 
-private func dispatch(_ encoding: UInt32, features: Features = .scalable) -> Instruction {
+private func dispatch(_ encoding: UInt32, features: Features = .base) -> Instruction {
     Iris.decode(encoding, at: 0x1_0000_8000, features: features)
 }
 
@@ -145,17 +145,17 @@ struct FamilyAttributionTests {
     @Test func everyRepresentativeEncodingReachesItsCategory() {
         // One representative encoding per category the dispatcher can produce.
         let rows: [(encoding: UInt32, category: Category, features: Features)] = [
-            (0x9100_0000, .dataProcessingImmediate, .scalable), // add x0, x0, #0
-            (0x1400_0000, .branchesExceptionSystem, .scalable), // b .
-            (0x8B02_0020, .dataProcessingRegister, .scalable), // add x0, x1, x2
-            (0xF940_0000, .loadsAndStores, .scalable), // ldr x0, [x0]
-            (0x1E62_2820, .simdAndFP, .scalable), // fadd d0, d1, d2
-            (0x4E28_4800, .crypto, .scalable), // aese
-            (0xDAC1_0020, .pointerAuthentication, [.scalable, .arm64e]), // pacia
-            (0x0020_1000, .amx, .scalable), // amx
-            (0x9182_0C5F, .memoryTagging, .scalable), // addg
-            (0x04A0_0000, .sve, .scalable), // sve
-            (0x8080_0000, .sme, .scalable), // sme
+            (0x9100_0000, .dataProcessingImmediate, .base), // add x0, x0, #0
+            (0x1400_0000, .branchesExceptionSystem, .base), // b .
+            (0x8B02_0020, .dataProcessingRegister, .base), // add x0, x1, x2
+            (0xF940_0000, .loadsAndStores, .base), // ldr x0, [x0]
+            (0x1E62_2820, .simdAndFP, .base), // fadd d0, d1, d2
+            (0x4E28_4800, .crypto, .base), // aese
+            (0xDAC1_0020, .pointerAuthentication, .arm64e), // pacia
+            (0x0020_1000, .amx, .base), // amx
+            (0x9182_0C5F, .memoryTagging, .base), // addg
+            (0x04A0_0000, .sve, .base), // sve
+            (0x8080_0000, .sme, .base), // sme
         ]
         for row in rows {
             let category = dispatch(row.encoding, features: row.features).category
@@ -177,12 +177,13 @@ struct FamilyAttributionTests {
         #expect(dispatch(0x0000_1234).category == .branchesExceptionSystem)
     }
 
-    @Test func theScalableTiersAreGatedOnTheirFeatures() {
-        // Absent the features, the reclaimed tiers decode to nothing rather
-        // than to a plausible-looking wrong answer.
-        #expect(dispatch(0x04A0_0000, features: .base).category != .sve)
-        #expect(dispatch(0x8080_0000, features: .base).category != .sme)
-        #expect(dispatch(0x04A0_0000, features: .sve).category == .sve)
-        #expect(dispatch(0x8080_0000, features: .sme).category == .sme)
+    @Test func theScalableTiersNeedNoFeatureFlag() {
+        // The scalable tiers carry no `Features` gate: no other instruction
+        // claims their encoding space, so there is nothing to disambiguate
+        // and nothing for a caller to opt into. Plain ARM64 decodes them.
+        #expect(dispatch(0x04A0_0000, features: .base).category == .sve)
+        #expect(dispatch(0x8080_0000, features: .base).category == .sme)
+        #expect(dispatch(0x04A0_0000, features: .arm64e).category == .sve)
+        #expect(dispatch(0x8080_0000, features: .arm64e).category == .sme)
     }
 }

@@ -1,47 +1,26 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
 | Version | Supported |
 | --- | --- |
 | latest 0.x release | ✅ |
 | anything older | ❌ |
 
-During the 0.x window only the most recent release receives security fixes.
-From 1.0 this table will widen to the current major version.
+During 0.x only the most recent release gets security fixes. From 1.0 this widens to the current major version.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-Report vulnerabilities privately through [GitHub's private vulnerability
-reporting](https://github.com/mi11ione/iris/security/advisories/new) on this
-repository (Security tab → "Report a vulnerability"). Please do not open a
-public issue for anything you believe is exploitable. For everything else the
-regular issue tracker is the right place.
+Report privately through [GitHub's private vulnerability reporting](https://github.com/mi11ione/iris/security/advisories/new) (Security tab → "Report a vulnerability"). Please don't open a public issue for anything you believe is exploitable.
 
-You can expect an acknowledgement within a few days. Confirmed issues are fixed
-in the next release, credited to the reporter unless anonymity is requested.
+Expect an acknowledgement within a few days. Confirmed issues are fixed in the next release and credited to the reporter unless you'd rather stay anonymous.
 
-## What counts as a security issue here
+## What counts as a security issue
 
-Iris is a disassembler: it reads attacker-controllable bytes (Mach-O files,
-raw byte strings) and must stay safe no matter what they contain. The library's
-contract is total, crash-free decode. A fuzzed or adversarial input must
-produce diagnostics, never a crash or undefined behavior (the documented
-totality guarantee, described in *Scope & guarantees* in the DocC
-documentation). Treat these as security issues, in scope for private reporting:
+iris reads attacker-controllable bytes and must stay safe whatever they contain. The contract is total, crash-free decode: hostile input produces diagnostics, never a crash or undefined behavior. In scope:
 
-- **Any crash on hostile input.** A Mach-O file or `--bytes` string that makes
-  the `iris` CLI or the `Iris` library trap, SIGSEGV/SIGBUS, or abort violates
-  the never-crash contract and is a vulnerability.
-- **Memory unsafety.** Any input that causes reads or writes outside the
-  mapped file window or other undefined behavior.
-- **Resource-exhaustion amplification.** Crafted small inputs that cause
-  unbounded memory growth or non-terminating parsing (beyond the file's own
-  size driving proportional work).
+- **Any crash on hostile input** — a Mach-O file or `--bytes` string that makes the CLI or the library trap, SIGSEGV/SIGBUS, or abort.
+- **Memory unsafety** — reads or writes outside the mapped file window, or any other undefined behavior.
+- **Resource-exhaustion amplification** — small crafted inputs causing unbounded memory growth or non-terminating parsing, beyond the file's own size driving proportional work.
 
-Out of scope for the security process (file a regular issue instead):
-incorrect disassembly text or semantics for some encoding (a correctness bug,
-which the parity harness exists for), crashes of the development-only
-tools (`iris-parity`, benchmarks) on their own inputs, and anything requiring
-a modified build. Iris performs no network access and never executes the code
-it disassembles. Reports assuming otherwise are likely out of scope.
+Out of scope, file a regular issue instead: wrong disassembly text or semantics (a correctness bug — that's what the parity harness is for), crashes of the development-only tools (`iris-parity`, benchmarks) on their own inputs, and anything requiring a modified build. iris performs no network access and never executes the code it disassembles.

@@ -29,13 +29,8 @@ struct SVEDecoder: FamilyDecoder, Sendable {
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features: Features,
+        encoding: UInt32, address: UInt64, features _: Features,
     ) -> DecodedDraft {
-        // The op0=2 SVE tier decodes only when the SVE feature is enabled;
-        // absent it, the tier reads as honest UNDEFINED — its pre-SVE state.
-        guard features.contains(.sve) else {
-            return .undefined(at: address, encoding: encoding)
-        }
         // SVE predicate & control owns a precise slice of the tier, spanning
         // two of the coarse encoding regions — the predicate region and a
         // carve-out of the integer region — so it is gated by an exact

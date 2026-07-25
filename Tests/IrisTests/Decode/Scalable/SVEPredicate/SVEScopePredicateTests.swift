@@ -25,7 +25,7 @@ struct SVEScopePredicateTests {
             0x4E20_1C00, // advanced SIMD
             0x2400_0000 | 0x0200_0000, // op0=3, not the SVE tier
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).category != .sve,
+            #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -60,7 +60,7 @@ struct SVEScopePredicateTests {
             (0x0450_2C20, "movprfx predicated"),
         ]
         for (encoding, label) in owned {
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "\(label) must be claimed")
         }
     }
@@ -69,17 +69,17 @@ struct SVEScopePredicateTests {
         // CTERM shares bits 15:10 with nothing else, but its bit-23 value is
         // part of the opcode: with bit 23 clear the slot is unallocated space,
         // not a CTERM the decoder owns.
-        #expect(Iris.decode(0x25A5_20C0, features: .scalable).mnemonic != .undefined)
-        #expect(Iris.decode(0x2565_20C0, features: .scalable).mnemonic == .undefined,
+        #expect(Iris.decode(0x25A5_20C0).mnemonic != .undefined)
+        #expect(Iris.decode(0x2565_20C0).mnemonic == .undefined,
                 "bit 23 clear is unallocated space")
     }
 
     @Test func theMovprfxUnpredicatedSlotNeedsBothLowOpcodeBits() {
         // bits 15:11 = 10111 and bit 10 = 1 pin the unpredicated prefix; either
         // bit clear is a different integer encoding, never a MOVPRFX.
-        #expect(Iris.decode(0x0420_BC20, features: .scalable).mnemonic == .movprfx)
-        #expect(Iris.decode(0x0420_B820, features: .scalable).mnemonic != .movprfx) // bit 10 clear
-        #expect(Iris.decode(0x0420_B420, features: .scalable).mnemonic != .movprfx) // bit 11 clear
+        #expect(Iris.decode(0x0420_BC20).mnemonic == .movprfx)
+        #expect(Iris.decode(0x0420_B820).mnemonic != .movprfx) // bit 10 clear
+        #expect(Iris.decode(0x0420_B420).mnemonic != .movprfx) // bit 11 clear
     }
 
     @Test func theArchitecturalHolesStayInScopeAndDecodeToUndefined() {
@@ -95,7 +95,7 @@ struct SVEScopePredicateTests {
             (0x04FF_5020, "rdvl with the pl bit set"),
         ]
         for (encoding, label) in holes {
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.mnemonic == .undefined, "\(label) must decode to UNDEFINED")
             #expect(draft.category == .sve, "\(label) must stay categorized as SVE")
         }
@@ -130,7 +130,7 @@ struct SVEPredicateControlScopeAgreementTests {
     @Test func everyOwnedWordCarriesTheScalableCategoryAndItsRawEncoding() {
         for topByte: UInt32 in [0x04, 0x25] {
             Self.sweep(topByte: topByte) { encoding in
-                let draft = Iris.decode(encoding, at: 0x4000, features: .scalable)
+                let draft = Iris.decode(encoding, at: 0x4000)
                 #expect(draft.category == .sve)
                 #expect(draft.encoding == encoding)
                 #expect(draft.address == 0x4000)

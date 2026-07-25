@@ -47,7 +47,7 @@ struct SVEDecoderRegistrationTests {
     @Test func everyClassificationBitCombinationIsScalable() {
         for row in sveClassificationBits {
             let encoding = sveEncoding(topBits: row.topBits, bit24: row.bit24)
-            #expect(Iris.decode(encoding, features: .scalable).category == .sve, "\(row.owner)")
+            #expect(Iris.decode(encoding).category == .sve, "\(row.owner)")
         }
     }
 
@@ -59,7 +59,7 @@ struct SVEDecoderRegistrationTests {
         for row in sveClassificationBits {
             for low: UInt32 in [0x000000, 0x000001, 0x0FFFFF, 0xFFFFFF] {
                 let encoding = sveEncoding(topBits: row.topBits, bit24: row.bit24, low: low)
-                #expect(Iris.decode(encoding, features: .scalable).category == .sve,
+                #expect(Iris.decode(encoding).category == .sve,
                         "\(row.owner): low bits \(String(low, radix: 16)) left the tier")
             }
         }
@@ -70,7 +70,7 @@ struct SVEDecoderRegistrationTests {
         // another family whatever its low bits look like.
         for encoding: UInt32 in [0x1400_0000, 0x8B02_0020, 0xD503_47FF, 0xF900_0000] {
             #expect((encoding >> 25) & 0xF != 0b0010, "fixture must be a non-op0=2 word")
-            #expect(Iris.decode(encoding, features: .scalable).category != .sve,
+            #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -111,7 +111,7 @@ struct SVEDecoderDecodeTests {
     @Test func everySubRegionProducesAWellFormedUndefinedRecord() {
         for row in Self.undefinedWitnesses {
             let encoding = sveEncoding(topBits: row.topBits, bit24: row.bit24, low: row.low)
-            let draft = Iris.decode(encoding, at: 0x1_0000_8000, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0x1_0000_8000)
             #expect(draft.category == .sve)
             #expect(draft.mnemonic == .undefined)
             #expect(draft.encoding == encoding, "raw encoding must be preserved")
@@ -131,20 +131,20 @@ struct SVEDecoderDecodeTests {
     @Test func aClaimedEncodingReachesItsGroupDecoder() {
         // The predicate & control group spans two of the tier's regions, so a
         // word is claimed from either side and decodes into a real record.
-        let draft = Iris.decode(0x2518_E3E0, at: 0x1_0000_8000, features: .scalable)
+        let draft = Iris.decode(0x2518_E3E0, at: 0x1_0000_8000)
         #expect(draft.mnemonic == .ptrue)
         #expect(draft.category == .sve)
         #expect(draft.address == 0x1_0000_8000)
 
         // …and it works from the other region the group spans, too.
-        let prefix = Iris.decode(0x0420_BC20, at: 0, features: .scalable)
+        let prefix = Iris.decode(0x0420_BC20, at: 0)
         #expect(prefix.mnemonic == .movprfx)
         #expect(prefix.category == .sve)
     }
 
     @Test func decodePreservesTheAddressItIsGiven() {
         for address: UInt64 in [0, 0x4000, 0x1_0000_8000, UInt64.max & ~3] {
-            let draft = Iris.decode(0x04A0_0000, at: address, features: .scalable)
+            let draft = Iris.decode(0x04A0_0000, at: address)
             #expect(draft.address == address)
         }
     }

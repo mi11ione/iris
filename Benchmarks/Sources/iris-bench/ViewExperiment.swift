@@ -65,6 +65,17 @@ func operandTag(_ op: Operand) -> UInt64 {
     case .amxUnknown: 17
     case .shiftAmount: 18
     case .pageLabel: 19
+    case .scalableVector: 20
+    case .scalablePredicate: 21
+    case .scalableVectorGroup: 22
+    case .predicateGroup: 23
+    case .zaTile: 24
+    case .zaTileSlice: 25
+    case .zaArrayVector: 26
+    case .zt0: 27
+    case .scalableMemory: 28
+    case .svePredicatePattern: 29
+    case .vectorLengthMultiplier: 30
     }
 }
 

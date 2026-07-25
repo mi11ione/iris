@@ -9,10 +9,17 @@
 /// belong to an extension absent from the set decode as honest UNDEFINED
 /// records — never a plausible-looking wrong answer.
 ///
+/// Most of the instruction set needs no flag: NEON and floating point,
+/// crypto, MTE, the atomics tiers, Apple's AMX coprocessor, and the
+/// scalable tiers (SVE/SVE2 and SME/SME2) all decode unconditionally.
+/// A flag exists only where the same encoding space means different
+/// things on different targets, which today is the ARM64E load tier
+/// alone.
+///
 /// Raw-value bits are assigned in declaration order and are never reused
 /// or renumbered, so persisted `rawValue`s stay meaningful across
-/// releases. Future extensions (SME, SVE, …) arrive as new option
-/// members; adding one breaks no source, no layout, and no semantics.
+/// releases. Bits 1 and 2 held the retired `sve` and `sme` flags and are
+/// permanently retired with them.
 @frozen
 public struct Features: OptionSet, Sendable, Hashable {
     /// Raw option bits. Bits are assigned in declaration order and never
@@ -35,22 +42,7 @@ public struct Features: OptionSet, Sendable, Hashable {
     /// BRAA/RETAA) decode regardless of this flag.
     public static let pointerAuthentication = Features(rawValue: 1 << 0)
 
-    /// Scalable Vector Extension (SVE / SVE2 and the SVE2.1+ tiers). Gates
-    /// the `op0=0b0010` scalable-vector encoding tier; absent, those words
-    /// decode as honest UNDEFINED.
-    public static let sve = Features(rawValue: 1 << 1)
-
-    /// Scalable Matrix Extension (SME / SME2). Gates the `op0=0b0000`
-    /// bit31=1 streaming/`ZA` region; absent, those words decode as honest
-    /// UNDEFINED. SME implies its shared SVE streaming state, so enabling
-    /// ``sme`` also enables ``sve``-tier decoding through ``scalable``.
-    public static let sme = Features(rawValue: 1 << 2)
-
     /// Target-flavor preset: everything an arm64e slice implies.
     /// Today identical to ``pointerAuthentication``.
     public static let arm64e: Features = .pointerAuthentication
-
-    /// Preset enabling both scalable tiers (SVE and SME). The spelling a
-    /// caller uses to decode the full scalable surface.
-    public static let scalable: Features = [.sve, .sme]
 }

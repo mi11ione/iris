@@ -43,7 +43,8 @@ extension SVEFloatingPointDecode {
         let mnemonic: Mnemonic = bf16
             ? (subtract ? (top ? .bfmlslt : .bfmlslb) : (top ? .bfmlalt : .bfmlalb))
             : (subtract ? (top ? .fmlslt : .fmlslb) : (top ? .fmlalt : .fmlalb))
-        let lane = UInt8(((e >> 18) & 0b100) | ((e >> 18) & 0b010) | ((e >> 11) & 0b001))
+        let laneBits: UInt32 = ((e >> 18) & 0b100) | ((e >> 18) & 0b010) | ((e >> 11) & 0b001)
+        let lane = UInt8(laneBits)
         let da = zd(e), n = zn(e)
         let m = UInt8((e >> 16) & 0b111)
         return DecodedDraft(
@@ -115,7 +116,8 @@ extension SVEFloatingPointDecode {
         } else {
             // H destination: 3-bit index spanning bits[20:19] and bit11.
             dest = .h
-            lane = UInt8(((e >> 18) & 0b100) | ((e >> 18) & 0b010) | ((e >> 11) & 0b001))
+            let laneBits: UInt32 = ((e >> 18) & 0b100) | ((e >> 18) & 0b010) | ((e >> 11) & 0b001)
+            lane = UInt8(laneBits)
         }
         let da = zd(e), n = zn(e)
         let m = UInt8((e >> 16) & 0b111)
@@ -186,7 +188,8 @@ extension SVEFloatingPointDecode {
     static func fp8IndexedDraft(
         _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, dest: ScalarSize,
     ) -> DecodedDraft {
-        let lane = UInt8(((e >> 17) & 0b1100) | ((e >> 10) & 0b0011))
+        let laneBits: UInt32 = ((e >> 17) & 0b1100) | ((e >> 10) & 0b0011)
+        let lane = UInt8(laneBits)
         let da = zd(e), n = zn(e)
         let m = UInt8((e >> 16) & 0b111)
         return DecodedDraft(

@@ -78,12 +78,75 @@ public enum JSONText {
         "[" + values.map(string).joined(separator: ",") + "]"
     }
 
+    /// The scalable-state object for one `ScalableRegisterSet`, or `nil`
+    /// when the set is empty (the field is then omitted entirely).
+    ///
+    /// Only the non-empty members appear, so a scalable line stays close to
+    /// the `--semantics` text and a base-ISA line carries nothing at all.
+    /// `za` is the 16-bit `.Q`-position residue mask as `0x` + 4 hex digits,
+    /// not a tile name: many tile/element pairs share a mask and unions have
+    /// no single name, so the mask is the only faithful rendering.
+    public static func scalableSet(_ set: ScalableRegisterSet) -> String? {
+        guard !set.isEmpty else { return nil }
+        var members: [String] = []
+        let predicates = set.predicateMask
+        if predicates != 0 {
+            let names = (0 ..< 16).filter { predicates & (UInt16(1) << $0) != 0 }.map { "p\($0)" }
+            members.append("\"predicates\":\(array(names))")
+        }
+        let za = set.zaMask
+        if !za.isEmpty {
+            let hex = String(za.bits, radix: 16)
+            members.append("\"za\":\(string("0x" + String(repeating: "0", count: 4 - hex.count) + hex))")
+        }
+        if set.containsFFR {
+            members.append("\"ffr\":true")
+        }
+        if set.containsZT0 {
+            members.append("\"zt0\":true")
+        }
+        return "{" + members.joined(separator: ",") + "}"
+    }
+
+    /// `ScalableEffect` flag names, in bit order. Empty for `none`.
+    public static func scalableEffectNames(_ effect: ScalableEffect) -> [String] {
+        var names: [String] = []
+        if effect.contains(.partialWrite) { names.append("partial-write") }
+        if effect.contains(.readsStreamingMode) { names.append("reads-streaming-mode") }
+        if effect.contains(.writesStreamingMode) { names.append("writes-streaming-mode") }
+        if effect.contains(.writesZAEnable) { names.append("writes-za-enable") }
+        if effect.contains(.firstFaulting) { names.append("first-faulting") }
+        if effect.contains(.nonFaulting) { names.append("non-faulting") }
+        if effect.contains(.nonTemporal) { names.append("non-temporal") }
+        return names
+    }
+
+    /// The three scalable fields, in schema order, for whichever of them
+    /// carry signal. Shared by the default and slim emitters: these fields
+    /// are absent-when-empty in both, so scalable state costs a base-ISA
+    /// line nothing.
+    static func scalableFields(_ instruction: Instruction) -> [String] {
+        var fields: [String] = []
+        if let reads = scalableSet(instruction.scalableReads) {
+            fields.append("\"scalableReads\":\(reads)")
+        }
+        if let writes = scalableSet(instruction.scalableWrites) {
+            fields.append("\"scalableWrites\":\(writes)")
+        }
+        let effects = scalableEffectNames(instruction.scalableEffect)
+        if !effects.isEmpty {
+            fields.append("\"scalableEffect\":\(array(effects))")
+        }
+        return fields
+    }
+
     /// One NDJSON instruction object. Field order is fixed by the schema:
     /// `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`,
     /// `text`, `category`, `operands`, `reads`, `writes`, `branchClass`,
     /// `memoryAccess`, `ordering`, `flagEffect`, then the optional
-    /// `branchTarget` / `pcRelativeTarget` / `symbol` / `targetSymbol`,
-    /// then `isData`, `isUndefined`.
+    /// `scalableReads` / `scalableWrites` / `scalableEffect` (scalable
+    /// records only), `branchTarget` / `pcRelativeTarget` / `symbol` /
+    /// `targetSymbol`, then `isData`, `isUndefined`.
     ///
     /// In file mode, `context` supplies the containing-function `symbol`
     /// and the resolved `targetSymbol`; the direct-decode modes pass `nil`
@@ -123,6 +186,7 @@ public enum JSONText {
         let readLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.readFlags, reading: true)
         let writeLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.writtenFlags, reading: false)
         fields.append("\"flagEffect\":{\"reads\":\(string(readLetters)),\"writes\":\(string(writeLetters))}")
+        fields.append(contentsOf: scalableFields(instruction))
         if let target = instruction.branchTarget {
             fields.append("\"branchTarget\":\(string(InstructionText.hex(target)))")
         }
@@ -205,6 +269,8 @@ public enum JSONText {
     /// `ordering` when relaxed, `flagEffect` when no flags move, `isData`
     /// and `isUndefined` when false. Every signal-bearing field survives
     /// in the same fixed order, so a kept field's position never shifts.
+    /// The scalable fields are already absent-when-empty in the default
+    /// form, so slim carries them unchanged.
     ///
     /// `dropSymbol` removes the per-instruction `symbol` (the
     /// `functions --json --slim` case names the function on the parent
@@ -243,6 +309,7 @@ public enum JSONText {
         if !readLetters.isEmpty || !writeLetters.isEmpty {
             fields.append("\"flagEffect\":{\"reads\":\(string(readLetters)),\"writes\":\(string(writeLetters))}")
         }
+        fields.append(contentsOf: scalableFields(instruction))
         if let target = instruction.branchTarget {
             fields.append("\"branchTarget\":\(string(InstructionText.hex(target)))")
         }

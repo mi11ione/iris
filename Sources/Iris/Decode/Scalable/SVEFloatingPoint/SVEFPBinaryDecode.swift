@@ -106,11 +106,30 @@ extension SVEFloatingPointDecode {
     static func exactImmediate(_ value: Double, _ size: ScalarSize) -> Operand {
         let kind = immediateKind(size)
         let bits: UInt64 = switch kind {
-        case .half: UInt64(Float16(value).bitPattern)
+        case .half: UInt64(halfBits(of: value))
         case .single: UInt64(Float(value).bitPattern)
         case .double: value.bitPattern
         }
         return .floatImmediate(bits: bits, kind: kind)
+    }
+
+    /// IEEE 754 binary16 bit pattern of `value`, by re-biasing the double's
+    /// own exponent — exact for every value this family carries (0.0, 0.5,
+    /// 1.0, 2.0, all powers of two with an empty mantissa) and for any
+    /// half-representable normal.
+    ///
+    /// Hand-rolled rather than `Float16(value).bitPattern` for the same
+    /// reason ``SIMDFPCanonicalizer/halfBitsToDouble(_:)`` decodes halves by
+    /// hand: `Float16` is macOS 11 / iOS 14 and up, so referencing it sets
+    /// the package's deployment floors and drops Intel macOS.
+    @inline(__always)
+    static func halfBits(of value: Double) -> UInt16 {
+        if value == 0 { return 0 }
+        let doubleBits = value.bitPattern
+        let sign = UInt16(truncatingIfNeeded: doubleBits >> 63) << 15
+        let unbiasedExponent = Int((doubleBits >> 52) & 0x7FF) - 1023
+        let mantissa = UInt16(truncatingIfNeeded: (doubleBits >> 42) & 0x3FF)
+        return sign | UInt16(unbiasedExponent + 15) << 10 | mantissa
     }
 
     // MARK: G16 — pairwise (0x64, bits[15:13]=100, bits[20:19]=10)

@@ -159,7 +159,7 @@ public enum BESSemanticAttributes {
         }
     }
 
-    /// The architecturally-correct ``BranchClass`` for a BES mnemonic
+    /// The architecturally-correct `BranchClass` for a BES mnemonic
     /// (per ARM ARM § C4.1.5 + Apple ARM64E PAuth supplement). Returns
     /// `.none` for non-branch BES mnemonics (HINT / barrier / MSR /
     /// MRS / SYS / SYSL / WFET / WFIT / CFINV / XAFLAG / AXFLAG).
@@ -370,7 +370,7 @@ public enum BESSemanticAttributes {
         }
     }
 
-    /// Mask of the first ``Operand/register(_:)`` in the operand list,
+    /// Mask of the first `Operand/register(_:)` in the operand list,
     /// or `nil` if no register operand is present. Used to extract the
     /// per-mnemonic Rt / Rn for verification.
     @_effects(readonly)
@@ -383,7 +383,7 @@ public enum BESSemanticAttributes {
         return nil
     }
 
-    /// Mask of the last ``Operand/register(_:)`` in the operand list,
+    /// Mask of the last `Operand/register(_:)` in the operand list,
     /// or `nil` if no register operand is present. Used to extract the
     /// trailing Rt in MSR `[.systemRegister, .register(Rt)]` shape.
     @_effects(readonly)
@@ -396,7 +396,7 @@ public enum BESSemanticAttributes {
         return nil
     }
 
-    /// Mask of the first two ``Operand/register(_:)`` entries in the
+    /// Mask of the first two `Operand/register(_:)` entries in the
     /// operand list. Used to extract the (Rn, Rm) pair for two-operand
     /// auth-branches (BRAA / BRAB / BLRAA / BLRAB).
     @_effects(readonly)

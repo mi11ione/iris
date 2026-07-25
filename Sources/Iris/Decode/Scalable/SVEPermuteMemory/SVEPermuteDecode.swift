@@ -289,7 +289,8 @@ extension SVEPermuteMemoryDecode {
         // Element + optional index from the tsz composite bits[23:22]:[18:17]
         // (the HIGHEST set bit selects the element; the bits below it are the
         // index): 0001→.b (no idx), 001x→.h, 01xx→.s, 1xxx→.d.
-        let tsz = UInt8(((e >> 22) & 0b11) << 2 | ((e >> 17) & 0b11))
+        let tszBits: UInt32 = ((e >> 22) & 0b11) << 2 | ((e >> 17) & 0b11)
+        let tsz = UInt8(tszBits)
         guard let (el, index) = pmovTsz(tsz) else { return undefined(e, a) }
         if toPred {
             // Pd carries the element suffix (never an index); Zn is a plain

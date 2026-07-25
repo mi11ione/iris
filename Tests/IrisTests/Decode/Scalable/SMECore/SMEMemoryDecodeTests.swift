@@ -5,7 +5,7 @@ import Iris
 import Testing
 
 private func decode(_ encoding: UInt32) -> Instruction {
-    Iris.decode(encoding, at: 0, features: .scalable)
+    Iris.decode(encoding, at: 0)
 }
 
 private func text(_ encoding: UInt32) -> String {
@@ -366,7 +366,7 @@ struct SMELdrStrZADecodeTests {
             (UInt32(0xE11F_8000), Mnemonic.ldr, "ldr zt0"),
             (0xE13F_8000, .str, "str zt0"),
         ] {
-            let d = Iris.decode(encoding, features: .scalable)
+            let d = Iris.decode(encoding)
             #expect(d.mnemonic == mnemonic, "\(label)")
             #expect(d.text.contains("zt0"), "\(label) rendered `\(d.text)`")
         }

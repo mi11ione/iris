@@ -27,7 +27,7 @@ struct SMECoreScopeTests {
             0x4E20_1C00, // advanced SIMD
             0xD503_47FF, // system
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).category != .sme,
+            #expect(Iris.decode(encoding).category != .sme,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -47,7 +47,7 @@ struct SMECoreScopeTests {
             0xA0C0_0000, 0xA0C0_0010, 0xA0E0_0000, 0xA0E0_0010, // smopa/s sumopa/s .d
             0xA1C0_0000, 0xA1C0_0010, 0xA1E0_0000, 0xA1E0_0010, // usmopa/s umopa/s .d
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -71,7 +71,7 @@ struct SMECoreScopeTests {
             // record — both carry `.sme`, and a hole inside either looks the
             // same — so what is checkable here is that the word stays in the
             // region and keeps its raw bytes.
-            let d = Iris.decode(encoding, at: 0x2000, features: .scalable)
+            let d = Iris.decode(encoding, at: 0x2000)
             #expect(d.category == .sme, "\(label)")
             #expect(d.encoding == encoding, "\(label)")
             #expect(d.address == 0x2000, "\(label)")
@@ -84,7 +84,7 @@ struct SMECoreScopeTests {
         for topByte: UInt32 in [0x80, 0x81, 0xA0, 0xA1] {
             for low: UInt32 in [0x000000, 0x000010, 0x123456, 0x7FFFFF] {
                 let encoding = (topByte << 24) | low
-                #expect(Iris.decode(encoding, features: .scalable).category != .sve,
+                #expect(Iris.decode(encoding).category != .sve,
                         "0x\(String(encoding, radix: 16))")
             }
         }
@@ -114,7 +114,7 @@ struct SMECoreScopeTests {
             (0xC0D1_0000, "addva .d"),
         ]
         for (encoding, label) in owned {
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "\(label) must be claimed")
         }
     }
@@ -130,7 +130,7 @@ struct SMECoreScopeTests {
             (0xE1A0_0000, "unallocated 111|1|1 opcode"),
         ]
         for (encoding, label) in holes {
-            let draft = Iris.decode(encoding, at: 0x2000, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0x2000)
             #expect(draft.mnemonic == .undefined, "\(label)")
             #expect(draft.category == .sme, "\(label)")
             #expect(draft.encoding == encoding, "\(label)")
@@ -192,14 +192,14 @@ struct SMECoreScopeAgreementTests {
         // carry one category, so an overlap would surface here as an SME-region
         // word coming back attributed to the SVE tier.
         Self.sweep { encoding in
-            #expect(Iris.decode(encoding, features: .scalable).category == .sme,
+            #expect(Iris.decode(encoding).category == .sme,
                     "0x\(String(encoding, radix: 16)) left the SME category")
         }
     }
 
     @Test func everyClaimedWordCarriesTheUniversalRecordInvariants() {
         Self.sweep { encoding in
-            let draft = Iris.decode(encoding, at: 0x4000, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0x4000)
             #expect(draft.category == .sme, "0x\(String(encoding, radix: 16))")
             #expect(draft.encoding == encoding)
             #expect(draft.address == 0x4000)
@@ -214,7 +214,7 @@ struct SMECoreScopeAgreementTests {
         // placeholder; an UNDEFINED renders the empty string, which is the
         // reference assembler's output for a rejected word.
         Self.sweep { encoding in
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             let text = draft.text
             if draft.mnemonic == .undefined {
                 #expect(text == ".long 0x\(String(encoding, radix: 16))",

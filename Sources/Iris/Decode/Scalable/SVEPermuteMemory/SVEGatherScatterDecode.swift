@@ -12,7 +12,7 @@
 //
 // Operand structure only: gather/scatter addresses are recorded as (base,
 // `Zm.<T>` index, extend, scale) via `ScalableMemoryOperand` — never computed
-// (Piece 4). `flagEffect .none`, `readsStreamingMode` set; LDFF1 gather carries
+// (the caller's). `flagEffect .none`, `readsStreamingMode` set; LDFF1 gather carries
 // `.firstFaulting` + FFR; `gldnt`/`sstnt` carry `.nonTemporal`.
 
 extension SVEPermuteMemoryDecode {
@@ -108,7 +108,8 @@ extension SVEPermuteMemoryDecode {
     /// 64-bit packed (`packed`) uses `lsl`/none. Scaled by bit21.
     @inline(__always)
     static func decodeGatherSV(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize, packed: Bool) -> DecodedDraft {
-        let opc = UInt8(((e >> 23) & 0b11) << 2 | ((e >> 13) & 0b11))
+        let opcBits: UInt32 = ((e >> 23) & 0b11) << 2 | ((e >> 13) & 0b11)
+        let opc = UInt8(opcBits)
         guard let (mn, destEl, accessEl, ff) = gatherOpc(opc, wide: indexEl == .d) else { return undefined(e, a) }
         let t = rd(e), g = pg3(e), n = rn(e), m = rm(e)
         let scaled = (e >> 21) & 1 == 1
@@ -131,7 +132,8 @@ extension SVEPermuteMemoryDecode {
     /// Vector-base + immediate gather load `[Zn.<T>{, #imm}]`.
     @inline(__always)
     static func decodeGatherVI(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize) -> DecodedDraft {
-        let opc = UInt8(((e >> 23) & 0b11) << 2 | ((e >> 13) & 0b11))
+        let opcBits: UInt32 = ((e >> 23) & 0b11) << 2 | ((e >> 13) & 0b11)
+        let opc = UInt8(opcBits)
         guard let (mn, destEl, accessEl, ff) = gatherOpc(opc, wide: indexEl == .d) else { return undefined(e, a) }
         let t = rd(e), g = pg3(e), n = rn(e)
         let imm = Int32((e >> 16) & 0x1F) &* Int32(1 << elementScale(accessEl))
@@ -227,7 +229,8 @@ extension SVEPermuteMemoryDecode {
         // scatter (`sst_vi`); opc packs as bits[24:23]:[21]. (At mk=100/110
         // bit22 is opc's low bit, so this only applies to the mk=101 column.)
         if extend == .none, (e >> 22) & 1 == 1 {
-            let viOpc = UInt8(((e >> 23) & 0b11) << 1 | ((e >> 21) & 1))
+            let viOpcBits: UInt32 = ((e >> 23) & 0b11) << 1 | ((e >> 21) & 1)
+            let viOpc = UInt8(viOpcBits)
             guard let (mn, el, indexEl) = scatterOpc(viOpc) else { return undefined(e, a) }
             let t = rd(e), g = pg3(e), n = rn(e)
             let imm = Int32((e >> 16) & 0x1F) &* Int32(1 << UInt8((e >> 23) & 0b11))

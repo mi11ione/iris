@@ -76,9 +76,10 @@ struct DPIDispatcherTests {
     }
 
     @Test func reservedTierOp0DecodesUndefined() {
-        // The architecturally reserved op0 tier {1, 2, 3} has no family;
-        // routing for every other op0 is pinned in DispatchRoutingTests.
-        for op0: UInt32 in 1 ... 3 {
+        // What remains architecturally unallocated, op0 {1, 3}, has no
+        // family (op0 2 is the SVE tier); routing for every other op0 is
+        // pinned in DispatchRoutingTests.
+        for op0: UInt32 in [1, 3] {
             let encoding = op0 << 25
             let d = decode(encoding, at: 0)
             #expect(d.mnemonic == .undefined, "op0=\(op0) must return UNDEFINED")

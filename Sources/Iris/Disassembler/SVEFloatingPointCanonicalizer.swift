@@ -84,7 +84,7 @@ enum SVEFloatingPointCanonicalizer {
     private static func floatText(bits: UInt64, kind: FloatImmediateKind, mnemonic: Mnemonic) -> String {
         if bits == 0 { return "#0.0" }
         let value = switch kind {
-        case .half: Double(Float16(bitPattern: UInt16(truncatingIfNeeded: bits)))
+        case .half: SIMDFPCanonicalizer.halfBitsToDouble(UInt16(truncatingIfNeeded: bits))
         case .single: Double(Float(bitPattern: UInt32(truncatingIfNeeded: bits)))
         case .double: Double(bitPattern: bits)
         }

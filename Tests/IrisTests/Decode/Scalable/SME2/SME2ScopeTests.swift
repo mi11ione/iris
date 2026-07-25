@@ -35,7 +35,7 @@ struct SME2ScopeTests {
             (0xE11F_8000, "ldr zt0"),
         ]
         for (encoding, label) in owned {
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "\(label) must be 2s.7's")
         }
     }
@@ -45,7 +45,7 @@ struct SME2ScopeTests {
             0x2520_4010, 0x2520_5010, 0x2520_7010, 0x2520_7410,
             0x2520_7810, 0x2520_8200, 0x2521_8000, 0x2522_8000, 0x2524_4000,
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -60,7 +60,7 @@ struct SME2ScopeTests {
             0xC000_0000, 0xC008_00FF, 0xC090_0000, // mova / zero / addha
             0xE000_0000, 0xE100_0000, 0xE120_0000, // za load/store, ldr/str za
         ] {
-            let d = Iris.decode(encoding, features: .scalable)
+            let d = Iris.decode(encoding)
             #expect(d.category == .sme, "0x\(String(encoding, radix: 16))")
             #expect(d.mnemonic != .undefined, "0x\(String(encoding, radix: 16))")
         }
@@ -77,7 +77,7 @@ struct SME2ScopeTests {
             0x6520_0000, // SVE floating-point (2s.4)
             0x0518_A000, // SVE permute (2s.5)
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).category != .sme,
+            #expect(Iris.decode(encoding).category != .sme,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -119,7 +119,7 @@ struct SME2TierClosureTests {
         for high in Self.smeHighHalves {
             for payload in smePayloads {
                 let e = (high << 16) | payload
-                let d = Iris.decode(e, at: 0x4000, features: .scalable)
+                let d = Iris.decode(e, at: 0x4000)
                 #expect(d.category == .sme, "0x\(String(e, radix: 16)) left the SME region")
                 #expect(d.encoding == e)
                 #expect(d.address == 0x4000)
@@ -133,7 +133,7 @@ struct SME2TierClosureTests {
         // decoder is what forms them.
         for low: UInt32 in 0 ..< 4096 {
             let e = 0x2520_0000 | (low << 6)
-            let d = Iris.decode(e, at: 0, features: .scalable)
+            let d = Iris.decode(e, at: 0)
             #expect(d.category == .sve, "0x\(String(e, radix: 16)) left the scalable tier")
             #expect(d.encoding == e)
         }

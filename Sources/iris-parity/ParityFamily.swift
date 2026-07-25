@@ -14,10 +14,11 @@
 // DPI runs at the maximal mattr: the family decoder covers the CSSC
 // immediate forms (SMAX/SMIN/UMAX/UMIN #imm, via MinMaxImmDecode) and the
 // MTE ADDG/SUBG words in its op1=0b011 row, so the oracle can carry the
-// full feature set with no blind spot. The reserved tier (op0 1,3) keeps
-// +sve/+sme OFF and the library leaves those words UNDEFINED — matching
-// the oracle; op0=2 (SVE) and the op0=0 SME region are validated by the
-// dedicated `sve`/`sme` families at the maximal scalable mattr.
+// full feature set with no blind spot. The scalable tiers carry no decode
+// feature at all (op0=2 SVE and the op0=0 bit31=1 SME region always
+// decode), so every family whose partitions reach them — the dedicated
+// `sve`/`sme` families and the `reserved` slab that shares op0=0 — runs
+// its oracle at the maximal scalable mattr.
 
 import Foundation
 import Iris
@@ -163,12 +164,13 @@ struct ParityFamily: Sendable {
         ParityFamily(
             name: "reserved",
             op0Partitions: [0x0, 0x1, 0x3],
-            // op0=0,1,3 with SVE/SME OFF: these words decode UNDEFINED on
-            // both sides (reservedMattr carries no +sve/+sme, and this family
-            // does not enable the scalable Features). op0=2 (the SVE tier) and
-            // the op0=0 bit31=1 SME region are covered by the `sve` / `sme`
-            // families below, at the maximal scalable mattr.
-            mattr: reservedMattr,
+            // op0=1,3 are architecturally unallocated and decode UNDEFINED on
+            // both sides. op0=0 is shared: its bit31=1 half is the SME region,
+            // which iris decodes unconditionally, so the oracle must carry the
+            // scalable mattr here too or every SME word this slab reaches would
+            // read as a divergence. The `sve`/`sme` families own those tiers
+            // deliberately; this one only has to agree where they overlap.
+            mattr: scalableMattr,
             features: .arm64e,
             syntheticFixture: nil,
             // op0 slabs plus focused UDF (bits[31:16] == 0) and AMX
@@ -182,18 +184,18 @@ struct ParityFamily: Sendable {
             name: "sve",
             op0Partitions: [],
             mattr: scalableMattr,
-            features: .scalable,
+            features: [],
             syntheticFixture: "synthetic-sve.tsv",
             // The whole op0=0b0010 SVE / SVE2 tier (bit31=1 is the memory
-            // region). Feature-gated on .scalable so the decoder produces real
-            // records; the oracle carries the maximal scalable mattr.
+            // region). No decode feature gates it; the oracle carries the
+            // maximal scalable mattr.
             generationTiers: op0Tiers([0x2]),
         ),
         ParityFamily(
             name: "sme",
             op0Partitions: [],
             mattr: scalableMattr,
-            features: .scalable,
+            features: [],
             syntheticFixture: "synthetic-sme.tsv",
             // SME lives at op0=0 with bit31=1 (disjoint from AMX's magic mask
             // and UDF's bits[31:16]==0). Target it directly — an op0=0 slab

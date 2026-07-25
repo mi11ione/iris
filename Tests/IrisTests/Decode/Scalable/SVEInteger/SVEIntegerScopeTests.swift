@@ -27,7 +27,7 @@ struct SVEIntegerScopeTests {
             0x4E20_1C00, // advanced SIMD
             0x1520_C000, // wide-immediate bits under a branch top byte
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).category != .sve,
+            #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -93,7 +93,7 @@ struct SVEIntegerScopeTests {
         for (encoding, label) in owned {
             // In scope and claimed: the word decodes to a real scalable
             // instruction rather than falling through to the tier's UNDEFINED.
-            let d = Iris.decode(encoding, features: .scalable)
+            let d = Iris.decode(encoding)
             #expect(d.category == .sve, "\(label) must be scalable")
             #expect(d.mnemonic != .undefined, "\(label) must be claimed")
         }
@@ -134,7 +134,7 @@ struct SVEIntegerScopeTests {
             // too-wide integer predicate would have claimed the word and
             // forced it to UNDEFINED. The sibling's exact mnemonic is pinned
             // by that group's own decode suite.
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "\(label) must decode in its own group")
         }
     }
@@ -185,7 +185,7 @@ struct SVEIntegerScopeTests {
             (0x4422_C020, "smullb indexed at a halfword destination"),
         ]
         for (encoding, label) in holes {
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.mnemonic == .undefined, "\(label) must decode to UNDEFINED")
             #expect(draft.category == .sve, "\(label) must stay categorized as SVE")
             #expect(draft.operands.isEmpty, "\(label) must carry no operands")
@@ -224,7 +224,7 @@ struct SVEIntegerScopeAgreementTests {
         // invented.
         for topByte in Self.topBytes {
             Self.sweep(topByte: topByte) { encoding in
-                let draft = Iris.decode(encoding, at: 0x4000, features: .scalable)
+                let draft = Iris.decode(encoding, at: 0x4000)
                 #expect(draft.category == .sve)
                 #expect(draft.encoding == encoding)
                 #expect(draft.address == 0x4000)
@@ -241,7 +241,7 @@ struct SVEIntegerScopeAgreementTests {
         // UNDEFINED record shares.
         for topByte in Self.topBytes {
             Self.sweep(topByte: topByte) { encoding in
-                let draft = Iris.decode(encoding, at: 0, features: .scalable)
+                let draft = Iris.decode(encoding, at: 0)
                 let text = draft.text
                 if draft.mnemonic == .undefined {
                     #expect(text == ".long 0x\(String(encoding, radix: 16))",

@@ -5,7 +5,7 @@ import Iris
 import Testing
 
 private func decode(_ encoding: UInt32) -> Instruction {
-    Iris.decode(encoding, at: 0, features: .scalable)
+    Iris.decode(encoding, at: 0)
 }
 
 /// Validates the element-count group — CNTB/CNTH/CNTW/CNTD, the INC/DEC and

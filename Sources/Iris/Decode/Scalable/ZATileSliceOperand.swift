@@ -6,7 +6,7 @@
 // GPR (a semantic READ, restricted to W12-W15 for tile slices). Because the
 // slice index derives from Wv (dynamic), the touched ZA storage is the whole
 // tile (a sound over-approximation) — see `zaMask`. Effective-address /
-// slice resolution is Piece 4's.
+// slice resolution needs a value analysis the caller owns.
 
 /// An SME `ZA` tile-slice operand — `ZAt.<T>[Wv, #imm]` (horizontal or
 /// vertical), or a slice range `ZAt.<T>[Wv, #lo:hi]`.
@@ -55,9 +55,10 @@ public struct ZATileSliceOperand: Sendable, Hashable {
         case vertical = 1
     }
 
-    /// The `ZA` storage this slice may touch — the whole tile (the sound
-    /// over-approximation, since the slice index derives from a dynamic
-    /// register). Piece 4 refines to slice precision once it resolves `Wv`.
+    /// The `ZA` storage this slice may touch — the whole tile. That is the
+    /// sound over-approximation, and the only honest one at decode time:
+    /// the slice index derives from a dynamic register (`Wv`), so narrowing
+    /// it to a single slice needs a value analysis the caller owns.
     @inlinable
     @inline(__always)
     public var zaMask: ZATileMask {

@@ -8,7 +8,7 @@ import Testing
 /// A real decoded record to use as a passing baseline, so each mismatch test
 /// mutates exactly one field.
 private func decoded(_ encoding: UInt32) -> Instruction {
-    Iris.decode(encoding, at: 0, features: .scalable)
+    Iris.decode(encoding, at: 0)
 }
 
 private let faddDraft = decoded(0x6540_8440) // fadd z0.h, p1/m, z0.h, z2.h

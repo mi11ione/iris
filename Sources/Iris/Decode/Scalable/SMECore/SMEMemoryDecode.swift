@@ -7,7 +7,7 @@
 // is the access-element log2 size, so byte forms carry none). LDR/STR ZA fill
 // and spill one `ZA` array vector at `[Xn{, #imm, mul vl}]`, where the single
 // imm4 field is both the vector-select offset and the memory offset. Records
-// operand structure only — the effective address is Piece 4's.
+// operand structure only — computing the effective address is the caller's.
 
 extension SMECoreDecode {
     /// Decode an SME `ZA` load/store word.

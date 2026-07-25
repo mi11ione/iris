@@ -26,7 +26,7 @@ struct SVEFloatingPointScopeTests {
             0x4E20_1C00, // advanced SIMD
             0x7500_0000, // op0=0b1010 — a top byte that shares the 0x?5 low nibble
         ] {
-            #expect(Iris.decode(encoding, features: .scalable).category != .sve,
+            #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
         }
     }
@@ -51,7 +51,7 @@ struct SVEFloatingPointScopeTests {
             (0xE400_4000, "st1b — memory (2s.5)"),
         ]
         for (encoding, label) in foreign {
-            #expect(Iris.decode(encoding, features: .scalable).mnemonic != .undefined,
+            #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "\(label) must decode in its own group")
         }
     }
@@ -68,7 +68,7 @@ struct SVEFloatingPointScopeTests {
             (0x6510_2000, "compare-with-zero at the reserved sz=00"),
         ]
         for (encoding, label) in holes {
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.mnemonic == .undefined, "\(label) must decode to UNDEFINED")
             #expect(draft.category == .sve, "\(label) must stay categorized as SVE")
             #expect(draft.operands.isEmpty, "\(label) must carry no operands")
@@ -106,7 +106,7 @@ struct SVEFloatingPointScopeAgreementTests {
     @Test func everyOwnedWordCarriesTheScalableCategoryAndItsRawEncoding() {
         for topByte in Self.ownedTopBytes {
             Self.sweep(topByte: topByte) { encoding in
-                let draft = Iris.decode(encoding, at: 0x4000, features: .scalable)
+                let draft = Iris.decode(encoding, at: 0x4000)
                 #expect(draft.category == .sve)
                 #expect(draft.encoding == encoding)
                 #expect(draft.address == 0x4000)
@@ -124,7 +124,7 @@ struct SVEFloatingPointScopeAgreementTests {
         // (the reference assembler's silence for a rejected word).
         for topByte in Self.ownedTopBytes {
             Self.sweep(topByte: topByte) { encoding in
-                let draft = Iris.decode(encoding, at: 0, features: .scalable)
+                let draft = Iris.decode(encoding, at: 0)
                 let text = draft.text
                 if draft.mnemonic == .undefined {
                     #expect(text == ".long 0x\(String(encoding, radix: 16))",

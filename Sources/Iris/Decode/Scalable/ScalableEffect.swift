@@ -11,11 +11,12 @@
 ///
 /// `ScalableEffect` carries the SVE/SME properties a decoder classifies that
 /// are not expressible as register reads/writes: whether the instruction's
-/// register writes are partial (may-write vs full def), and its relationship
-/// to streaming mode (`PSTATE.SM`) and `ZA`-enable. It is the streaming-mode
-/// per-instruction property the responsibility assigns to the scalable core and the
-/// signal Piece 4's streaming-mode analysis consumes. In the scalable core every record
-/// carries ``none``; the region decoders set the flags per instruction.
+/// register writes are partial (may-write vs full def), its relationship to
+/// streaming mode (`PSTATE.SM`) and `ZA`-enable, and the fault class of a
+/// scalable load. These are the per-instruction facts a streaming-mode or
+/// dataflow analysis needs and cannot recover from the register sets alone.
+/// Base-ISA records carry ``none``; the scalable region decoders set the
+/// flags per instruction.
 @frozen
 public struct ScalableEffect: OptionSet, Sendable, Hashable {
     public let rawValue: UInt8

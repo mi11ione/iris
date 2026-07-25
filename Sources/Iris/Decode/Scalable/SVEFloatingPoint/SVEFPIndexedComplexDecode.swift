@@ -122,7 +122,8 @@ extension SVEFloatingPointDecode {
         if (e >> 23) & 1 == 0 {
             size = .h
             m = UInt8((e >> 16) & 0b111)
-            lane = UInt8(((e >> 20) & 0b100) | ((e >> 19) & 0b011))
+            let laneBits: UInt32 = ((e >> 20) & 0b100) | ((e >> 19) & 0b011)
+            lane = UInt8(laneBits)
         } else if (e >> 22) & 1 == 0 {
             size = .s
             m = UInt8((e >> 16) & 0b111)

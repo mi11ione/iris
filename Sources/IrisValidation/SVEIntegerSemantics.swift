@@ -29,7 +29,7 @@
 // lane parity, or bit-merges through a mask); 19 of them are SVE-integer's — the
 // narrowing "top" forms, EORBT/EORTB, and SLI/SRI. The `/M` forms preserve
 // lanes too, at positions known only at execution time, and are also set:
-// `partialWrite` over-approximates the kill, so Piece 4 never treats a
+// `partialWrite` over-approximates the kill, so a consumer never treats a
 // preserving write as a strong update.
 
 // Concrete semantic-field discrepancy between a decoded record and the

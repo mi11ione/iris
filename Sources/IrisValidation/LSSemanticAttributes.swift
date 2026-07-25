@@ -180,7 +180,7 @@ public enum LSSemanticAttributes {
     /// FEAT_RPRES RPRFM: range-prefetch op (immediate) + range register + base.
     private static let shapeImmRegMem: [LSOperandKind] = [.immediate, .register, .memory]
 
-    /// Architecturally-correct ``FlagEffect`` for an L/S mnemonic. Every
+    /// Architecturally-correct `FlagEffect` for an L/S mnemonic. Every
     /// L/S instruction is `.none` (no NZCV write); this method exists for
     /// API consistency with ``DPRSemanticAttributes/expectedFlagEffect(for:)``.
     @_effects(readonly)

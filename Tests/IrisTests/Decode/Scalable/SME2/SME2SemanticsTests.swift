@@ -6,11 +6,11 @@ import IrisValidation
 import Testing
 
 private func decodeSME(_ e: UInt32) -> Instruction {
-    Iris.decode(e, at: 0, features: .scalable)
+    Iris.decode(e, at: 0)
 }
 
 private func decodePred(_ e: UInt32) -> Instruction {
-    Iris.decode(e, at: 0, features: .scalable)
+    Iris.decode(e, at: 0)
 }
 
 /// Decode, perturb exactly one field, and report which check fires. Starting

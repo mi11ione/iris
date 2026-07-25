@@ -41,9 +41,9 @@ struct SMEDecoderRegistrationTests {
     @Test func theOp0ZeroSlotSplitsBetweenItsFamilies() {
         // Registering SME directly at op0=0 would strand AMX and UDF; all three
         // must keep their own attribution.
-        #expect(Iris.decode(0x8080_0000, features: .scalable).category == .sme)
-        #expect(Iris.decode(0x0020_1000, features: .scalable).category == .amx)
-        #expect(Iris.decode(0x0000_1234, features: .scalable).category == .branchesExceptionSystem)
+        #expect(Iris.decode(0x8080_0000).category == .sme)
+        #expect(Iris.decode(0x0020_1000).category == .amx)
+        #expect(Iris.decode(0x0000_1234).category == .branchesExceptionSystem)
     }
 
     @Test func onlyBitThirtyOneSetIsTheSMERegion() {
@@ -51,7 +51,7 @@ struct SMEDecoderRegistrationTests {
         // not SME, whatever its secondary selectors say.
         for topBits: UInt32 in 0b000 ... 0b011 {
             let bit31Clear = smeEncoding(topBits: topBits)
-            #expect(Iris.decode(bit31Clear, features: .scalable).category != .sme,
+            #expect(Iris.decode(bit31Clear).category != .sme,
                     "0x\(String(bit31Clear, radix: 16))")
         }
     }
@@ -68,7 +68,7 @@ struct SMEDecoderDecodeTests {
             let encoding = smeEncoding(
                 topBits: row.topBits, bit24: row.bit24, bit23: row.bit23, low: 0x123456,
             )
-            let draft = Iris.decode(encoding, at: 0x1_0000_8000, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0x1_0000_8000)
             #expect(draft.category == .sme, "\(row.owner)")
             #expect(draft.encoding == encoding, "raw encoding must be preserved")
             #expect(draft.address == 0x1_0000_8000)
@@ -84,7 +84,7 @@ struct SMEDecoderDecodeTests {
                 let encoding = smeEncoding(
                     topBits: row.topBits, bit24: row.bit24, bit23: row.bit23, low: low,
                 )
-                #expect(Iris.decode(encoding, features: .scalable).category == .sme,
+                #expect(Iris.decode(encoding).category == .sme,
                         "\(row.owner): payload \(String(low, radix: 16)) left the region")
             }
         }
@@ -95,7 +95,7 @@ struct SMEDecoderDecodeTests {
         for bit24 in [false, true] {
             for bit23 in [false, true] {
                 let encoding = smeEncoding(topBits: 0b111, bit24: bit24, bit23: bit23)
-                #expect(Iris.decode(encoding, features: .scalable).category == .sme)
+                #expect(Iris.decode(encoding).category == .sme)
             }
         }
     }

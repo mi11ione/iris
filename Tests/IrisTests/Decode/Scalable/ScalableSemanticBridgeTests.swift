@@ -6,7 +6,7 @@ import IrisValidation
 import Testing
 
 private func decoded(_ e: UInt32) -> Instruction {
-    Iris.decode(e, at: 0, features: .scalable)
+    Iris.decode(e, at: 0)
 }
 
 /// One in-scope representative per region the bridge routes to. The bridge is

@@ -5,7 +5,7 @@ import Iris
 import Testing
 
 private func decode(_ e: UInt32) -> Instruction {
-    Iris.decode(e, at: 0, features: .scalable)
+    Iris.decode(e, at: 0)
 }
 
 private func text(_ e: UInt32) -> String {
@@ -106,7 +106,7 @@ struct SME2PredicateDecodeTests {
     @Test func theFamilyDecoderRoutesTheCarveThroughTheSVEGate() {
         // SVEDecoder intercepts the carve after the four subpiece predicates
         // reject it, so a carve word decodes to a real record via the family.
-        let d = Iris.decode(0x2520_4010, at: 0x8000, features: .scalable)
+        let d = Iris.decode(0x2520_4010, at: 0x8000)
         #expect(d.mnemonic == .whilege)
         #expect(d.address == 0x8000)
     }

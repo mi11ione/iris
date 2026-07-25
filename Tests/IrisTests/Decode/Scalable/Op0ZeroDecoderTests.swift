@@ -17,7 +17,7 @@ struct Op0ZeroDecoderRoutingTests {
         // documented opcode.
         for opcode: UInt32 in 0 ..< 23 {
             let encoding = 0x0020_1000 | (opcode << 5)
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.category == .amx, "AMX opcode \(opcode) misrouted")
         }
     }
@@ -35,7 +35,7 @@ struct Op0ZeroDecoderRoutingTests {
             (0xE000_0010, "111|0|0 — SME core ZA-load hole"),
         ]
         for (encoding, label) in holes {
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.category == .sme, "\(label) misrouted")
             #expect(draft.mnemonic == .undefined, "\(label)")
         }
@@ -52,7 +52,7 @@ struct Op0ZeroDecoderRoutingTests {
             (0xE100_0000, .ldr, "LDR ZA"),
         ]
         for (encoding, mnemonic, label) in core {
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.category == .sme, "\(label)")
             #expect(draft.mnemonic == mnemonic, "\(label)")
             #expect(draft.encoding == encoding, "\(label)")
@@ -70,7 +70,7 @@ struct Op0ZeroDecoderRoutingTests {
             0x0020_1800,
         ]
         for encoding in holes {
-            let draft = Iris.decode(encoding, at: 0, features: .scalable)
+            let draft = Iris.decode(encoding, at: 0)
             #expect(draft.category == .undefined, "hole 0x\(String(encoding, radix: 16)) misrouted")
             #expect(draft.mnemonic == .undefined)
             #expect(draft.encoding == encoding)
@@ -84,14 +84,14 @@ struct Op0ZeroDecoderRoutingTests {
         // come back in one category, so the split is visible on the record.
         for opcode: UInt32 in 0 ..< 23 {
             let amxWord = 0x0020_1000 | (opcode << 5)
-            #expect(Iris.decode(amxWord, features: .scalable).category == .amx)
+            #expect(Iris.decode(amxWord).category == .amx)
         }
         for topBits: UInt32 in 0b100 ... 0b111 {
             let smeWord = topBits << 29
-            #expect(Iris.decode(smeWord, features: .scalable).category == .sme)
+            #expect(Iris.decode(smeWord).category == .sme)
         }
         // …and UDF, the fourth resident, keeps its own category.
-        #expect(Iris.decode(0x0000_1234, features: .scalable).category == .branchesExceptionSystem)
+        #expect(Iris.decode(0x0000_1234).category == .branchesExceptionSystem)
     }
 }
 
@@ -110,7 +110,7 @@ struct Op0ZeroDecoderRegistrationTests {
         ]
         var seen: Set<Category> = []
         for (encoding, category, label) in representatives {
-            let actual = Iris.decode(encoding, features: .scalable).category
+            let actual = Iris.decode(encoding).category
             #expect(actual == category, "\(label) attributed to \(actual)")
             seen.insert(actual)
         }

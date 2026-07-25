@@ -116,7 +116,7 @@ public enum DPISemanticChecker {
 /// Per-mnemonic DPI semantic-attribute lookups. Pure functions over the
 /// decoded mnemonic and operand list.
 public enum DPISemanticAttributes {
-    /// The architecturally-correct ``FlagEffect`` for a DPI mnemonic:
+    /// The architecturally-correct `FlagEffect` for a DPI mnemonic:
     /// `.nzcv` for the flag-setting forms (and the CMP/CMN/TST aliases),
     /// `.none` for everything else.
     @_effects(readonly)

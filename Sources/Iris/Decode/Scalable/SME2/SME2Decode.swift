@@ -14,7 +14,7 @@
 //
 // Shared field extractors, operand builders, and mask builders used by every
 // family decoder live here. Records the operand structure only — ZA
-// matrix-shape and effective-address computation are Piece 4's.
+// matrix-shape and effective-address computation are the caller's.
 
 /// The SME2 multi-vector decoder for SME2 (op0=0 SME region).
 enum SME2Decode {

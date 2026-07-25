@@ -217,7 +217,7 @@ enum SIMDFPCanonicalizer {
     /// NaN payload + quiet-bit behavior) by the format-parity tests.
     /// Replaces `Float16`, whose platform availability would otherwise
     /// set the package's deployment floors and exclude Intel macOS.
-    private static func halfBitsToDouble(_ halfBits: UInt16) -> Double {
+    static func halfBitsToDouble(_ halfBits: UInt16) -> Double {
         let sign = UInt64(halfBits >> 15) << 63
         let exponent = Int((halfBits >> 10) & 0x1F)
         let mantissa = UInt64(halfBits & 0x3FF)

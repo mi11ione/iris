@@ -78,12 +78,13 @@ struct FeaturesTests {
 struct DispatchRoutingTests {
     /// One decodable witness word per op0 ∈ 0...15 with its expected
     /// category. op0 6/E are the V=1 SIMD/FP load/store partitions
-    /// (delegated to the SIMD/FP family); 1/2/3 are the architecturally
-    /// reserved tier (no decoder — honest UNDEFINED).
+    /// (delegated to the SIMD/FP family); op0 2 is the SVE tier; 1 and 3
+    /// are what remains architecturally unallocated (no decoder — honest
+    /// UNDEFINED).
     private static let op0Witnesses: [(op0: UInt32, word: UInt32, category: Category)] = [
         (0x0, 0x0020_1000, .amx), //                 amx ldx
         (0x1, 0x0200_0000, .undefined), //           reserved tier
-        (0x2, 0x0400_0000, .undefined), //           reserved tier
+        (0x2, 0x0400_0000, .sve), //                 sve add (predicated)
         (0x3, 0x0600_0000, .undefined), //           reserved tier
         (0x4, 0x8800_7C00, .loadsAndStores), //      stxr
         (0x5, 0xAA00_03E0, .dataProcessingRegister), // orr (mov alias)
@@ -110,7 +111,8 @@ struct DispatchRoutingTests {
     }
 
     @Test func reservedTierDecodesUndefinedWithWordPreserved() {
-        for op0: UInt32 in 1 ... 3 {
+        // op0 1 and 3 only: op0 2 is the SVE tier, which decodes.
+        for op0: UInt32 in [1, 3] {
             let word = op0 << 25
             let instruction = decode(word, at: 0x1_0000_8000)
             #expect(instruction.isUndefined, "op0=\(op0) must be UNDEFINED")

@@ -1,11 +1,10 @@
 # JSON output
 
-The NDJSON schema behind `iris --json`, the versioned contract for the
-command-line tool's machine-readable output.
+The NDJSON schema behind `iris --json` — the versioned contract for the command-line tool's machine-readable output.
 
 ## The contract
 
-**`schemaVersion`: 1.** This article is the contract for the machine-readable output of the `iris` CLI. Every emitted object carries the `schemaVersion` field, and consumers should gate on it. The schema follows the same text-stability discipline as the library's canonical assembly: within one major schema version, fields are only ever *added*, never renamed, retyped, reordered, or removed. Any breaking change increments `schemaVersion`. Key order within an object is fixed as documented and byte-stable across runs and platforms, so `iris --json` output is safe to diff.
+**`schemaVersion`: 1.** This article is the contract for the machine-readable output of the `iris` CLI. Every emitted object carries `schemaVersion`, and consumers should gate on it. Within one major schema version fields are only ever *added*, never renamed, retyped, reordered, or removed; any breaking change increments `schemaVersion`. Key order is fixed as documented and byte-stable across runs and platforms, so `iris --json` output is safe to diff.
 
 ## Stream shape
 
@@ -19,7 +18,7 @@ Diagnostics never appear on stdout in either mode. They go to stderr (suppressed
 
 ## kind: "instruction"
 
-Field order is fixed: `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`, `text`, `category`, `operands`, `reads`, `writes`, `branchClass`, `memoryAccess`, `ordering`, `flagEffect`, then the optional `branchTarget`, `pcRelativeTarget`, `symbol`, `targetSymbol`, `referencedSection`, `referencedString`, `referencedSymbol`, and `charLiteral` (each present only when resolved), then `isData`, `isUndefined`.
+Field order is fixed: `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`, `text`, `category`, `operands`, `reads`, `writes`, `branchClass`, `memoryAccess`, `ordering`, `flagEffect`, then the optional `scalableReads`, `scalableWrites`, `scalableEffect`, `branchTarget`, `pcRelativeTarget`, `symbol`, `targetSymbol`, `referencedSection`, `referencedString`, `referencedSymbol`, and `charLiteral` (each present only when resolved), then `isData`, `isUndefined`.
 
 | field | type | meaning |
 |---|---|---|
@@ -29,9 +28,9 @@ Field order is fixed: `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`
 | `encoding` | string | the raw little-endian instruction word, `0x` + exactly 8 hex digits. For a truncated tail, the residual bytes zero-extended |
 | `mnemonic` | string | canonical mnemonic name (`"add"`, `"b.cond"`). Sentinel records carry the census labels `"undefined"`, `"data"`, `"truncated"` |
 | `text` | string | the library's canonical assembly rendering. Branch labels stay in relative `#offset` form (the absolute target is `branchTarget`) |
-| `category` | string | top-level decode category, one of: `undefined`, `dataInCodeMarker`, `truncatedTail`, `dataProcessingImmediate`, `branchesExceptionSystem`, `dataProcessingRegister`, `loadsAndStores`, `simdAndFP`, `pointerAuthentication`, `crypto`, `amx`, `memoryTagging` |
+| `category` | string | top-level decode category, one of: `undefined`, `dataInCodeMarker`, `truncatedTail`, `dataProcessingImmediate`, `branchesExceptionSystem`, `dataProcessingRegister`, `loadsAndStores`, `simdAndFP`, `pointerAuthentication`, `crypto`, `amx`, `memoryTagging`, `sve`, `sme` |
 | `operands` | string[] | per-operand text fragments split from `text` (commas inside `[…]`/`{…}` do not split). Empty for sentinel records |
-| `reads` | string[] | architectural registers read, canonical names (`x0…x30`, `sp`, `v0…v31`), ascending and alias-independent. XZR/WZR never appear |
+| `reads` | string[] | architectural registers read, canonical names (`x0…x30`, `sp`, `v0…v31`), ascending and alias-independent. XZR/WZR never appear. SVE `Zn` vectors appear as their `v` aliases; scalable-only state does not appear (see below) |
 | `writes` | string[] | architectural registers written, same vocabulary |
 | `branchClass` | string | `none`, `direct`, `indirect`, `conditional`, `call`, `return`, `exception` |
 | `memoryAccess` | string | `none`, `load`, `store`, `atomic`, `exclusive-load`, `exclusive-store`, `prefetch` |
@@ -45,8 +44,11 @@ Field order is fixed: `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`
 | `referencedString` | string? | the NUL-terminated C string at the target, present only when `referencedSection` is a cstring-literal section and the bytes read back (the listing's `; "the string"`). JSON-escaped like every other string here, and not length-capped (the listing's `…` truncation is presentation only). An empty C string at the target reads back as `""`, a present-but-empty value, not an absent field |
 | `referencedSymbol` | string? | the data symbol the target resolves to: a name exactly at it, or `name+0x<delta>` for a target past a symbol in the same data section (the listing's `; _name`). **File mode only**, **absent** when no symbol names the target |
 | `charLiteral` | string? | the single printable-ASCII character (`0x20`…`0x7e`) an immediate names, for the comparison / arithmetic / move mnemonics where a byte-sized constant reads as a character (`cmp w0, #65` → `"A"`), the listing's `; 'c'`. Stack-pointer arithmetic is excluded (frame management, not a character). Present in every mode (it needs no symbols), **absent** otherwise |
+| `scalableReads` | object? | SVE/SME state read, **absent** when none. Members appear only when non-empty: `predicates` (array of `p0`…`p15`), `za` (the 16-bit `.Q`-position residue mask, `0x` + 4 hex digits), `ffr` (`true`), `zt0` (`true`) |
+| `scalableWrites` | object? | SVE/SME state written, same shape and same absent-when-empty rule |
+| `scalableEffect` | string[]? | scalable execution facts, **absent** when none: `partial-write`, `reads-streaming-mode`, `writes-streaming-mode`, `writes-za-enable`, `first-faulting`, `non-faulting`, `non-temporal`, in that order |
 | `isData` | bool | `true` iff the word is covered by an `LC_DATA_IN_CODE` span (`category == "dataInCodeMarker"`) |
-| `isUndefined` | bool | `true` iff the encoding is unallocated or its extension is absent from the decode features, the explicit "Iris decodes nothing here" witness |
+| `isUndefined` | bool | `true` iff the encoding is unallocated or its extension is absent from the decode features, the explicit "iris decodes nothing here" witness |
 
 Example (one line, wrapped for reading):
 
@@ -60,11 +62,23 @@ Example (one line, wrapped for reading):
 
 `text` is the encoding-level disassembly. A direct branch shows the bare relative `bl #-132` there. The resolved targets live in the typed fields: `branchTarget` for control flow, `pcRelativeTarget` for address formation, and `targetSymbol` for the resolved name. Read those, not `text`, to follow an edge.
 
+Scalable instructions emit ordinary instruction objects: `category` is `sve` or `sme`, `text` and `operands` carry the full scalable syntax (`z1.d`, `p0/m`, `za0.s`), and the `Zn` vectors appear in `reads`/`writes` as their `v` aliases. State those sets cannot name — predicates, FFR, `ZA`, `ZT0` — lives in `scalableReads`/`scalableWrites`, and `scalableEffect` carries the execution facts. All three are absent on a base-ISA line, so nothing changes for non-scalable code:
+
+```json
+{"…":"…","category":"sme","text":"fmopa za0.s, p7/m, p7/m, z0.s, z0.s",
+ "reads":["v0"],"writes":[],
+ "scalableReads":{"predicates":["p7"],"za":"0x1111"},
+ "scalableWrites":{"za":"0x1111"},
+ "scalableEffect":["partial-write","reads-streaming-mode"]}
+```
+
+`za` is a mask, not a tile name, because it is the only faithful rendering: a tile at a given element size occupies the `.Q` positions `{ q : q mod tileCount == n }`, many tile/element pairs share a mask, and a union of accesses has no single name. `za0.s` is tile 0 of the four `.S` tiers — positions 0, 4, 8, 12 — hence `0x1111`. Two accesses touch the same storage exactly when their masks intersect.
+
 `flagEffect` carries `reads` and `writes` as compact `nzcv` strings (a subset of the four condition flags, in `nzcv` order, empty for no effect) while the top-level `reads` and `writes` are register-name arrays. The flags are a small fixed four-element set, so a packed-letter string is the natural shape for them. The register sets are open-ended, so they are arrays. This difference is deliberate and the two shapes do not change.
 
-`symbol` and `targetSymbol` arrived after `schemaVersion 1` shipped. They are additive optional fields, exactly what this article's add-only policy permits within a major schema version, so `schemaVersion` stays `1`. A consumer written against the original schema ignores the new keys; a consumer that wants function context reads them when present.
+Every optional field above is additive under the add-only policy, so `schemaVersion` stays `1` and a consumer that does not know a key simply ignores it.
 
-`referencedSection`, `referencedString`, `referencedSymbol`, and `charLiteral` are the referenced-data fields, the same additive treatment. They surface what an address-forming instruction points at, which `text` alone does not name: `text` shows `add x0, x0, #1256`, the fields show that the formed address lands in `__TEXT,__cstring` and reads back `"hello, %s!\n"`. The recognition is the local `adrp`+`add` / `adrp`+`ldr` idiom (and the single literal loads), the same one `otool` and `llvm-objdump` annotate, never broader value tracking. `charLiteral` is the only one present in the direct-decode modes, since it reads an immediate rather than the binary's sections.
+The referenced-data fields surface what an address-forming instruction points at, which `text` alone does not name: `text` shows `add x0, x0, #1256`, the fields show that the formed address lands in `__TEXT,__cstring` and reads back `"hello, %s!\n"`. Recognition is the local `adrp`+`add` / `adrp`+`ldr` idiom and the single literal loads, the same one `otool` and `llvm-objdump` annotate, never broader value tracking. `charLiteral` is the only one present in the direct-decode modes, since it reads an immediate rather than the binary's sections.
 
 ## kind: "census"
 
@@ -92,7 +106,7 @@ Example:
 
 ## kind: "function"
 
-Emitted by `iris functions --json <file>`: one object per function, in address order, sections in load-command order. The right way to get one record per function for an LLM or a call-graph pass, instead of grouping the per-instruction stream by `.symbol` (whose label can extend into trailing padding or a `__stubs` island and so mis-attribute those words to the last function). Each function object owns the `schemaVersion` and wraps its instruction objects.
+Emitted by `iris functions --json <file>`: one object per function, in address order, sections in load-command order. This is the right way to get one record per function for an LLM or a call-graph pass — grouping the per-instruction stream by `.symbol` instead can sweep trailing padding or a `__stubs` island into the last function. Each function object owns the `schemaVersion` and wraps its instruction objects.
 
 Field order is fixed: `schemaVersion`, `kind`, `symbol`, `address`, `endAddress`, `instructionCount`, `usesPAC`, `instructions`.
 
@@ -123,17 +137,17 @@ Example (one line, wrapped for reading, a single-instruction function whose one 
 
 ## The --slim projection
 
-`--slim`, valid wherever `--json` is, emits the same data with the zero-signal constants dropped. It is opt-in and never changes the default `--json` output. The default per-instruction object is heavier than the `--semantics` text line for the same instruction, and about half of that weight is fields that repeat unchanged on every line. `--slim` is the projection for a model payload or any consumer paying per token, where the verbose default is the wrong default.
+`--slim`, valid wherever `--json` is, emits the same data with the zero-signal constants dropped, and never changes the default output. About half the weight of a default object is fields repeating unchanged on every line, so `--slim` is the projection for a model payload or any consumer paying per token.
 
 What it drops, per instruction object:
 
-- `kind` and `schemaVersion`. The stream is selected by the verb, so the discriminator and the version carry no per-line signal. (A consumer that needs the version reads it from the article, or pins the `iris` release.)
-- A field that is empty or false: `ordering` when relaxed, `flagEffect` when no flag moves, `branchClass` / `memoryAccess` when `none`, `isData` / `isUndefined` when false. The remaining presence of `isData` / `isUndefined` is the witness: a slim line carries them **only when true**.
-- In `functions --json --slim`, the per-instruction `symbol`. The function object already names the function, so repeating it on every nested instruction is pure boilerplate.
+- **`kind` and `schemaVersion`** — the verb selects the stream, so neither carries per-line signal. A consumer needing the version reads it here, or pins the `iris` release.
+- **Anything empty or false**: `ordering` when relaxed, `flagEffect` when no flag moves, `branchClass` / `memoryAccess` when `none`, `isData` / `isUndefined` when false. Their remaining presence is the witness — a slim line carries them **only when true**.
+- **The per-instruction `symbol`**, in `functions --json --slim` only. The function object already names it.
 
-What it keeps, every signal-bearing field in the same fixed order: `address`, `encoding`, `mnemonic`, `text`, `category`, `operands`, `reads`, `writes` (kept even when empty, an empty `reads` is "reads nothing"), a non-`none` `branchClass` / `memoryAccess`, a non-empty `ordering` / `flagEffect`, a present `branchTarget` / `pcRelativeTarget` / `symbol` (stream only) / `targetSymbol`, the referenced-data fields, `charLiteral`, and a true `isData` / `isUndefined`. A kept field's position never shifts, so a slim line is the default line with the dropped keys removed, nothing reordered.
+What it keeps, in the same fixed order: `address`, `encoding`, `mnemonic`, `text`, `category`, `operands`, `reads`, `writes` (kept even when empty — an empty `reads` means "reads nothing"), a non-`none` `branchClass` / `memoryAccess`, a non-empty `ordering` / `flagEffect`, the scalable fields (already absent-when-empty in the default form, so slim carries them unchanged), a present `branchTarget` / `pcRelativeTarget` / `symbol` (stream only) / `targetSymbol`, the referenced-data fields, `charLiteral`, and a true `isData` / `isUndefined`. A kept field's position never shifts, so a slim line is the default line with keys removed, nothing reordered.
 
-The `functions --json --slim` object drops the same two constants (`kind`, `schemaVersion`); it keeps `symbol`, `address`, `endAddress`, `instructionCount` (all signal), keeps `usesPAC` only when the function uses pointer authentication (the drop-false rule, so a present `usesPAC` always means true), and is unmistakably a function (it is the only shape carrying `instructions`). Because slim drops the constant `kind`, discriminate a slim function object by structure, `has(instructions)` in jq, rather than `kind`. `stats --json --slim` drops the census object's `kind` and `schemaVersion` only, since every count it carries is signal (a zero `pointerAuthentication` is exactly what a CI gate reads).
+The slim function object drops the same two constants and keeps `symbol`, `address`, `endAddress`, `instructionCount`. It keeps `usesPAC` only when true (the drop-false rule), so a present `usesPAC` always means true. Since slim drops `kind`, discriminate a slim function object by structure — `has(instructions)` in jq. `stats --json --slim` drops only `kind` and `schemaVersion`, since every count it carries is signal: a zero `pointerAuthentication` is exactly what a CI gate reads.
 
 Example, one slim instruction line (a call, wrapped for reading):
 
