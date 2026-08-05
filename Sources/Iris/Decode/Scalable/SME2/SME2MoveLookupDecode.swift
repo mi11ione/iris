@@ -13,16 +13,16 @@
 enum SME2MoveLookupDecode {
     /// Decode a cell-`110|0|x` word (top byte 0xC0).
     @_optimize(speed)
-    static func decode(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if let d = decodeMovaArray(e, a) { return d }
-        if let d = decodeMovaTileSlice(e, a) { return d }
+    static func decode(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if let d = decodeMovaArray(e, a, &sink) { return d }
+        if let d = decodeMovaTileSlice(e, a, &sink) { return d }
         return switch (e >> 16) & 0xFF {
-        case 0x0C, 0x0D, 0x0E, 0x0F: decodeZeroArray(e, a)
-        case 0x48: decodeZeroZT0(e, a)
-        case 0x4C, 0x4E, 0x4F: decodeMovt(e, a)
+        case 0x0C, 0x0D, 0x0E, 0x0F: decodeZeroArray(e, a, &sink)
+        case 0x48: decodeZeroZT0(e, a, &sink)
+        case 0x4C, 0x4E, 0x4F: decodeMovt(e, a, &sink)
         // LUTI index bits bleed into bits[17:16], so its region byte is not a
         // stable key — the table match (below) handles it directly.
-        default: decodeLuti(e, a)
+        default: decodeLuti(e, a, &sink)
         }
     }
 
@@ -95,15 +95,15 @@ enum SME2MoveLookupDecode {
     /// exact `(mask, value)` — the mask rejects reserved encodings and the
     /// index bits that bleed into the region byte.
     @_optimize(speed)
-    private static func decodeLuti(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeLuti(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         for row in lutiTable where e & row.mask == row.value {
-            return buildLuti(e, a, row)
+            return buildLuti(e, a, row, &sink)
         }
         return SME2Decode.undefined(e, a)
     }
 
     @inline(__always)
-    private static func buildLuti(_ e: UInt32, _ a: UInt64, _ row: LutiRow) -> DecodedDraft {
+    private static func buildLuti(_ e: UInt32, _ a: UInt64, _ row: LutiRow, _ sink: inout OperandSink) -> DecodedDraft {
         let index = row.indexWidth == 0
             ? nil : UInt8((e >> row.indexShift) & ((1 << row.indexWidth) - 1))
         let zn = UInt8((e >> 5) & 0x1F)
@@ -141,7 +141,7 @@ enum SME2MoveLookupDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: row.mnemonic,
             semanticReads: sourceReads, semanticWrites: destWrites, category: .sme,
-            operands: [dest, .zt0(elementIndex: nil), source],
+            operandCount: sink.emit(dest, .zt0(elementIndex: nil), source),
             scalableReads: SME2Decode.zt0Mask(),
             scalableEffect: .readsStreamingMode,
         )
@@ -166,7 +166,7 @@ enum SME2MoveLookupDecode {
     /// at bits[8:5] (per element), the range spans the group width, and the
     /// select register is `W12+Rs`.
     @inline(__always)
-    private static func decodeMovaTileSlice(_ e: UInt32, _ a: UInt64) -> DecodedDraft? {
+    private static func decodeMovaTileSlice(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // Single-slice MOVAZ: `movaz Zd, za<t>{h|v}.<T>[Ws, off]` (no range).
         // The b/h/s/d forms free the size bits (bit16=0); `.q` is the exact
         // size-11 + bit16=1 encoding.
@@ -179,7 +179,7 @@ enum SME2MoveLookupDecode {
                 address: a, encoding: e, mnemonic: .movaz,
                 semanticReads: SME2Decode.selectMask(SME2Decode.selectW12(e)),
                 semanticWrites: SME2Decode.vecMask(zd), category: .sme,
-                operands: [SME2Decode.vec(zd, element), slice],
+                operandCount: sink.emit(SME2Decode.vec(zd, element), slice),
                 scalableReads: SME2Decode.zaWholeMask(), scalableWrites: SME2Decode.zaWholeMask(),
                 scalableEffect: [.readsStreamingMode, .partialWrite],
             )
@@ -220,7 +220,7 @@ enum SME2MoveLookupDecode {
             semanticReads: (read ? .empty : listMask).union(SME2Decode.selectMask(SME2Decode.selectW12(e))),
             semanticWrites: read ? listMask : .empty,
             category: .sme,
-            operands: read ? [list, slice] : [slice, list],
+            operandCount: read ? sink.emit(list, slice) : sink.emit(slice, list),
             scalableReads: za, scalableWrites: read && !movaz ? .empty : za,
             // Partial only when this record writes ZA (write direction, or
             // MOVAZ zeroing); the MOVA-read direction fully writes its Z list.
@@ -301,28 +301,28 @@ enum SME2MoveLookupDecode {
     /// for a non-array-MOVA word (the tile-slice forms are handled by
     /// ``decodeMovaTileSlice``).
     @inline(__always)
-    private static func decodeMovaArray(_ e: UInt32, _ a: UInt64) -> DecodedDraft? {
+    private static func decodeMovaArray(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // Array WRITE (`mov za.d[Wv, off, vgxN], {Zn}`): the offset is bits[2:0]
         // and the source list `Zn` is bits[9:6] (×2) / bits[9:7] (×4).
         if e & 0xFFFF_9C38 == 0xC004_0800 {
             return arrayMova(e, a, .mov, write: true, count: 2,
-                             offset: UInt8(e & 0x7), zFirst: UInt8((e >> 6) & 0xF) &* 2)
+                             offset: UInt8(e & 0x7), zFirst: UInt8((e >> 6) & 0xF) &* 2, &sink)
         }
         if e & 0xFFFF_9C78 == 0xC004_0C00 {
             return arrayMova(e, a, .mov, write: true, count: 4,
-                             offset: UInt8(e & 0x7), zFirst: UInt8((e >> 7) & 0x7) &* 4)
+                             offset: UInt8(e & 0x7), zFirst: UInt8((e >> 7) & 0x7) &* 4, &sink)
         }
         // Array READ (`mov`/`movaz {Zd}, za.d[Wv, off, vgxN]`): the offset is
         // bits[7:5] and the dest list `Zd` is bits[4:0].
         let readOffset = UInt8((e >> 5) & 0x7)
         switch e & 0xFFFF_9F01 {
-        case 0xC006_0800: return arrayMova(e, a, .mov, write: false, count: 2, offset: readOffset, zFirst: UInt8(e & 0x1E))
-        case 0xC006_0A00: return arrayMova(e, a, .movaz, write: false, count: 2, offset: readOffset, zFirst: UInt8(e & 0x1E))
+        case 0xC006_0800: return arrayMova(e, a, .mov, write: false, count: 2, offset: readOffset, zFirst: UInt8(e & 0x1E), &sink)
+        case 0xC006_0A00: return arrayMova(e, a, .movaz, write: false, count: 2, offset: readOffset, zFirst: UInt8(e & 0x1E), &sink)
         default: break
         }
         switch e & 0xFFFF_9F03 {
-        case 0xC006_0C00: return arrayMova(e, a, .mov, write: false, count: 4, offset: readOffset, zFirst: UInt8(e & 0x1C))
-        case 0xC006_0E00: return arrayMova(e, a, .movaz, write: false, count: 4, offset: readOffset, zFirst: UInt8(e & 0x1C))
+        case 0xC006_0C00: return arrayMova(e, a, .mov, write: false, count: 4, offset: readOffset, zFirst: UInt8(e & 0x1C), &sink)
+        case 0xC006_0E00: return arrayMova(e, a, .movaz, write: false, count: 4, offset: readOffset, zFirst: UInt8(e & 0x1C), &sink)
         default: return nil
         }
     }
@@ -330,7 +330,7 @@ enum SME2MoveLookupDecode {
     @inline(__always)
     private static func arrayMova(
         _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, write: Bool, count: UInt8,
-        offset: UInt8, zFirst: UInt8,
+        offset: UInt8, zFirst: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let vg: ZAArrayVectorOperand.VectorGroup = count == 4 ? .vgx4 : .vgx2
         let array = SME2Decode.zaVector(e, .d, offset: offset, group: vg)
@@ -343,7 +343,7 @@ enum SME2MoveLookupDecode {
             semanticReads: (write ? groupMask : .empty).union(SME2Decode.selectMask(SME2Decode.selectW8(e))),
             semanticWrites: write ? .empty : groupMask,
             category: .sme,
-            operands: write ? [array, list] : [list, array],
+            operandCount: write ? sink.emit(array, list) : sink.emit(list, array),
             scalableReads: za,
             scalableWrites: write || mnemonic == .movaz ? za : .empty,
             // Partial only when this record writes ZA (write direction, or
@@ -358,7 +358,7 @@ enum SME2MoveLookupDecode {
     /// `ZERO za.d[Wv, off{:hi}{, vgxN}]` — the eight SME2p1 array forms
     /// (always `.d`, write-only).
     @_optimize(speed)
-    private static func decodeZeroArray(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeZeroArray(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let (offset, offsetHigh, group): (UInt8, UInt8?, ZAArrayVectorOperand.VectorGroup)
         switch e & 0xFFFF_9FF8 {
         case 0xC00C_0000: // za.d[Wv, off3, vgx2]
@@ -366,37 +366,37 @@ enum SME2MoveLookupDecode {
         case 0xC00E_0000: // za.d[Wv, off3, vgx4]
             (offset, offsetHigh, group) = (UInt8(e & 0x7), nil, .vgx4)
         default:
-            return decodeZeroArrayRanges(e, a)
+            return decodeZeroArrayRanges(e, a, &sink)
         }
-        return zeroArrayDraft(e, a, offset: offset, offsetHigh: offsetHigh, group: group)
+        return zeroArrayDraft(e, a, offset: offset, offsetHigh: offsetHigh, group: group, &sink)
     }
 
     @inline(__always)
-    private static func decodeZeroArrayRanges(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeZeroArrayRanges(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Range forms: off×span, with narrower group fields.
         if e & 0xFFFF_9FF8 == 0xC00C_8000 { // za.d[Wv, o1:o2]
             let lo = UInt8(e & 0x7) &* 2
-            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .none)
+            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .none, &sink)
         }
         switch e & 0xFFFF_9FFC {
         case 0xC00D_0000: // vgx2, o1:o2
             let lo = UInt8(e & 0x3) &* 2
-            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .vgx2)
+            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .vgx2, &sink)
         case 0xC00D_8000: // vgx4, o1:o2
             let lo = UInt8(e & 0x3) &* 2
-            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .vgx4)
+            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .vgx4, &sink)
         case 0xC00E_8000: // o1:o4 (whole)
             let lo = UInt8(e & 0x3) &* 4
-            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .none)
+            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .none, &sink)
         default: break
         }
         switch e & 0xFFFF_9FFE {
         case 0xC00F_0000: // vgx2, o1:o4
             let lo = UInt8(e & 0x1) &* 4
-            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .vgx2)
+            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .vgx2, &sink)
         case 0xC00F_8000: // vgx4, o1:o4
             let lo = UInt8(e & 0x1) &* 4
-            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .vgx4)
+            return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .vgx4, &sink)
         default: return SME2Decode.undefined(e, a)
         }
     }
@@ -404,15 +404,15 @@ enum SME2MoveLookupDecode {
     @inline(__always)
     private static func zeroArrayDraft(
         _ e: UInt32, _ a: UInt64, offset: UInt8, offsetHigh: UInt8?,
-        group: ZAArrayVectorOperand.VectorGroup,
+        group: ZAArrayVectorOperand.VectorGroup, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: .zero,
             semanticReads: SME2Decode.selectMask(SME2Decode.selectW8(e)),
             category: .sme,
-            operands: [SME2Decode.zaVector(
+            operandCount: sink.emit(SME2Decode.zaVector(
                 e, .d, offset: offset, offsetHigh: offsetHigh, group: group,
-            )],
+            )),
             scalableWrites: SME2Decode.zaWholeMask(),
             // ZERO za-array is streaming-gated (HasSME2p1, not IsNonStreamingSafe
             // like the ZT0 ZERO) and writes a dynamic ZA slice range.
@@ -424,11 +424,11 @@ enum SME2MoveLookupDecode {
 
     /// `ZERO { zt0 }`.
     @inline(__always)
-    private static func decodeZeroZT0(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeZeroZT0(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard e == 0xC048_0001 else { return SME2Decode.undefined(e, a) }
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .zero, category: .sme,
-            operands: [.zt0(elementIndex: nil)],
+            operandCount: sink.emit(.zt0(elementIndex: nil)),
             scalableWrites: SME2Decode.zt0Mask(),
         )
     }
@@ -438,14 +438,14 @@ enum SME2MoveLookupDecode {
     /// below fix the full opcode (`bits[9:5]=0b11111` scalar, `Zt` for vector)
     /// so the region's holes stay UNDEFINED.
     @inline(__always)
-    private static func decodeMovt(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeMovt(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let rt = UInt8(e & 0x1F)
         let offset = UInt8((e >> 12) & 0x7) &* 8
         if e & 0xFFFF_8FE0 == 0xC04C_03E0 { // movt Xt, zt0[off]
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .movt,
                 semanticWrites: SME2Decode.dataMask(rt), category: .sme,
-                operands: [gpr64(rt), .zt0(elementIndex: offset)],
+                operandCount: sink.emit(gpr64(rt), .zt0(elementIndex: offset)),
                 scalableReads: SME2Decode.zt0Mask(),
                 scalableEffect: .readsStreamingMode, // MOVT is streaming-gated (HasSME2)
             )
@@ -454,7 +454,7 @@ enum SME2MoveLookupDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .movt,
                 semanticReads: SME2Decode.dataMask(rt), category: .sme,
-                operands: [.zt0(elementIndex: offset), gpr64(rt)],
+                operandCount: sink.emit(.zt0(elementIndex: offset), gpr64(rt)),
                 scalableWrites: SME2Decode.zt0Mask(),
                 scalableEffect: [.readsStreamingMode, .partialWrite], // writes an 8-byte ZT0 slice
             )
@@ -465,8 +465,7 @@ enum SME2MoveLookupDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .movt,
                 semanticReads: SME2Decode.vecMask(zt), category: .sme,
-                operands: [.zt0(elementIndex: off2 == 0 ? nil : off2),
-                           .scalableVector(ScalableVectorRef(registerIndex: zt))],
+                operandCount: sink.emit(.zt0(elementIndex: off2 == 0 ? nil : off2), .scalableVector(ScalableVectorRef(registerIndex: zt))),
                 scalableWrites: SME2Decode.zt0Mask(),
                 scalableEffect: [.readsStreamingMode, .partialWrite],
             )

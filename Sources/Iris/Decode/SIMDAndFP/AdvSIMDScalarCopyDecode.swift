@@ -9,7 +9,7 @@
 
 enum AdvSIMDScalarCopyDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let op = UInt8((encoding >> 29) & 0x1)
         let imm5 = UInt8((encoding >> 16) & 0x1F)
         let imm4 = UInt8((encoding >> 11) & 0xF)
@@ -32,7 +32,7 @@ enum AdvSIMDScalarCopyDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [dst, src],
+            operandCount: sink.emit(dst, src),
         )
     }
 

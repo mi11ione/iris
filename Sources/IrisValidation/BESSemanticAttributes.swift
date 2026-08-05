@@ -220,12 +220,12 @@ public enum BESSemanticAttributes {
              .br, .blr, .ret,
              .braaz, .brabz, .blraaz, .blrabz,
              .wfet, .wfit:
-            if let firstReg = BESSemanticAttributes.firstRegisterMask(Array(Array(instruction.operands))) {
+            if let firstReg = BESSemanticAttributes.firstRegisterMask(instruction.operands) {
                 return BESExpectedReads(required: firstReg, allowed: firstReg)
             }
             return BESExpectedReads(required: 0, allowed: 0xFFFF_FFFF_FFFF_FFFF)
         case .braa, .brab, .blraa, .blrab:
-            let regs = BESSemanticAttributes.firstTwoRegistersMask(Array(Array(instruction.operands)))
+            let regs = BESSemanticAttributes.firstTwoRegistersMask(instruction.operands)
             return BESExpectedReads(required: regs, allowed: regs)
         case .cbgt, .cbge, .cbhi, .cbhs, .cbeq, .cbne, .cblt, .cblo,
              .cbbgt, .cbbge, .cbbhi, .cbbhs, .cbbeq, .cbbne,
@@ -233,14 +233,14 @@ public enum BESSemanticAttributes {
             // Register/byte/halfword forms read Rt + Rm; immediate forms
             // read only Rt. Derive from the operand shape (the shared
             // mnemonics span both forms).
-            let regs = BESSemanticAttributes.firstTwoRegistersMask(Array(Array(instruction.operands)))
+            let regs = BESSemanticAttributes.firstTwoRegistersMask(instruction.operands)
             return BESExpectedReads(required: regs, allowed: regs)
         case .retaa, .retab:
             let lrBit = UInt64(1) << 30
             let spBit = UInt64(1) << 31
             return BESExpectedReads(required: lrBit | spBit, allowed: lrBit | spBit)
         case .msr:
-            if let lastReg = BESSemanticAttributes.lastRegisterMask(Array(Array(instruction.operands))) {
+            if let lastReg = BESSemanticAttributes.lastRegisterMask(instruction.operands) {
                 return BESExpectedReads(required: lastReg, allowed: lastReg)
             }
             return BESExpectedReads(required: 0, allowed: 0xFFFF_FFFF_FFFF_FFFF)
@@ -257,7 +257,7 @@ public enum BESSemanticAttributes {
             return BESExpectedReads(required: 0, allowed: 0)
         case .msrr:
             // MSRR reads the (Rt, Rt+1) GP pair.
-            let regs = BESSemanticAttributes.firstTwoRegistersMask(Array(Array(instruction.operands)))
+            let regs = BESSemanticAttributes.firstTwoRegistersMask(instruction.operands)
             return BESExpectedReads(required: regs, allowed: regs)
         case .sysp:
             // SYSP reads the (Rt, Rt+1) pair when present (alias or Rt != 31).
@@ -320,10 +320,10 @@ public enum BESSemanticAttributes {
         case .bl, .blr, .blraa, .blrab, .blraaz, .blrabz:
             return lrBit
         case .mrs:
-            return BESSemanticAttributes.firstRegisterMask(Array(Array(instruction.operands))) ?? 0
+            return BESSemanticAttributes.firstRegisterMask(instruction.operands) ?? 0
         case .mrrs:
             // MRRS writes the (Rt, Rt+1) GP pair.
-            return BESSemanticAttributes.firstTwoRegistersMask(Array(Array(instruction.operands)))
+            return BESSemanticAttributes.firstTwoRegistersMask(instruction.operands)
         case .sysl:
             // SYSL writes Rt. An aliased SYSL gates Rt on its kind (e.g.
             // `gcspopm` doesn't write when Rt == 31); generic SYSL always
@@ -374,7 +374,7 @@ public enum BESSemanticAttributes {
     /// or `nil` if no register operand is present. Used to extract the
     /// per-mnemonic Rt / Rn for verification.
     @_effects(readonly)
-    public static func firstRegisterMask(_ operands: [Operand]) -> UInt64? {
+    public static func firstRegisterMask(_ operands: Instruction.Operands) -> UInt64? {
         for op in operands {
             if case let .register(reg) = op {
                 return UInt64(1) << UInt64(reg.canonicalIndex)
@@ -387,7 +387,7 @@ public enum BESSemanticAttributes {
     /// or `nil` if no register operand is present. Used to extract the
     /// trailing Rt in MSR `[.systemRegister, .register(Rt)]` shape.
     @_effects(readonly)
-    public static func lastRegisterMask(_ operands: [Operand]) -> UInt64? {
+    public static func lastRegisterMask(_ operands: Instruction.Operands) -> UInt64? {
         for op in operands.reversed() {
             if case let .register(reg) = op {
                 return UInt64(1) << UInt64(reg.canonicalIndex)
@@ -400,7 +400,7 @@ public enum BESSemanticAttributes {
     /// operand list. Used to extract the (Rn, Rm) pair for two-operand
     /// auth-branches (BRAA / BRAB / BLRAA / BLRAB).
     @_effects(readonly)
-    public static func firstTwoRegistersMask(_ operands: [Operand]) -> UInt64 {
+    public static func firstTwoRegistersMask(_ operands: Instruction.Operands) -> UInt64 {
         var mask: UInt64 = 0
         var count = 0
         for op in operands {

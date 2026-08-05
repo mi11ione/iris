@@ -110,6 +110,12 @@ Start with <doc:DecodeYourFirstInstruction>, then meet the semantics in <doc:The
 - ``DataInCodeSpan``
 - ``Diagnostic``
 
+### Rendering text
+
+- ``DisassemblyListing``
+- ``TextBytes``
+- ``Instruction/appendText(to:)``
+
 ### Text comparison and decoder utilities
 
 - ``normalizeDisassembly(_:)``

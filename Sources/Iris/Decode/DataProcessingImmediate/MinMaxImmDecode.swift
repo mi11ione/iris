@@ -14,7 +14,7 @@
 
 enum MinMaxImmDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Fixed-bit guard: bits[30:29] and bits[21:20] are zero for this class
         // (the dispatcher already fixed op0=0x8, op1=0b011, bit[22]=1). Anything
         // else in this corner of the space is unallocated → UNDEFINED, matching
@@ -57,7 +57,7 @@ enum MinMaxImmDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: .none,
             category: .dataProcessingImmediate,
-            operands: [.register(rdRef), .register(rnRef), immOperand],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), immOperand),
         )
     }
 }

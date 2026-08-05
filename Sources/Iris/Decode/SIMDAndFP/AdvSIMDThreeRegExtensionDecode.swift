@@ -10,7 +10,7 @@
 /// FCVTN/FCVTN2 narrowing) families.
 enum AdvSIMDThreeRegExtensionDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
@@ -27,13 +27,10 @@ enum AdvSIMDThreeRegExtensionDecode {
         if r.accumulates {
             reads = simdfpInsertingVector(Rd, into: reads)
         }
-        var operands: [Operand] = [
-            simdfpVectorOperand(Rd, arrangement: r.dstArrangement),
-            simdfpVectorOperand(Rn, arrangement: r.srcArrangement),
-            simdfpVectorOperand(Rm, arrangement: r.srcArrangement),
-        ]
+        let operandMark = sink.mark
+        _ = sink.emit(simdfpVectorOperand(Rd, arrangement: r.dstArrangement), simdfpVectorOperand(Rn, arrangement: r.srcArrangement), simdfpVectorOperand(Rm, arrangement: r.srcArrangement))
         if let rot = r.rotation {
-            operands.append(.immediate(value: rot, width: 16))
+            sink.append(.immediate(value: rot, width: 16))
         }
         return DecodedDraft(
             address: address, encoding: encoding,
@@ -42,7 +39,7 @@ enum AdvSIMDThreeRegExtensionDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 

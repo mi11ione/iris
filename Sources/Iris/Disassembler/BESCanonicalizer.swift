@@ -13,67 +13,77 @@
 /// how a BES `Instruction` becomes a one-line assembly string, consumed
 /// by the `DisassemblyText` router behind `Instruction.text`.
 enum BESCanonicalizer {
-    /// Format `instruction` to canonical disassembly text. Empty string means
-    /// UNDEFINED (matches llvm-mc's `""` for invalid encodings).
-    @_effects(readonly)
-    static func format(_ instruction: Instruction) -> String {
-        if instruction.mnemonic == .undefined { return "" }
-        return formatNamed(mnemonic: instruction.mnemonic, operands: instruction.operands)
+    /// Format `instruction` into canonical disassembly text. UNDEFINED
+    /// contributes nothing (matching llvm-mc's `""` for invalid encodings).
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        if instruction.mnemonic == .undefined { return }
+        putNamed(mnemonic: instruction.mnemonic, operands: instruction.operands, into: &out)
     }
 
-    @_effects(readonly)
-    private static func formatNamed(mnemonic: Mnemonic, operands: Instruction.Operands) -> String {
+    private static func putNamed(
+        mnemonic: Mnemonic, operands: Instruction.Operands, into out: inout TextBytes,
+    ) {
         switch mnemonic {
         case .b, .bl:
-            guard !operands.isEmpty else { return "?\(mnemonic.name)" }
-            return "\(mnemonic.name) \(formatLabelOperand(operands[0]))"
-        case .bCond:
+            guard !operands.isEmpty else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            putLabelOperand(operands[0], into: &out)
+        case .bCond, .bcCond:
             // operands[0] = .conditionCode(cond), operands[1] = .label
             guard operands.count >= 2,
                   case let .conditionCode(cond) = operands[0],
                   case let .label(off) = operands[1]
-            else { return "?\(mnemonic.name)" }
-            return "b.\(conditionName(cond)) #\(off)"
-        case .bcCond:
-            // BC.cond (FEAT_HBC) — same shape as b.cond with a "bc." prefix.
-            guard operands.count >= 2,
-                  case let .conditionCode(cond) = operands[0],
-                  case let .label(off) = operands[1]
-            else { return "?\(mnemonic.name)" }
-            return "bc.\(conditionName(cond)) #\(off)"
+            else { return putUnknown(mnemonic, into: &out) }
+            out.put(mnemonic == .bCond ? "b." : "bc.")
+            putConditionName(cond, into: &out)
+            out.put(" #")
+            out.putDecimal(off)
         case .cbz, .cbnz:
             // [.register(Rt), .label(off)]
-            guard operands.count >= 2 else { return "?\(mnemonic.name)" }
-            return "\(mnemonic.name) \(operandRegister(operands[0]).name), \(formatLabelOperand(operands[1]))"
+            guard operands.count >= 2 else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            RegisterNames.put(operandRegister(operands[0]), into: &out)
+            out.put(", ")
+            putLabelOperand(operands[1], into: &out)
         case .cbgt, .cbge, .cbhi, .cbhs, .cbeq, .cbne, .cblt, .cblo,
              .cbbgt, .cbbge, .cbbhi, .cbbhs, .cbbeq, .cbbne,
              .cbhgt, .cbhge, .cbhhi, .cbhhs, .cbheq, .cbhne:
-            return formatCompareBranch(mnemonic: mnemonic, operands: operands)
+            putCompareBranch(mnemonic: mnemonic, operands: operands, into: &out)
         case .tbz, .tbnz:
             // [.register(Rt), .unsignedImmediate(bitPos), .label(off)]
-            guard operands.count >= 3 else { return "?\(mnemonic.name)" }
-            let regText = operandRegister(operands[0]).name
-            let bitText = formatDecimal(operandUnsignedImm(operands[1]))
-            let lblText = formatLabelOperand(operands[2])
-            return "\(mnemonic.name) \(regText), \(bitText), \(lblText)"
+            guard operands.count >= 3 else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            RegisterNames.put(operandRegister(operands[0]), into: &out)
+            out.put(", #")
+            out.putDecimal(operandUnsignedImm(operands[1]))
+            out.put(", ")
+            putLabelOperand(operands[2], into: &out)
         case .svc, .hvc, .smc, .brk, .hlt:
-            guard !operands.isEmpty else { return "?\(mnemonic.name)" }
-            return formatExceptionWithImm(name: mnemonic.name, imm: operandUnsignedImm(operands[0]))
+            guard !operands.isEmpty else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            putHashHexOrZero(operandUnsignedImm(operands[0]), into: &out)
         case .udf:
             // UDF #imm16 — llvm-mc renders the immediate in decimal
             // (`udf #0`, `udf #43981`), unlike the hex SVC/BRK class.
-            guard !operands.isEmpty else { return "?\(mnemonic.name)" }
-            return "\(mnemonic.name) #\(operandUnsignedImm(operands[0]))"
+            guard !operands.isEmpty else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(operandUnsignedImm(operands[0]))
         case .dcps1, .dcps2, .dcps3:
-            guard !operands.isEmpty else { return "?\(mnemonic.name)" }
-            return formatDcpsWithImm(name: mnemonic.name, imm: operandUnsignedImm(operands[0]))
+            guard !operands.isEmpty else { return putUnknown(mnemonic, into: &out) }
+            let imm = operandUnsignedImm(operands[0])
+            putMnemonic(mnemonic, into: &out)
+            if imm != 0 {
+                out.put(" #0x")
+                out.putHex(imm)
+            }
         case .br, .blr, .ret, .eret, .drps:
-            return formatBranchReg(mnemonic: mnemonic, operands: operands)
+            putBranchReg(mnemonic: mnemonic, operands: operands, into: &out)
         case .braa, .brab, .blraa, .blrab,
              .braaz, .brabz, .blraaz, .blrabz:
-            return formatAuthBranchSettable(mnemonic: mnemonic, operands: operands)
+            putAuthBranchSettable(mnemonic: mnemonic, operands: operands, into: &out)
         case .retaa, .retab, .eretaa, .eretab:
-            return mnemonic.name // no operand
+            putMnemonic(mnemonic, into: &out) // no operand
         case .nop, .yield, .wfe, .wfi, .sev, .sevl,
              .dgh, .csdb, .esb, .xpaclri,
              .paciaz, .paciasp, .pacibz, .pacibsp,
@@ -82,199 +92,268 @@ enum BESCanonicalizer {
              .clrbhb, .gcsbDsync,
              .cfinv, .xaflag, .axflag,
              .ssbb, .pssbb, .sb:
-            return mnemonic.name
+            putMnemonic(mnemonic, into: &out)
         case .chkfeat:
             // llvm-mc renders CHKFEAT's implicit X16 operand: "chkfeat x16".
-            return "chkfeat x16"
+            out.put("chkfeat x16")
         case .psb, .tsb:
             // Both rendered as "psb csync" / "tsb csync" — no separate
             // operand, the `csync` literal is part of the syntax.
-            return "\(mnemonic.name) csync"
+            putHead(mnemonic, into: &out)
+            out.put("csync")
         case .bti:
-            return formatBti(name: mnemonic.name, operands: operands)
+            putBti(mnemonic: mnemonic, operands: operands, into: &out)
         case .hint:
-            guard !operands.isEmpty else { return "?\(mnemonic.name)" }
-            return "\(mnemonic.name) #\(operandUnsignedImm(operands[0]))"
-        case .clrex:
-            if operands.isEmpty { return mnemonic.name }
-            return "\(mnemonic.name) #\(operandUnsignedImm(operands[0]))"
-        case .isb:
-            if operands.isEmpty { return mnemonic.name }
-            return "\(mnemonic.name) #\(operandUnsignedImm(operands[0]))"
-        case .dsb:
-            return formatDsbOrDmb(name: mnemonic.name, operands: operands)
-        case .dmb:
-            return formatDsbOrDmb(name: mnemonic.name, operands: operands)
+            guard !operands.isEmpty else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(operandUnsignedImm(operands[0]))
+        case .clrex, .isb:
+            putMnemonic(mnemonic, into: &out)
+            if !operands.isEmpty {
+                out.put(" #")
+                out.putDecimal(operandUnsignedImm(operands[0]))
+            }
+        case .dsb, .dmb:
+            putDsbOrDmb(mnemonic: mnemonic, operands: operands, into: &out)
         case .msr:
             // [.systemRegister(sysreg), .register(Rt)]
             guard operands.count >= 2,
                   case let .systemRegister(sysreg) = operands[0],
                   case let .register(rt) = operands[1]
-            else { return "?msr" }
-            return "\(mnemonic.name) \(systemRegisterName(sysreg, direction: .write)), \(rt.name)"
+            else { return out.put("?msr") }
+            putHead(mnemonic, into: &out)
+            putSystemRegisterName(sysreg, direction: .write, into: &out)
+            out.put(", ")
+            RegisterNames.put(rt, into: &out)
         case .mrs:
             // [.register(Rt), .systemRegister(sysreg)]
             guard operands.count >= 2,
                   case let .register(rt) = operands[0],
                   case let .systemRegister(sysreg) = operands[1]
-            else { return "?mrs" }
-            return "\(mnemonic.name) \(rt.name), \(systemRegisterName(sysreg, direction: .read))"
+            else { return out.put("?mrs") }
+            putHead(mnemonic, into: &out)
+            RegisterNames.put(rt, into: &out)
+            out.put(", ")
+            putSystemRegisterName(sysreg, direction: .read, into: &out)
         case .msrImm:
             // [.pstateField(field), .unsignedImmediate(imm4)]
-            guard operands.count >= 2, case let .pstateField(field) = operands[0] else { return "?msrImm" }
-            let imm = operandUnsignedImm(operands[1])
-            return "\(mnemonic.name) \(pstateName(field)), #\(imm)"
+            guard operands.count >= 2, case let .pstateField(field) = operands[0]
+            else { return out.put("?msrImm") }
+            putHead(mnemonic, into: &out)
+            putPStateName(field, into: &out)
+            out.put(", #")
+            out.putDecimal(operandUnsignedImm(operands[1]))
         case .smstart, .smstop:
             // [.unsignedImmediate(target)] — 1 → sm, 2 → za, 3 → both (bare).
-            guard !operands.isEmpty else { return "?\(mnemonic.name)" }
-            let target = operandUnsignedImm(operands[0])
-            switch target {
-            case 1: return "\(mnemonic.name) sm"
-            case 2: return "\(mnemonic.name) za"
-            default: return mnemonic.name
+            guard !operands.isEmpty else { return putUnknown(mnemonic, into: &out) }
+            putMnemonic(mnemonic, into: &out)
+            switch operandUnsignedImm(operands[0]) {
+            case 1: out.put(" sm")
+            case 2: out.put(" za")
+            default: break
             }
         case .sys:
             // [.systemOp(SystemOp(rawEncoding:))]
-            guard !operands.isEmpty, case let .systemOp(op) = operands[0] else { return "?sys" }
-            return formatSys(name: mnemonic.name, rawEncoding: op.rawEncoding)
+            guard !operands.isEmpty, case let .systemOp(op) = operands[0]
+            else { return out.put("?sys") }
+            putSys(mnemonic: mnemonic, rawEncoding: op.rawEncoding, into: &out)
         case .sysl:
-            guard !operands.isEmpty, case let .systemOp(op) = operands[0] else { return "?sysl" }
-            return formatSysl(name: mnemonic.name, rawEncoding: op.rawEncoding)
+            guard !operands.isEmpty, case let .systemOp(op) = operands[0]
+            else { return out.put("?sysl") }
+            putSysl(mnemonic: mnemonic, rawEncoding: op.rawEncoding, into: &out)
         case .sysp:
-            guard !operands.isEmpty, case let .systemOp(op) = operands[0] else { return "?sysp" }
-            return formatSysp(rawEncoding: op.rawEncoding)
+            guard !operands.isEmpty, case let .systemOp(op) = operands[0]
+            else { return out.put("?sysp") }
+            putSysp(rawEncoding: op.rawEncoding, into: &out)
         case .mrrs:
             // [.register(Xt), .register(Xt+1), .systemRegister(sysreg)]
             guard operands.count >= 3,
                   case let .register(rt1) = operands[0],
                   case let .register(rt2) = operands[1],
                   case let .systemRegister(sysreg) = operands[2]
-            else { return "?mrrs" }
-            return "\(mnemonic.name) \(rt1.name), \(rt2.name), \(systemRegisterName(sysreg, direction: .read))"
+            else { return out.put("?mrrs") }
+            putHead(mnemonic, into: &out)
+            RegisterNames.put(rt1, into: &out)
+            out.put(", ")
+            RegisterNames.put(rt2, into: &out)
+            out.put(", ")
+            putSystemRegisterName(sysreg, direction: .read, into: &out)
         case .msrr:
             // [.systemRegister(sysreg), .register(Xt), .register(Xt+1)]
             guard operands.count >= 3,
                   case let .systemRegister(sysreg) = operands[0],
                   case let .register(rt1) = operands[1],
                   case let .register(rt2) = operands[2]
-            else { return "?msrr" }
-            return "\(mnemonic.name) \(systemRegisterName(sysreg, direction: .write)), \(rt1.name), \(rt2.name)"
+            else { return out.put("?msrr") }
+            putHead(mnemonic, into: &out)
+            putSystemRegisterName(sysreg, direction: .write, into: &out)
+            out.put(", ")
+            RegisterNames.put(rt1, into: &out)
+            out.put(", ")
+            RegisterNames.put(rt2, into: &out)
         case .wfet, .wfit:
             // [.register(Rt)]
-            guard !operands.isEmpty else { return "?\(mnemonic.name)" }
-            return "\(mnemonic.name) \(operandRegister(operands[0]).name)"
+            guard !operands.isEmpty else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            RegisterNames.put(operandRegister(operands[0]), into: &out)
         default:
-            return "?\(mnemonic.rawValue)"
+            out.put(UInt8(ascii: "?"))
+            out.putDecimal(UInt64(mnemonic.rawValue))
         }
     }
 
     // MARK: per-mnemonic formatting helpers
 
-    @_effects(readonly)
-    private static func formatExceptionWithImm(name: String, imm: UInt64) -> String {
-        if imm == 0 {
-            return "\(name) #0"
-        }
-        return "\(name) #\(formatHex(imm))"
+    @inline(__always)
+    private static func putHead(_ m: Mnemonic, into out: inout TextBytes) {
+        putMnemonic(m, into: &out)
+        out.put(UInt8(ascii: " "))
     }
 
-    @_effects(readonly)
-    private static func formatDcpsWithImm(name: String, imm: UInt64) -> String {
-        if imm == 0 {
-            return name
-        }
-        return "\(name) #\(formatHex(imm))"
+    /// The `?<name>` sentinel a mis-shaped operand list renders as.
+    @inline(__always)
+    private static func putUnknown(_ m: Mnemonic, into out: inout TextBytes) {
+        out.put(UInt8(ascii: "?"))
+        putMnemonic(m, into: &out)
     }
 
-    @_effects(readonly)
-    private static func formatBranchReg(mnemonic: Mnemonic, operands: Instruction.Operands) -> String {
+    /// `#0` for zero, `#0x<hex>` otherwise — the SVC/BRK exception class.
+    @inline(__always)
+    private static func putHashHexOrZero(_ imm: UInt64, into out: inout TextBytes) {
+        if imm == 0 {
+            out.put("#0")
+            return
+        }
+        out.put("#0x")
+        out.putHex(imm)
+    }
+
+    private static func putBranchReg(
+        mnemonic: Mnemonic, operands: Instruction.Operands, into out: inout TextBytes,
+    ) {
         if mnemonic == .eret || mnemonic == .drps {
-            return mnemonic.name
+            putMnemonic(mnemonic, into: &out)
+            return
         }
         // RET with Rn=30 decodes with empty operands; other
         // RET forms and BR/BLR carry a single register operand.
         if operands.isEmpty {
-            return mnemonic.name
+            putMnemonic(mnemonic, into: &out)
+            return
         }
-        guard case let .register(rn) = operands[0] else { return "?\(mnemonic.name)" }
-        return "\(mnemonic.name) \(rn.name)"
+        guard case let .register(rn) = operands[0] else { return putUnknown(mnemonic, into: &out) }
+        putHead(mnemonic, into: &out)
+        RegisterNames.put(rn, into: &out)
     }
 
-    @_effects(readonly)
-    private static func formatAuthBranchSettable(mnemonic: Mnemonic, operands: Instruction.Operands) -> String {
+    private static func putAuthBranchSettable(
+        mnemonic: Mnemonic, operands: Instruction.Operands, into out: inout TextBytes,
+    ) {
         if mnemonic == .braa || mnemonic == .brab || mnemonic == .blraa || mnemonic == .blrab {
             guard operands.count >= 2,
                   case let .register(rn) = operands[0],
                   case let .register(rm) = operands[1]
-            else { return "?\(mnemonic.name)" }
-            return "\(mnemonic.name) \(rn.name), \(rm.name)"
+            else { return putUnknown(mnemonic, into: &out) }
+            putHead(mnemonic, into: &out)
+            RegisterNames.put(rn, into: &out)
+            out.put(", ")
+            RegisterNames.put(rm, into: &out)
+            return
         }
-        guard !operands.isEmpty,
-              case let .register(rn) = operands[0]
-        else { return "?\(mnemonic.name)" }
-        return "\(mnemonic.name) \(rn.name)"
+        guard !operands.isEmpty, case let .register(rn) = operands[0]
+        else { return putUnknown(mnemonic, into: &out) }
+        putHead(mnemonic, into: &out)
+        RegisterNames.put(rn, into: &out)
     }
 
-    @_effects(readonly)
-    private static func formatBti(name: String, operands: Instruction.Operands) -> String {
-        if operands.isEmpty {
-            return name
-        }
-        let sub = operandUnsignedImm(operands[0])
-        switch sub {
-        case 0: return name
-        case 1: return "\(name) c"
-        case 2: return "\(name) j"
-        case 3: return "\(name) jc"
-        default: return "\(name) #\(sub)"
+    private static func putBti(
+        mnemonic: Mnemonic, operands: Instruction.Operands, into out: inout TextBytes,
+    ) {
+        putMnemonic(mnemonic, into: &out)
+        if operands.isEmpty { return }
+        switch operandUnsignedImm(operands[0]) {
+        case 0: break
+        case 1: out.put(" c")
+        case 2: out.put(" j")
+        case 3: out.put(" jc")
+        case let sub:
+            out.put(" #")
+            out.putDecimal(sub)
         }
     }
 
-    @_effects(readonly)
-    private static func formatCompareBranch(mnemonic: Mnemonic, operands: Instruction.Operands) -> String {
+    private static func putCompareBranch(
+        mnemonic: Mnemonic, operands: Instruction.Operands, into out: inout TextBytes,
+    ) {
         // Register/byte/halfword: [.register(Rt), .register(Rm), .label].
         // Immediate: [.register(Rt), .unsignedImmediate(imm6), .label].
-        guard operands.count >= 3 else { return "?\(mnemonic.name)" }
-        let rtText = operandRegister(operands[0]).name
-        let lblText = formatLabelOperand(operands[2])
+        guard operands.count >= 3 else { return putUnknown(mnemonic, into: &out) }
+        putHead(mnemonic, into: &out)
+        RegisterNames.put(operandRegister(operands[0]), into: &out)
+        out.put(", ")
         if case let .register(rm) = operands[1] {
-            return "\(mnemonic.name) \(rtText), \(rm.name), \(lblText)"
+            RegisterNames.put(rm, into: &out)
+        } else {
+            // Immediate form — imm6 rendered decimal.
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(operandUnsignedImm(operands[1]))
         }
-        // Immediate form — imm6 rendered decimal.
-        return "\(mnemonic.name) \(rtText), #\(operandUnsignedImm(operands[1])), \(lblText)"
+        out.put(", ")
+        putLabelOperand(operands[2], into: &out)
     }
 
-    @_effects(readonly)
-    private static func formatDsbOrDmb(name: String, operands: Instruction.Operands) -> String {
-        if operands.isEmpty {
-            return name
-        }
+    private static func putDsbOrDmb(
+        mnemonic: Mnemonic, operands: Instruction.Operands, into out: inout TextBytes,
+    ) {
+        putMnemonic(mnemonic, into: &out)
+        if operands.isEmpty { return }
+        out.put(UInt8(ascii: " "))
         switch operands[0] {
         case let .barrierOption(opt):
-            return "\(name) \(barrierName(opt))"
+            putBarrierName(opt, into: &out)
         case let .unsignedImmediate(value, width):
             if width == 5 {
                 // nXS form (CRm | 0x10 packed into width=5). Render as
                 // the named nXS option.
-                let crm = value & 0xF
-                switch crm {
-                case 2: return "\(name) oshnxs"
-                case 6: return "\(name) nshnxs"
-                case 10: return "\(name) ishnxs"
-                case 14: return "\(name) synxs"
-                default: return "\(name) #\(value)"
+                switch value & 0xF {
+                case 2: out.put("oshnxs")
+                case 6: out.put("nshnxs")
+                case 10: out.put("ishnxs")
+                case 14: out.put("synxs")
+                default:
+                    out.put(UInt8(ascii: "#"))
+                    out.putDecimal(value)
                 }
+                return
             }
-            return "\(name) #\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         default:
-            return "\(name) ?"
+            out.put(UInt8(ascii: "?"))
         }
     }
 
     // MARK: SYS / SYSL formatting
 
-    @_effects(readonly)
-    private static func formatSys(name: String, rawEncoding: UInt32) -> String {
+    /// `#<op1>, c<CRn>, c<CRm>, #<op2>` — the generic operand tail every
+    /// SYS-class fallback shares.
+    private static func putSysFields(
+        op1: UInt8, CRn: UInt8, CRm: UInt8, op2: UInt8, into out: inout TextBytes,
+    ) {
+        out.put(UInt8(ascii: "#"))
+        out.putDecimal(UInt64(op1))
+        out.put(", c")
+        out.putDecimal(UInt64(CRn))
+        out.put(", c")
+        out.putDecimal(UInt64(CRm))
+        out.put(", #")
+        out.putDecimal(UInt64(op2))
+    }
+
+    private static func putSys(
+        mnemonic: Mnemonic, rawEncoding: UInt32, into out: inout TextBytes,
+    ) {
         let op1 = UInt8((rawEncoding >> 16) & 0x7)
         let CRn = UInt8((rawEncoding >> 12) & 0xF)
         let CRm = UInt8((rawEncoding >> 8) & 0xF)
@@ -283,23 +362,37 @@ enum BESCanonicalizer {
         if let alias = BESSysAliasTable.lookup(op1: op1, CRn: CRn, CRm: CRm, op2: op2) {
             switch alias.kind {
             case .reg:
-                return "\(alias.name), \(RegisterRef.x(Rt).name)"
+                out.putString(alias.name)
+                out.put(", ")
+                RegisterNames.put(RegisterRef.x(Rt), into: &out)
+                return
             case .bareReg:
-                return "\(alias.name) \(RegisterRef.x(Rt).name)"
+                out.putString(alias.name)
+                out.put(UInt8(ascii: " "))
+                RegisterNames.put(RegisterRef.x(Rt), into: &out)
+                return
             case .noreg, .optReg:
                 // .noreg renders bare only when Rt == 31; otherwise the
                 // generic SYS form. .optReg never appears in the SYS table
                 // (it is SYSL-only) — bare-at-31 is its rendering too.
-                if Rt == 31 { return alias.name }
+                if Rt == 31 {
+                    out.putString(alias.name)
+                    return
+                }
             }
         }
         // Generic SYS fallback.
-        let rtPart = (Rt == 31) ? "" : ", \(RegisterRef.x(Rt).name)"
-        return "\(name) #\(op1), c\(CRn), c\(CRm), #\(op2)\(rtPart)"
+        putHead(mnemonic, into: &out)
+        putSysFields(op1: op1, CRn: CRn, CRm: CRm, op2: op2, into: &out)
+        if Rt != 31 {
+            out.put(", ")
+            RegisterNames.put(RegisterRef.x(Rt), into: &out)
+        }
     }
 
-    @_effects(readonly)
-    private static func formatSysl(name: String, rawEncoding: UInt32) -> String {
+    private static func putSysl(
+        mnemonic: Mnemonic, rawEncoding: UInt32, into out: inout TextBytes,
+    ) {
         let op1 = UInt8((rawEncoding >> 16) & 0x7)
         let CRn = UInt8((rawEncoding >> 12) & 0xF)
         let CRm = UInt8((rawEncoding >> 8) & 0xF)
@@ -308,19 +401,28 @@ enum BESCanonicalizer {
         if let alias = BESSyslAliasTable.lookup(op1: op1, CRn: CRn, CRm: CRm, op2: op2) {
             switch alias.kind {
             case .reg, .bareReg:
-                return "\(alias.name) \(RegisterRef.x(Rt).name)"
+                out.putString(alias.name)
+                out.put(UInt8(ascii: " "))
+                RegisterNames.put(RegisterRef.x(Rt), into: &out)
             case .optReg, .noreg:
                 // .optReg renders `name xN` at Rt != 31 and bare at 31;
                 // .noreg never appears in the SYSL table (SYS-only).
-                return (Rt == 31) ? alias.name : "\(alias.name) \(RegisterRef.x(Rt).name)"
+                out.putString(alias.name)
+                if Rt != 31 {
+                    out.put(UInt8(ascii: " "))
+                    RegisterNames.put(RegisterRef.x(Rt), into: &out)
+                }
             }
+            return
         }
         // Generic SYSL fallback — Rt is always rendered (incl. xzr).
-        return "\(name) \(RegisterRef.x(Rt).name), #\(op1), c\(CRn), c\(CRm), #\(op2)"
+        putHead(mnemonic, into: &out)
+        RegisterNames.put(RegisterRef.x(Rt), into: &out)
+        out.put(", ")
+        putSysFields(op1: op1, CRn: CRn, CRm: CRm, op2: op2, into: &out)
     }
 
-    @_effects(readonly)
-    private static func formatSysp(rawEncoding: UInt32) -> String {
+    private static func putSysp(rawEncoding: UInt32, into out: inout TextBytes) {
         let op1 = UInt8((rawEncoding >> 16) & 0x7)
         let CRn = UInt8((rawEncoding >> 12) & 0xF)
         let CRm = UInt8((rawEncoding >> 8) & 0xF)
@@ -328,24 +430,38 @@ enum BESCanonicalizer {
         let Rt = UInt8(rawEncoding & 0x1F)
         // Rt and Rt+1 form a consecutive X-register pair; Rt == 31 → xzr pair.
         let rt2: UInt8 = (Rt == 31) ? 31 : (Rt &+ 1)
-        let pair = "\(RegisterRef.x(Rt).name), \(RegisterRef.x(rt2).name)"
         if let alias = BESSyspAliasTable.lookup(op1: op1, CRn: CRn, CRm: CRm, op2: op2) {
             // Aliased SYSP always renders the pair (incl. xzr, xzr).
-            return "\(alias.name), \(pair)"
+            out.putString(alias.name)
+            out.put(", ")
+            putRegisterPair(Rt, rt2, into: &out)
+            return
         }
+        out.put("sysp ")
+        putSysFields(op1: op1, CRn: CRn, CRm: CRm, op2: op2, into: &out)
         // Generic SYSP omits the pair when Rt == 31.
-        if Rt == 31 {
-            return "sysp #\(op1), c\(CRn), c\(CRm), #\(op2)"
+        if Rt != 31 {
+            out.put(", ")
+            putRegisterPair(Rt, rt2, into: &out)
         }
-        return "sysp #\(op1), c\(CRn), c\(CRm), #\(op2), \(pair)"
+    }
+
+    @inline(__always)
+    private static func putRegisterPair(_ a: UInt8, _ b: UInt8, into out: inout TextBytes) {
+        RegisterNames.put(RegisterRef.x(a), into: &out)
+        out.put(", ")
+        RegisterNames.put(RegisterRef.x(b), into: &out)
     }
 
     // MARK: shared helpers (immediate / register / labels)
 
-    @_effects(readonly)
-    private static func formatLabelOperand(_ op: Operand) -> String {
-        guard case let .label(offset) = op else { return "?label" }
-        return "#\(offset)"
+    private static func putLabelOperand(_ op: Operand, into out: inout TextBytes) {
+        guard case let .label(offset) = op else {
+            out.put("?label")
+            return
+        }
+        out.put(UInt8(ascii: "#"))
+        out.putDecimal(offset)
     }
 
     @inline(__always)
@@ -367,77 +483,68 @@ enum BESCanonicalizer {
         }
     }
 
-    @inline(__always)
-    @_effects(readonly)
-    private static func formatDecimal(_ value: UInt64) -> String {
-        "#\(value)"
-    }
-
-    @inline(__always)
-    @_effects(readonly)
-    private static func formatHex(_ value: UInt64) -> String {
-        "0x\(String(value, radix: 16))"
-    }
-
     // MARK: name tables
 
-    @_effects(readonly)
-    private static func conditionName(_ c: ConditionCode) -> String {
+    @inline(__always)
+    private static func putConditionName(_ c: ConditionCode, into out: inout TextBytes) {
         switch c {
-        case .eq: "eq"
-        case .ne: "ne"
-        case .cs: "hs" // llvm-mc canonical
-        case .cc: "lo" // llvm-mc canonical
-        case .mi: "mi"
-        case .pl: "pl"
-        case .vs: "vs"
-        case .vc: "vc"
-        case .hi: "hi"
-        case .ls: "ls"
-        case .ge: "ge"
-        case .lt: "lt"
-        case .gt: "gt"
-        case .le: "le"
-        case .al: "al"
-        case .nv: "nv"
+        case .eq: out.put("eq")
+        case .ne: out.put("ne")
+        case .cs: out.put("hs") // llvm-mc canonical
+        case .cc: out.put("lo") // llvm-mc canonical
+        case .mi: out.put("mi")
+        case .pl: out.put("pl")
+        case .vs: out.put("vs")
+        case .vc: out.put("vc")
+        case .hi: out.put("hi")
+        case .ls: out.put("ls")
+        case .ge: out.put("ge")
+        case .lt: out.put("lt")
+        case .gt: out.put("gt")
+        case .le: out.put("le")
+        case .al: out.put("al")
+        case .nv: out.put("nv")
         }
     }
 
-    @_effects(readonly)
-    private static func barrierName(_ b: BarrierOption) -> String {
+    @inline(__always)
+    private static func putBarrierName(_ b: BarrierOption, into out: inout TextBytes) {
         switch b {
-        case .oshld: "oshld"
-        case .oshst: "oshst"
-        case .osh: "osh"
-        case .nshld: "nshld"
-        case .nshst: "nshst"
-        case .nsh: "nsh"
-        case .ishld: "ishld"
-        case .ishst: "ishst"
-        case .ish: "ish"
-        case .ld: "ld"
-        case .st: "st"
-        case .sy: "sy"
+        case .oshld: out.put("oshld")
+        case .oshst: out.put("oshst")
+        case .osh: out.put("osh")
+        case .nshld: out.put("nshld")
+        case .nshst: out.put("nshst")
+        case .nsh: out.put("nsh")
+        case .ishld: out.put("ishld")
+        case .ishst: out.put("ishst")
+        case .ish: out.put("ish")
+        case .ld: out.put("ld")
+        case .st: out.put("st")
+        case .sy: out.put("sy")
         }
     }
 
-    @_effects(readonly)
-    private static func pstateName(_ f: PSTATEField) -> String {
+    private static func putPStateName(_ f: PSTATEField, into out: inout TextBytes) {
         // Lowercase to match the normalized oracle text.
         // llvm-mc emits uppercase canonical names ("SPSel", "DAIFSet")
         // but `normalizeDisassembly` lowercases for diff stability.
         switch f {
-        case .spSel: "spsel"
-        case .daifSet: "daifset"
-        case .daifClr: "daifclr"
-        case .uao: "uao"
-        case .pan: "pan"
-        case .dit: "dit"
-        case .tco: "tco"
-        case .ssbs: "ssbs"
-        case .allInt: "allint"
-        case .pm: "pm"
-        case let .unknown(op1, op2): "pstate\(op1)_\(op2)"
+        case .spSel: out.put("spsel")
+        case .daifSet: out.put("daifset")
+        case .daifClr: out.put("daifclr")
+        case .uao: out.put("uao")
+        case .pan: out.put("pan")
+        case .dit: out.put("dit")
+        case .tco: out.put("tco")
+        case .ssbs: out.put("ssbs")
+        case .allInt: out.put("allint")
+        case .pm: out.put("pm")
+        case let .unknown(op1, op2):
+            out.put("pstate")
+            out.putDecimal(UInt64(op1))
+            out.put(UInt8(ascii: "_"))
+            out.putDecimal(UInt64(op2))
         }
     }
 
@@ -448,16 +555,25 @@ enum BESCanonicalizer {
         case write // MSR
     }
 
-    @_effects(readonly)
-    private static func systemRegisterName(
-        _ s: SystemRegisterEncoding, direction: SystemRegisterDirection,
-    ) -> String {
+    private static func putSystemRegisterName(
+        _ s: SystemRegisterEncoding, direction: SystemRegisterDirection, into out: inout TextBytes,
+    ) {
         if let named = SystemRegisterNameTable.lookup(s, direction: direction) {
-            return named
+            out.putString(named)
+            return
         }
         // Generic s<op0>_<op1>_c<crn>_c<crm>_<op2> form — lowercase to
         // match the normalized oracle text (llvm-mc emits
         // uppercase, `normalizeDisassembly` lowercases for diff stability).
-        return "s\(s.op0)_\(s.op1)_c\(s.crn)_c\(s.crm)_\(s.op2)"
+        out.put(UInt8(ascii: "s"))
+        out.putDecimal(UInt64(s.op0))
+        out.put(UInt8(ascii: "_"))
+        out.putDecimal(UInt64(s.op1))
+        out.put("_c")
+        out.putDecimal(UInt64(s.crn))
+        out.put("_c")
+        out.putDecimal(UInt64(s.crm))
+        out.put(UInt8(ascii: "_"))
+        out.putDecimal(UInt64(s.op2))
     }
 }

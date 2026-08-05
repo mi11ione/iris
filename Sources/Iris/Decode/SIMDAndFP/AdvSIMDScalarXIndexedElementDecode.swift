@@ -9,7 +9,7 @@
 
 enum AdvSIMDScalarXIndexedElementDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
         let L = UInt8((encoding >> 21) & 0x1)
@@ -59,11 +59,7 @@ enum AdvSIMDScalarXIndexedElementDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [
-                    simdfpScalarOperand(Rd, size: elementSize),
-                    simdfpScalarOperand(Rn, size: elementSize),
-                    simdfpElementOperand(elementReg, elementSize: elementSize, index: index),
-                ],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: elementSize), simdfpScalarOperand(Rn, size: elementSize), simdfpElementOperand(elementReg, elementSize: elementSize, index: index)),
             )
         }
         // Integer family (SQDMLAL/SQDMLSL/SQDMULL/SQDMULH/SQRDMULH/...).
@@ -107,11 +103,7 @@ enum AdvSIMDScalarXIndexedElementDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: resultSize),
-                simdfpScalarOperand(Rn, size: srcSize),
-                simdfpElementOperand(rmReg, elementSize: srcSize, index: index),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: resultSize), simdfpScalarOperand(Rn, size: srcSize), simdfpElementOperand(rmReg, elementSize: srcSize, index: index)),
         )
     }
 }

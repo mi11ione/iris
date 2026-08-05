@@ -15,7 +15,7 @@
 extension SME2Decode {
     /// Decode a cell-`101|x|0` multi-vector load/store word.
     @_optimize(speed)
-    static func decodeMultiVector(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMultiVector(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let strided = e & 0x0100_0000 != 0
         let immediateForm = e & 0x0040_0000 != 0
         let isStore = e & 0x0020_0000 != 0
@@ -68,11 +68,7 @@ extension SME2Decode {
             semanticWrites: isStore ? .empty : registers,
             memoryAccess: isStore ? .store : .load,
             category: .sme,
-            operands: [
-                group(first, count, element, strided: strided),
-                governPN(pn, isStore ? .none : .zeroing),
-                .scalableMemory(memory),
-            ],
+            operandCount: sink.emit(group(first, count, element, strided: strided), governPN(pn, isStore ? .none : .zeroing), .scalableMemory(memory)),
             scalableReads: predMask(8 &+ pn),
             scalableEffect: nonTemporal
                 ? [.readsStreamingMode, .nonTemporal] : [.readsStreamingMode],
@@ -83,7 +79,7 @@ extension SME2Decode {
     /// are in SME2's claim (`LDR ZT0` / `STR ZT0`); the cell's remainder is
     /// SME-core's.
     @_optimize(speed)
-    static func decodeZT0FillSpill(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeZT0FillSpill(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The routing gate (`smeIsZT0FillSpill`) admits exactly these two
         // patterns, so the fill test decides between them — there is no third
         // case to reject here.
@@ -95,7 +91,7 @@ extension SME2Decode {
             semanticReads: baseMask(rnIndex),
             memoryAccess: isLoad ? .load : .store,
             category: .sme,
-            operands: [.zt0(elementIndex: nil), .scalableMemory(memory)],
+            operandCount: sink.emit(.zt0(elementIndex: nil), .scalableMemory(memory)),
             scalableReads: isLoad ? .empty : zt0Mask(),
             scalableWrites: isLoad ? zt0Mask() : .empty,
         )

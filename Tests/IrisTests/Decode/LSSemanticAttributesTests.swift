@@ -519,4 +519,26 @@ struct LSSemanticAttributesTests {
             )
         }
     }
+
+    @Test func packedShapeAndListDescribeTheSameShape() {
+        // One table, two views: the published list is derived from the
+        // packed word, so a shape can never read differently through them.
+        for m: Mnemonic in [.ldr, .ldp, .stxp, .prfm, .caspt, .rprfm, .cpyfp] {
+            guard let packed = LSSemanticAttributes.packedOperandShape(for: m) else { continue }
+            #expect(packed.kinds == LSSemanticAttributes.expectedOperandShape(for: m))
+            #expect(packed.count == packed.kinds.count)
+            for i in 0 ..< packed.count {
+                #expect(packed.kind(at: i) == packed.kinds[i])
+            }
+        }
+    }
+
+    @Test func packedShapeReportsNilPastItsEnd() {
+        guard let packed = LSSemanticAttributes.packedOperandShape(for: .ldr) else {
+            #expect(Bool(false), "ldr has a shape")
+            return
+        }
+        #expect(packed.kind(at: packed.count) == nil)
+        #expect(packed.kind(at: -1) == nil)
+    }
 }

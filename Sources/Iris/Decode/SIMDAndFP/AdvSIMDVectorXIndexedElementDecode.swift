@@ -15,7 +15,7 @@
 
 enum AdvSIMDVectorXIndexedElementDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
@@ -29,16 +29,16 @@ enum AdvSIMDVectorXIndexedElementDecode {
 
         // Dot-product by-element forms use a group-element operand
         // (vm.4b/2h[idx]) and their own dst/src shapes; handle them first.
-        if let dot = decodeDot(encoding: encoding, address: address) {
+        if let dot = decodeDot(encoding: encoding, address: address, &sink) {
             return dot
         }
         // FP8/BF16 FMLAL / FMLALL by-element (single .b/.h element + b/t variant).
-        if let fmlal = decodeFmlal(encoding: encoding, address: address) {
+        if let fmlal = decodeFmlal(encoding: encoding, address: address, &sink) {
             return fmlal
         }
         // FCMLA by-element carries a #rot immediate; handle before the generic
         // FP/int paths (which would route its opcodes to UNDEFINED).
-        if let fcmla = decodeFcmla(encoding: encoding, address: address) {
+        if let fcmla = decodeFcmla(encoding: encoding, address: address, &sink) {
             return fcmla
         }
 
@@ -59,13 +59,13 @@ enum AdvSIMDVectorXIndexedElementDecode {
             return decodeFPFamily(
                 encoding: encoding, address: address,
                 Q: Q, U: U, size: size, L: L, H: H,
-                Rm: elementReg, opcode: opcode, Rn: Rn, Rd: Rd,
+                Rm: elementReg, opcode: opcode, Rn: Rn, Rd: Rd, &sink,
             )
         }
         return decodeIntFamily(
             encoding: encoding, address: address,
             Q: Q, U: U, size: size, L: L, H: H,
-            Rm: elementReg, opcode: opcode, Rn: Rn, Rd: Rd,
+            Rm: elementReg, opcode: opcode, Rn: Rn, Rd: Rd, &sink,
         )
     }
 
@@ -75,7 +75,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
     /// non-dot (U, opcode, size) tuples so the caller falls through.
     @inline(__always)
     @_optimize(speed)
-    private static func decodeDot(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeDot(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         let Q = UInt8((encoding >> 30) & 1)
         let U = UInt8((encoding >> 29) & 1)
         let size = UInt8((encoding >> 22) & 3)
@@ -129,11 +129,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: dstArrangement),
-                simdfpVectorOperand(Rn, arrangement: srcArrangement),
-                simdfpElementGroupOperand(rmReg, elementSize: srcElement, count: groupCount, index: index),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: dstArrangement), simdfpVectorOperand(Rn, arrangement: srcArrangement), simdfpElementGroupOperand(rmReg, elementSize: srcElement, count: groupCount, index: index)),
         )
     }
 
@@ -144,7 +140,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
     /// lanes); BF16 .h index = H:L:M.
     @inline(__always)
     @_optimize(speed)
-    private static func decodeFmlal(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeFmlal(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         let Q = UInt8((encoding >> 30) & 1)
         let U = UInt8((encoding >> 29) & 1)
         let size = UInt8((encoding >> 22) & 3)
@@ -198,11 +194,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: dstArr),
-                simdfpVectorOperand(Rn, arrangement: srcArr),
-                simdfpElementOperand(elemReg, elementSize: elemSize, index: index),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: dstArr), simdfpVectorOperand(Rn, arrangement: srcArr), simdfpElementOperand(elemReg, elementSize: elemSize, index: index)),
         )
     }
 
@@ -211,7 +203,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
     private static func decodeFPFamily(
         encoding: UInt32, address: UInt64,
         Q: UInt8, U: UInt8, size: UInt8, L: UInt8, H: UInt8,
-        Rm: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8,
+        Rm: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let m: Mnemonic
         switch (U, opcode) {
@@ -249,11 +241,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: arrangement),
-                simdfpVectorOperand(Rn, arrangement: arrangement),
-                simdfpElementOperand(rmReg, elementSize: elementSize, index: index),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement), simdfpElementOperand(rmReg, elementSize: elementSize, index: index)),
         )
     }
 
@@ -262,7 +250,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
     private static func decodeIntFamily(
         encoding: UInt32, address: UInt64,
         Q: UInt8, U: UInt8, size: UInt8, L: UInt8, H: UInt8,
-        Rm: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8,
+        Rm: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // Element size from size field (00 = reserved, 01 = H, 10 = S).
         let elementSize: ScalarSize
@@ -341,11 +329,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: dstArrangement),
-                simdfpVectorOperand(Rn, arrangement: srcArrangement),
-                simdfpElementOperand(rmReg, elementSize: elementSize, index: index),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: dstArrangement), simdfpVectorOperand(Rn, arrangement: srcArrangement), simdfpElementOperand(rmReg, elementSize: elementSize, index: index)),
         )
     }
 
@@ -355,7 +339,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
     /// non-fcmla tuples so the caller falls through.
     @inline(__always)
     @_optimize(speed)
-    private static func decodeFcmla(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeFcmla(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         guard (encoding >> 29) & 1 == 1 else { return nil } // U=1
         let opcode = UInt8((encoding >> 12) & 0xF)
         switch opcode {
@@ -399,12 +383,7 @@ enum AdvSIMDVectorXIndexedElementDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: arrangement),
-                simdfpVectorOperand(Rn, arrangement: arrangement),
-                simdfpElementOperand(rmReg, elementSize: elementSize, index: index),
-                .immediate(value: rot, width: 16),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement), simdfpElementOperand(rmReg, elementSize: elementSize, index: index), .immediate(value: rot, width: 16)),
         )
     }
 

@@ -133,7 +133,7 @@ extension Mnemonic {
     /// the family's slice of ``Mnemonic/name``, declared beside the
     /// constants it names so the two cannot drift. Unallocated raw
     /// values in the family's range return `"?<raw>"`.
-    static func cryptoAppleExtensionsName(_ m: Mnemonic) -> String {
+    static func cryptoAppleExtensionsName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .aese: "aese"
         case .aesd: "aesd"
@@ -224,7 +224,7 @@ extension Mnemonic {
         case .amxMatfp: "matfp"
         case .amxGenlut: "genlut"
         case .amxUnknownOp: "amx-unknown"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

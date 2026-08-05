@@ -139,7 +139,7 @@ struct DPISemanticAttributesTests {
     }
 
     @Test func registerMaskAtHandlesEveryOperandShape() {
-        let ops: [Operand] = [
+        let ops: Instruction.Operands = [
             .register(.x(3)),
             .unsignedImmediate(value: 1, width: 12),
             .register(.xzr()),

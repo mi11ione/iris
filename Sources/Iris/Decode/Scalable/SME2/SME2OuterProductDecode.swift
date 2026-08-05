@@ -18,28 +18,28 @@ enum SME2OuterProductDecode {
     /// masks below carry the full opcode, so a non-matching word falls
     /// through to a claimed hole.
     @_optimize(speed)
-    static func decode(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if let base = mop4Base(e) { return decodeMop4(e, a, base) }
-        if e & 0x0080_0000 == 0, e & 0x0040_0000 != 0 { return decodeTmop(e, a) }
-        return decodeResidue(e, a)
+    static func decode(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if let base = mop4Base(e) { return decodeMop4(e, a, base, &sink) }
+        if e & 0x0080_0000 == 0, e & 0x0040_0000 != 0 { return decodeTmop(e, a, &sink) }
+        return decodeResidue(e, a, &sink)
     }
 
     /// Decode a residue inside SME-core's outer-product cells (bit23=1) — the
     /// 2-way I16→I32 integer products and the FP8 FMOPA.
     @_optimize(speed)
-    private static func decodeResidue(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeResidue(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch e & 0xFFE0_001C {
-        case 0xA080_0008: return predicatedOuterProduct(e, a, .smopa, tile: .s, source: .h)
-        case 0xA080_0018: return predicatedOuterProduct(e, a, .smops, tile: .s, source: .h)
-        case 0xA180_0008: return predicatedOuterProduct(e, a, .umopa, tile: .s, source: .h)
-        case 0xA180_0018: return predicatedOuterProduct(e, a, .umops, tile: .s, source: .h)
+        case 0xA080_0008: return predicatedOuterProduct(e, a, .smopa, tile: .s, source: .h, &sink)
+        case 0xA080_0018: return predicatedOuterProduct(e, a, .smops, tile: .s, source: .h, &sink)
+        case 0xA180_0008: return predicatedOuterProduct(e, a, .umopa, tile: .s, source: .h, &sink)
+        case 0xA180_0018: return predicatedOuterProduct(e, a, .umops, tile: .s, source: .h, &sink)
         default: break
         }
         if e & 0xFFE0_001C == 0x80A0_0000 {
-            return predicatedOuterProduct(e, a, .fmopa, tile: .s, source: .b)
+            return predicatedOuterProduct(e, a, .fmopa, tile: .s, source: .b, &sink)
         }
         if e & 0xFFE0_001E == 0x80A0_0008 {
-            return predicatedOuterProduct(e, a, .fmopa, tile: .h, source: .b)
+            return predicatedOuterProduct(e, a, .fmopa, tile: .h, source: .b, &sink)
         }
         return SME2Decode.undefined(e, a)
     }
@@ -57,7 +57,7 @@ enum SME2OuterProductDecode {
     }
 
     @_optimize(speed)
-    private static func decodeMop4(_ e: UInt32, _ a: UInt64, _ base: Mop4Base) -> DecodedDraft {
+    private static func decodeMop4(_ e: UInt32, _ a: UInt64, _ base: Mop4Base, _ sink: inout OperandSink) -> DecodedDraft {
         let znPair = e & 0x200 != 0 // N
         let zmPair = e & 0x0010_0000 != 0 // M
         let znField = UInt8((e >> 6) & 0x7)
@@ -78,7 +78,7 @@ enum SME2OuterProductDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: base.mnemonic,
             semanticReads: reads, category: .sme,
-            operands: [.zaTile(index: zada, element: base.tile), znOperand, zmOperand],
+            operandCount: sink.emit(.zaTile(index: zada, element: base.tile), znOperand, zmOperand),
             scalableReads: za, scalableWrites: za,
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -136,7 +136,7 @@ enum SME2OuterProductDecode {
     // MARK: - TMOP
 
     @_optimize(speed)
-    private static func decodeTmop(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeTmop(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let (mnemonic, tile, source): (Mnemonic, ScalarSize, ScalarSize)
         // `.h`-tile rows have ZAda = bit[0] (mask ...E00E); `.s`-tile rows have
         // ZAda = bits[1:0] (mask ...E00C, bit1 free) — so they need distinct
@@ -174,12 +174,7 @@ enum SME2OuterProductDecode {
             semanticReads: SME2Decode.groupMask(zn, 2)
                 .union(SME2Decode.vecMask(zmIndex)).union(SME2Decode.vecMask(zk)),
             category: .sme,
-            operands: [
-                .zaTile(index: zada, element: tile),
-                SME2Decode.group(zn, 2, source),
-                SME2Decode.vec(zmIndex, source),
-                SME2Decode.vec(zk, nil, index: index),
-            ],
+            operandCount: sink.emit(.zaTile(index: zada, element: tile), SME2Decode.group(zn, 2, source), SME2Decode.vec(zmIndex, source), SME2Decode.vec(zk, nil, index: index)),
             scalableReads: za, scalableWrites: za,
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -191,7 +186,7 @@ enum SME2OuterProductDecode {
     /// Zm.<Ts>` (SME-core's shape, reused for the SME2 residues).
     @inline(__always)
     private static func predicatedOuterProduct(
-        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, tile: ScalarSize, source: ScalarSize,
+        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, tile: ScalarSize, source: ScalarSize, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let zada = UInt8(e & (tile == .h ? 0x1 : 0x3))
         let pn = UInt8((e >> 10) & 0x7)
@@ -203,13 +198,7 @@ enum SME2OuterProductDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: SME2Decode.vecMask(zn).union(SME2Decode.vecMask(zm)),
             category: .sme,
-            operands: [
-                .zaTile(index: zada, element: tile),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, qualifier: .merging)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pm, qualifier: .merging)),
-                SME2Decode.vec(zn, source),
-                SME2Decode.vec(zm, source),
-            ],
+            operandCount: sink.emit(.zaTile(index: zada, element: tile), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, qualifier: .merging)), .scalablePredicate(ScalablePredicateRef(registerIndex: pm, qualifier: .merging)), SME2Decode.vec(zn, source), SME2Decode.vec(zm, source)),
             scalableReads: za.union(SME2Decode.predMask(pn)).union(SME2Decode.predMask(pm)),
             scalableWrites: za,
             scalableEffect: [.readsStreamingMode, .partialWrite],

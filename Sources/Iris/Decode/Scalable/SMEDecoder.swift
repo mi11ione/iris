@@ -22,7 +22,7 @@ struct SMEDecoder: Sendable {
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features _: Features,
+        encoding: UInt32, address: UInt64, features _: Features, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // the SME-core decoder owns its region (outer products, ZA load/store/move/
         // zero); the gate is `isSMECoreEncoding`, the exact complement of the
@@ -30,8 +30,8 @@ struct SMEDecoder: Sendable {
         // the whole SME region: every word decodes in one or the other (or
         // yields a well-formed UNDEFINED for a genuine hole, `category = .sme`).
         if isSMECoreEncoding(encoding) {
-            return SMECoreDecode.decode(encoding: encoding, address: address)
+            return SMECoreDecode.decode(encoding: encoding, address: address, &sink)
         }
-        return SME2Decode.decode(encoding: encoding, address: address)
+        return SME2Decode.decode(encoding: encoding, address: address, &sink)
     }
 }

@@ -11,7 +11,7 @@
 
 enum AdvSIMDLoadStoreSingleStructureDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let postIndexed = ((encoding >> 23) & 1) == 1
         let L = UInt8((encoding >> 22) & 0x1)
@@ -70,7 +70,7 @@ enum AdvSIMDLoadStoreSingleStructureDecode {
                 memoryAccess: isLoad ? .load : .store,
                 memoryOrdering: isLoad ? [.acquire] : [.release],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [element, .memory(mem)],
+                operandCount: sink.emit(element, .memory(mem)),
             )
         }
 
@@ -139,8 +139,7 @@ enum AdvSIMDLoadStoreSingleStructureDecode {
         }
 
         // Build vector list (selem consecutive registers).
-        var operands: [Operand] = []
-        operands.reserveCapacity(Int(info.selem) + 1)
+        let operandMark = sink.mark
         var listReads: RegisterSet = .empty
         var listWrites: RegisterSet = .empty
         for i in 0 ..< Int(info.selem) {
@@ -149,9 +148,9 @@ enum AdvSIMDLoadStoreSingleStructureDecode {
                 // LDxR replicates to all lanes; destination arrangement is
                 // (size, Q) per the standard table.
                 let arrangement = arrangementFromSizeQ(size: size, Q: Q)
-                operands.append(simdfpVectorOperand(r, arrangement: arrangement))
+                sink.append(simdfpVectorOperand(r, arrangement: arrangement))
             } else {
-                operands.append(simdfpElementOperand(r, elementSize: elementSize, index: index))
+                sink.append(simdfpElementOperand(r, elementSize: elementSize, index: index))
             }
             if L == 1 {
                 listWrites = simdfpInsertingVector(r, into: listWrites)
@@ -193,7 +192,7 @@ enum AdvSIMDLoadStoreSingleStructureDecode {
                 extend: .none, shift: 0, writeback: .none,
             )
         }
-        operands.append(.memory(memOperand))
+        sink.append(.memory(memOperand))
 
         var reads = listReads
         reads = simdfpInsertingNonZeroGPR(reg: rnRef, into: reads)
@@ -215,7 +214,7 @@ enum AdvSIMDLoadStoreSingleStructureDecode {
             memoryAccess: L == 1 ? .load : .store,
             memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 

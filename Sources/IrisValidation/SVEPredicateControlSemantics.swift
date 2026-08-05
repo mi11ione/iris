@@ -71,7 +71,7 @@ public enum SVEPredicateControlSemanticChecker {
             return SVEPCSemanticIssue(field: "ffrWrite", actual: "\(draft.scalableWrites.containsFFR)", expected: "\(ffrW)")
         }
         // Predicate reads / writes (general role/qualifier walk).
-        let expPredW = SVEPredicateControlSemanticAttributes.expectedPredicateWrites(Array(Array(draft.operands)))
+        let expPredW = SVEPredicateControlSemanticAttributes.expectedPredicateWrites(draft.operands)
         if draft.scalableWrites.predicateMask != expPredW {
             return SVEPCSemanticIssue(
                 field: "predicateWrites",
@@ -79,7 +79,7 @@ public enum SVEPredicateControlSemanticChecker {
                 expected: "0x\(String(expPredW, radix: 16))",
             )
         }
-        let expPredR = SVEPredicateControlSemanticAttributes.expectedPredicateReads(Array(Array(draft.operands)))
+        let expPredR = SVEPredicateControlSemanticAttributes.expectedPredicateReads(draft.operands)
         if draft.scalableReads.predicateMask != expPredR {
             return SVEPCSemanticIssue(
                 field: "predicateReads",
@@ -146,7 +146,7 @@ public enum SVEPredicateControlSemanticAttributes {
         if draft.mnemonic == .pfirst {
             e.insert(.partialWrite)
         } else if draft.mnemonic == .brka || draft.mnemonic == .brkb || draft.mnemonic == .movprfx {
-            if hasMergingGoverning(Array(Array(draft.operands))) {
+            if hasMergingGoverning(draft.operands) {
                 e.insert(.partialWrite)
             }
         }
@@ -167,7 +167,7 @@ public enum SVEPredicateControlSemanticAttributes {
 
     /// Predicate-write mask = the result-role predicate operands.
     @_effects(readonly)
-    public static func expectedPredicateWrites(_ ops: [Operand]) -> UInt16 {
+    public static func expectedPredicateWrites(_ ops: Instruction.Operands) -> UInt16 {
         var mask: UInt16 = 0
         for op in ops {
             if case let .scalablePredicate(p) = op, p.role == .result {
@@ -181,7 +181,7 @@ public enum SVEPredicateControlSemanticAttributes {
     /// result predicate when a governing predicate is merging (`/M` reads the
     /// destination as an RMW source).
     @_effects(readonly)
-    public static func expectedPredicateReads(_ ops: [Operand]) -> UInt16 {
+    public static func expectedPredicateReads(_ ops: Instruction.Operands) -> UInt16 {
         var reads: UInt16 = 0
         var results: UInt16 = 0
         var merging = false
@@ -213,7 +213,7 @@ public enum SVEPredicateControlSemanticAttributes {
              .sqincb, .sqinch, .sqincw, .sqincd, .uqincb, .uqinch, .uqincw, .uqincd,
              .sqdecb, .sqdech, .sqdecw, .sqdecd, .uqdecb, .uqdech, .uqdecw, .uqdecd,
              .index, .movprfx:
-            operandRegisterMask(Array(draft.operands), 0)
+            operandRegisterMask(draft.operands, 0)
         default:
             0
         }
@@ -222,7 +222,7 @@ public enum SVEPredicateControlSemanticAttributes {
     /// Register-read mask, per-mnemonic rule over the operand list.
     @_effects(readonly)
     public static func expectedRegisterReads(for draft: Instruction) -> UInt64 {
-        let ops = Array(draft.operands)
+        let ops = draft.operands
         switch draft.mnemonic {
         // WHILE / WHILERW / WHILEWR: read the two GPR operands (indices 1,2).
         case .whilege, .whilegt, .whilelt, .whilele, .whilehs, .whilehi,
@@ -262,7 +262,7 @@ public enum SVEPredicateControlSemanticAttributes {
     /// (XZR/WZR → 0; SP → bit 31; Z_n / V_n → bit 32+n), or 0 otherwise.
     @_effects(readonly)
     @inline(__always)
-    public static func operandRegisterMask(_ ops: [Operand], _ index: Int) -> UInt64 {
+    public static func operandRegisterMask(_ ops: Instruction.Operands, _ index: Int) -> UInt64 {
         guard index >= 0, index < ops.count else { return 0 }
         switch ops[index] {
         case let .register(r):
@@ -277,7 +277,7 @@ public enum SVEPredicateControlSemanticAttributes {
 
     /// Whether any governing predicate operand is merging (`/M`).
     @_effects(readonly)
-    public static func hasMergingGoverning(_ ops: [Operand]) -> Bool {
+    public static func hasMergingGoverning(_ ops: Instruction.Operands) -> Bool {
         for op in ops {
             if case let .scalablePredicate(p) = op, p.qualifier == .merging {
                 return true

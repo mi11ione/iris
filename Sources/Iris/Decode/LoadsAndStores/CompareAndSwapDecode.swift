@@ -17,7 +17,7 @@
 
 enum CompareAndSwapDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // CAS encoding requires bits[14:10] = 11111 (FIXED). Any other
         // value is a reserved encoding; llvm-mc rejects as invalid.
         let bits14_10 = (encoding >> 10) & 0x1F
@@ -84,16 +84,12 @@ enum CompareAndSwapDecode {
             memoryOrdering: ordering,
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rsRef),
-                .register(rtRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rsRef), .register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 
     @_optimize(speed)
-    static func decodeCASP(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeCASP(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // CASP requires bits[14:10] = 11111 (a fixed field). The dispatcher
         // routes the CASP shell here without inspecting bits[14:10], so this
         // guard is the reserved-encoding filter for the CASP path.
@@ -157,13 +153,7 @@ enum CompareAndSwapDecode {
             memoryOrdering: ordering,
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rsRef),
-                .register(rs1Ref),
-                .register(rtRef),
-                .register(rt1Ref),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rsRef), .register(rs1Ref), .register(rtRef), .register(rt1Ref), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 }

@@ -18,48 +18,46 @@
 /// Data Processing — Register family. Output is normalized: lowercase,
 /// single space between tokens, no leading or trailing whitespace.
 enum DPRCanonicalizer {
-    /// Format `instruction` to canonical llvm-mc-compatible disassembly
-    /// text. Empty string means UNDEFINED (a defensive arm — the text
-    /// router renders undefined records as `.long` before dispatching
-    /// here).
-    @_effects(readonly)
+    // Format `instruction` to canonical llvm-mc-compatible disassembly
+    // text. Empty string means UNDEFINED (a defensive arm — the text
+    // router renders undefined records as `.long` before dispatching
+    // here).
+
+    /// The byte path — same text, written straight into a UTF-8 buffer.
     @_optimize(speed)
-    static func format(_ instruction: Instruction) -> String {
-        if instruction.mnemonic == .undefined { return "" }
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        if instruction.mnemonic == .undefined { return }
         // PAC standalone + MTE-DPR records flow through DPR's
         // top-of-method delegation; route them to the crypto canonicalizer.
         if CryptoAppleExtensionsCanonicalizer.owns(instruction.mnemonic) {
-            return CryptoAppleExtensionsCanonicalizer.format(instruction)
+            CryptoAppleExtensionsCanonicalizer.format(instruction, into: &out)
+            return
         }
-        let mn = instruction.mnemonic.name
-        let ops = formatOperands(instruction.operands)
-        return ops.isEmpty ? mn : "\(mn) \(ops)"
-    }
-
-    @_effects(readonly)
-    private static func formatOperands(_ operands: Instruction.Operands) -> String {
+        putMnemonic(instruction.mnemonic, into: &out)
+        let operands = instruction.operands
+        if operands.isEmpty { return }
+        out.put(UInt8(ascii: " "))
         // SP-extended display collapse rule. The "natural"
         // extend for the destination width (UXTX at sf=1, UXTW at sf=0)
         // is elided when a preceding operand is SP at the same width.
         // amount=0 → bare register; amount>0 → "<reg>, lsl #<amount>"
         // (the extend keyword is replaced by `lsl`). SXTX, UXTW-at-sf=1,
         // UXTX-at-sf=0 never collapse — all empirically verified.
-        var parts: [String] = []
-        parts.reserveCapacity(operands.count)
-        for (idx, op) in operands.enumerated() {
+        for idx in 0 ..< operands.count {
+            if idx > 0 { out.put(", ") }
+            let op = operands[idx]
             if case let .extendedRegister(reg, extend, shift) = op,
                extendedRegisterCollapses(reg: reg, extend: extend, operands: operands, idx: idx)
             {
-                if shift == 0 {
-                    parts.append(reg.name)
-                } else {
-                    parts.append("\(reg.name), lsl #\(shift)")
+                RegisterNames.put(reg, into: &out)
+                if shift != 0 {
+                    out.put(", lsl #")
+                    out.putDecimal(UInt64(shift))
                 }
             } else {
-                parts.append(formatOperand(op))
+                putOperand(op, into: &out)
             }
         }
-        return parts.joined(separator: ", ")
     }
 
     /// True iff an `.extendedRegister` operand falls in the SP-extended display-collapse case.
@@ -78,23 +76,34 @@ enum DPRCanonicalizer {
         return false
     }
 
-    @_effects(readonly)
-    private static func formatOperand(_ operand: Operand) -> String {
+    private static func putOperand(_ operand: Operand, into out: inout TextBytes) {
         switch operand {
         case let .register(reg):
-            reg.name
+            RegisterNames.put(reg, into: &out)
         case let .immediate(value, _):
-            "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .unsignedImmediate(value, _):
-            "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .shiftedRegister(reg, kind, amount):
-            "\(reg.name), \(shiftKindName(kind)) #\(amount)"
+            RegisterNames.put(reg, into: &out)
+            out.put(", ")
+            putShiftKind(kind, into: &out)
+            out.put(" #")
+            out.putDecimal(UInt64(amount))
         case let .extendedRegister(reg, extend, shift):
-            shift == 0
-                ? "\(reg.name), \(extendKindName(extend))"
-                : "\(reg.name), \(extendKindName(extend)) #\(shift)"
+            RegisterNames.put(reg, into: &out)
+            out.put(", ")
+            // `.none` contributes no token, which leaves the trailing
+            // separator the `String` path also produced.
+            putExtendKind(extend, into: &out)
+            if shift != 0 {
+                out.put(" #")
+                out.putDecimal(UInt64(shift))
+            }
         case let .conditionCode(c):
-            conditionName(c)
+            putConditionName(c, into: &out)
         // DPR's decoders never produce these — defensive sentinels so the
         // @frozen Operand switch stays exhaustive. A divergence would
         // surface as a text mismatch in the parity sweep.
@@ -106,36 +115,34 @@ enum DPRCanonicalizer {
              .predicateGroup, .zaTile, .zaTileSlice, .zaArrayVector,
              .zt0, .scalableMemory, .svePredicatePattern,
              .vectorLengthMultiplier:
-            "?unsupported-operand"
+            out.put("?unsupported-operand")
         }
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func shiftKindName(_ s: ShiftKind) -> String {
+    private static func putShiftKind(_ s: ShiftKind, into out: inout TextBytes) {
         switch s {
-        case .lsl: "lsl"
-        case .lsr: "lsr"
-        case .asr: "asr"
-        case .ror: "ror"
-        case .msl: "msl"
+        case .lsl: out.put("lsl")
+        case .lsr: out.put("lsr")
+        case .asr: out.put("asr")
+        case .ror: out.put("ror")
+        case .msl: out.put("msl")
         }
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func extendKindName(_ e: ExtendKind) -> String {
+    private static func putExtendKind(_ e: ExtendKind, into out: inout TextBytes) {
         switch e {
-        case .none: ""
-        case .uxtb: "uxtb"
-        case .uxth: "uxth"
-        case .uxtw: "uxtw"
-        case .uxtx: "uxtx"
-        case .sxtb: "sxtb"
-        case .sxth: "sxth"
-        case .sxtw: "sxtw"
-        case .sxtx: "sxtx"
-        case .lsl: "lsl"
+        case .none: break
+        case .uxtb: out.put("uxtb")
+        case .uxth: out.put("uxth")
+        case .uxtw: out.put("uxtw")
+        case .uxtx: out.put("uxtx")
+        case .sxtb: out.put("sxtb")
+        case .sxth: out.put("sxth")
+        case .sxtw: out.put("sxtw")
+        case .sxtx: out.put("sxtx")
+        case .lsl: out.put("lsl")
         }
     }
 
@@ -143,25 +150,24 @@ enum DPRCanonicalizer {
     /// and `lo` respectively (canonical names per ARM ARM aliasing
     /// rules; llvm-mc emits these in disassembly output).
     @inline(__always)
-    @_effects(readonly)
-    private static func conditionName(_ c: ConditionCode) -> String {
+    private static func putConditionName(_ c: ConditionCode, into out: inout TextBytes) {
         switch c {
-        case .eq: "eq"
-        case .ne: "ne"
-        case .cs: "hs"
-        case .cc: "lo"
-        case .mi: "mi"
-        case .pl: "pl"
-        case .vs: "vs"
-        case .vc: "vc"
-        case .hi: "hi"
-        case .ls: "ls"
-        case .ge: "ge"
-        case .lt: "lt"
-        case .gt: "gt"
-        case .le: "le"
-        case .al: "al"
-        case .nv: "nv"
+        case .eq: out.put("eq")
+        case .ne: out.put("ne")
+        case .cs: out.put("hs")
+        case .cc: out.put("lo")
+        case .mi: out.put("mi")
+        case .pl: out.put("pl")
+        case .vs: out.put("vs")
+        case .vc: out.put("vc")
+        case .hi: out.put("hi")
+        case .ls: out.put("ls")
+        case .ge: out.put("ge")
+        case .lt: out.put("lt")
+        case .gt: out.put("gt")
+        case .le: out.put("le")
+        case .al: out.put("al")
+        case .nv: out.put("nv")
         }
     }
 }

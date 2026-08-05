@@ -12,7 +12,7 @@
 enum MulAccumDecode {
     @inline(__always)
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let op54 = UInt8((encoding >> 29) & 0x3)
         let opc = UInt8((encoding >> 21) & 0x7)
@@ -44,7 +44,7 @@ enum MulAccumDecode {
                     semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                     flagEffect: .none,
                     category: .dataProcessingRegister,
-                    operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
                 )
             }
             let mnemonic: Mnemonic = isSub == 0 ? .madd : .msub
@@ -58,7 +58,7 @@ enum MulAccumDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)),
             )
 
         case 0b001:
@@ -78,7 +78,7 @@ enum MulAccumDecode {
                     semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                     flagEffect: .none,
                     category: .dataProcessingRegister,
-                    operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
                 )
             }
             let mnemonic: Mnemonic = isSub == 0 ? .smaddl : .smsubl
@@ -92,7 +92,7 @@ enum MulAccumDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)),
             )
 
         case 0b010:
@@ -112,7 +112,7 @@ enum MulAccumDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
             )
 
         case 0b101:
@@ -132,7 +132,7 @@ enum MulAccumDecode {
                     semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                     flagEffect: .none,
                     category: .dataProcessingRegister,
-                    operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
                 )
             }
             let mnemonic: Mnemonic = isSub == 0 ? .umaddl : .umsubl
@@ -146,7 +146,7 @@ enum MulAccumDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)),
             )
 
         case 0b110:
@@ -164,7 +164,7 @@ enum MulAccumDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
             )
 
         case 0b011:
@@ -185,7 +185,7 @@ enum MulAccumDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef), .register(raRef)),
             )
 
         default:

@@ -14,7 +14,7 @@
 
 enum BranchRegDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Common fixed-field check: bits 20:16 must be 11111.
         if (encoding >> 16) & 0x1F != 0x1F {
             return .undefined(at: address, encoding: encoding)
@@ -26,14 +26,14 @@ enum BranchRegDecode {
             if bits15_11 != 0b00001 {
                 return .undefined(at: address, encoding: encoding)
             }
-            return decodeAuthTwoOperand(encoding: encoding, address: address)
+            return decodeAuthTwoOperand(encoding: encoding, address: address, &sink)
         }
         // bit24 == 0
         if bits15_11 == 0b00000 {
-            return decodeRegular(encoding: encoding, address: address)
+            return decodeRegular(encoding: encoding, address: address, &sink)
         }
         if bits15_11 == 0b00001 {
-            return decodeAuthZeroOrReturn(encoding: encoding, address: address)
+            return decodeAuthZeroOrReturn(encoding: encoding, address: address, &sink)
         }
         return .undefined(at: address, encoding: encoding)
     }
@@ -41,7 +41,7 @@ enum BranchRegDecode {
     // MARK: regular BR/BLR/RET/ERET/DRPS
 
     @inline(__always)
-    private static func decodeRegular(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeRegular(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Fixed-field checks:
         //   bit 10 == 0
         //   bits 4:0 == 00000
@@ -63,7 +63,7 @@ enum BranchRegDecode {
                 semanticReads: RegisterSet.empty.inserting(rnRef),
                 branchClass: .indirect,
                 category: .branchesExceptionSystem,
-                operands: [.register(rnRef)],
+                operandCount: sink.emit(.register(rnRef)),
             )
         case 0b0001: // BLR
             return DecodedDraft(
@@ -74,14 +74,14 @@ enum BranchRegDecode {
                 semanticWrites: RegisterSet.empty.inserting(.x(30)),
                 branchClass: .call,
                 category: .branchesExceptionSystem,
-                operands: [.register(rnRef)],
+                operandCount: sink.emit(.register(rnRef)),
             )
         case 0b0010: // RET
             // RET with Rn=30 (LR) has
             // empty operands at decode time. Other Rn values keep the
             // operand so the canonicalizer renders `ret xN`. The
             // semantic-read of Rn is preserved either way.
-            let retOperands: [Operand] = (Rn == 30) ? [] : [.register(rnRef)]
+            let retOperandCount: UInt8 = (Rn == 30) ? 0 : sink.emit(.register(rnRef))
             return DecodedDraft(
                 address: address,
                 encoding: encoding,
@@ -89,7 +89,7 @@ enum BranchRegDecode {
                 semanticReads: RegisterSet.empty.inserting(rnRef),
                 branchClass: .return,
                 category: .branchesExceptionSystem,
-                operands: retOperands,
+                operandCount: retOperandCount,
             )
         case 0b0100: // ERET — Rn must be 11111
             if Rn != 31 {
@@ -101,7 +101,7 @@ enum BranchRegDecode {
                 mnemonic: .eret,
                 branchClass: .return,
                 category: .branchesExceptionSystem,
-                operands: [],
+                operandCount: 0,
             )
         case 0b0101: // DRPS — Rn must be 11111
             if Rn != 31 {
@@ -113,7 +113,7 @@ enum BranchRegDecode {
                 mnemonic: .drps,
                 branchClass: .return,
                 category: .branchesExceptionSystem,
-                operands: [],
+                operandCount: 0,
             )
         default:
             return .undefined(at: address, encoding: encoding)
@@ -123,7 +123,7 @@ enum BranchRegDecode {
     // MARK: auth two-operand (BRAA/BRAB/BLRAA/BLRAB)
 
     @inline(__always)
-    private static func decodeAuthTwoOperand(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeAuthTwoOperand(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let opcLow3 = UInt8((encoding >> 21) & 0x7)
         let M = UInt8((encoding >> 10) & 1)
         let Rn = UInt8((encoding >> 5) & 0x1F)
@@ -154,7 +154,7 @@ enum BranchRegDecode {
             semanticWrites: writes,
             branchClass: branchClass,
             category: .branchesExceptionSystem,
-            operands: [.register(rnRef), .register(rmRef)],
+            operandCount: sink.emit(.register(rnRef), .register(rmRef)),
         )
     }
 
@@ -163,7 +163,7 @@ enum BranchRegDecode {
     // return-auth (RETAA/RETAB/ERETAA/ERETAB).
 
     @inline(__always)
-    private static func decodeAuthZeroOrReturn(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeAuthZeroOrReturn(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Rm field (bits 4:0) must be 11111 for every encoding in this branch.
         if encoding & 0x1F != 0x1F {
             return .undefined(at: address, encoding: encoding)
@@ -192,7 +192,7 @@ enum BranchRegDecode {
                 semanticWrites: writes,
                 branchClass: branchClass,
                 category: .branchesExceptionSystem,
-                operands: [.register(rnRef)],
+                operandCount: sink.emit(.register(rnRef)),
             )
         case 0b010:
             // RETAA / RETAB — no operand; Rn must be 11111.
@@ -209,7 +209,7 @@ enum BranchRegDecode {
                 semanticReads: reads,
                 branchClass: .return,
                 category: .branchesExceptionSystem,
-                operands: [],
+                operandCount: 0,
             )
         case 0b100:
             // ERETAA / ERETAB — kernel only; no operand; Rn must be 11111.
@@ -223,7 +223,7 @@ enum BranchRegDecode {
                 mnemonic: mnemonic,
                 branchClass: .return,
                 category: .branchesExceptionSystem,
-                operands: [],
+                operandCount: 0,
             )
         default:
             return .undefined(at: address, encoding: encoding)

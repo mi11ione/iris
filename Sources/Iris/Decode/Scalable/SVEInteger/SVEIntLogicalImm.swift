@@ -12,7 +12,7 @@
 
 extension SVEIntegerDecode {
     @inline(__always)
-    static func decodeLogicalImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeLogicalImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let imm13 = (e >> 5) & 0x1FFF
         guard let value = DecodeBitMasks.decode(
             n: UInt8((imm13 >> 12) & 1), imms: UInt8(imm13 & 0x3F),
@@ -27,7 +27,7 @@ extension SVEIntegerDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: mnemonic,
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, element), .unsignedImmediate(value: perElem, width: UInt8(width))],
+                operandCount: sink.emit(vec(d, element), .unsignedImmediate(value: perElem, width: UInt8(width))),
                 scalableEffect: .readsStreamingMode,
             )
         }
@@ -39,7 +39,7 @@ extension SVEIntegerDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(d), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, element), vec(d, element), .unsignedImmediate(value: perElem, width: UInt8(width))],
+            operandCount: sink.emit(vec(d, element), vec(d, element), .unsignedImmediate(value: perElem, width: UInt8(width))),
             scalableEffect: .readsStreamingMode,
         )
     }

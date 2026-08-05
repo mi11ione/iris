@@ -19,7 +19,7 @@
 
 enum LS64Decode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The dispatcher routes only size == 11 with op ∈
         // {1001, 1010, 1011, 1101} here (size 00/01 in this op slot is
         // FEAT_THE RCW; size 10 falls to UNDEFINED there).
@@ -54,7 +54,7 @@ enum LS64Decode {
                 memoryOrdering: [],
                 flagEffect: .none,
                 category: .loadsAndStores,
-                operands: [.register(rtRef), rnOperand],
+                operandCount: sink.emit(.register(rtRef), rnOperand),
             )
         case 0b1001:
             // st64b Xt, [Xn] — Rs is a fixed 11111 field.
@@ -74,7 +74,7 @@ enum LS64Decode {
                 memoryOrdering: [],
                 flagEffect: .none,
                 category: .loadsAndStores,
-                operands: [.register(rtRef), rnOperand],
+                operandCount: sink.emit(.register(rtRef), rnOperand),
             )
         default:
             // 0b1011 / 0b1010 — the dispatcher routes no other op here.
@@ -95,7 +95,7 @@ enum LS64Decode {
                 memoryOrdering: [],
                 flagEffect: .none,
                 category: .loadsAndStores,
-                operands: [.register(rsRef), .register(rtRef), rnOperand],
+                operandCount: sink.emit(.register(rsRef), .register(rtRef), rnOperand),
             )
         }
     }

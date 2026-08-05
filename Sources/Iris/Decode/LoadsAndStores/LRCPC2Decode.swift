@@ -26,7 +26,7 @@
 
 enum LRCPC2Decode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[11:10] are 00 for every word that arrives here: the
         // dispatcher routes 10 to RCPC3/GCS and 11 to GCS, and any
         // bit10 = 1 word in this shell matches the MOPS discriminant
@@ -121,17 +121,14 @@ enum LRCPC2Decode {
             memoryOrdering: memoryOrdering,
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .memory(MemoryOperand(
-                    base: .register(rnRef),
-                    index: nil,
-                    displacement: displacement,
-                    extend: .none,
-                    shift: 0,
-                    writeback: .none,
-                )),
-            ],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(
+                base: .register(rnRef),
+                index: nil,
+                displacement: displacement,
+                extend: .none,
+                shift: 0,
+                writeback: .none,
+            ))),
         )
     }
 }

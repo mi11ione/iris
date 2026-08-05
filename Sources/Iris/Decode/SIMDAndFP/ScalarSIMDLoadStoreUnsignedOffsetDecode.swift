@@ -8,7 +8,7 @@
 
 enum ScalarSIMDLoadStoreUnsignedOffsetDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         let opc = UInt8((encoding >> 22) & 0x3)
         let imm12 = UInt32((encoding >> 10) & 0xFFF)
@@ -44,7 +44,7 @@ enum ScalarSIMDLoadStoreUnsignedOffsetDecode {
             branchClass: .none,
             memoryAccess: isLoad ? .load : .store,
             memoryOrdering: [], flagEffect: .none, category: .simdAndFP,
-            operands: [vt, .memory(memOperand)],
+            operandCount: sink.emit(vt, .memory(memOperand)),
         )
     }
 

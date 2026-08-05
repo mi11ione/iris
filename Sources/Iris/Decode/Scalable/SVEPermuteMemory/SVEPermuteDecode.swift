@@ -13,17 +13,17 @@ extension SVEPermuteMemoryDecode {
     // MARK: 0x05 permute dispatch
 
     @inline(__always)
-    static func decodePermute(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePermute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch (e >> 13) & 0b111 {
-        case 0b000: decodeExt(e, a)
-        case 0b001: decodePermMisc(e, a) // TBL/TBX/DUPQ/EXTQ/INSR/UNPK/PMOV
-        case 0b010: decodePredicatePerm(e, a) // ZIP/UZP/TRN-pred, PUNPK, REV-pred
-        case 0b011: decodeVectorPerm(e, a) // ZIP/UZP/TRN vector (+128-bit)
-        case 0b100: decodePredicatedUnary(e, a) // COMPACT/SPLICE/CLAST-vec/REV*/RBIT/LAST-vec
-        case 0b101: decodeLastToGPR(e, a) // LASTA/B, CLASTA/B to GPR
+        case 0b000: decodeExt(e, a, &sink)
+        case 0b001: decodePermMisc(e, a, &sink) // TBL/TBX/DUPQ/EXTQ/INSR/UNPK/PMOV
+        case 0b010: decodePredicatePerm(e, a, &sink) // ZIP/UZP/TRN-pred, PUNPK, REV-pred
+        case 0b011: decodeVectorPerm(e, a, &sink) // ZIP/UZP/TRN vector (+128-bit)
+        case 0b100: decodePredicatedUnary(e, a, &sink) // COMPACT/SPLICE/CLAST-vec/REV*/RBIT/LAST-vec
+        case 0b101: decodeLastToGPR(e, a, &sink) // LASTA/B, CLASTA/B to GPR
         // SEL spans bits[15:13] ∈ {110, 111} — bit13 is the high bit of its
         // 4-bit governing predicate, so both values route here.
-        default: decodeSel(e, a)
+        default: decodeSel(e, a, &sink)
         }
     }
 
@@ -33,7 +33,7 @@ extension SVEPermuteMemoryDecode {
     /// `sve2_int_perm_extract_i_cons` (constructive, `Zd,{Zn,Zn+1},#imm8`).
     /// imm8 = bits[20:16]:[12:10]. Constructive has bit23=0,bit22=1.
     @inline(__always)
-    static func decodeExt(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeExt(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The F64MM 128-bit ZIP/UZP/TRN (`sve_int_perm_bin_perm_128_zz`) share
         // bits[15:13]=000 but fix bits[24:21]=1101 (bit23=1): `Zd.q, Zn.q, Zm.q`,
         // opc bits[12:11] (zip=00, uzp=01, trn=11), P=bit10 selects 1/2.
@@ -53,7 +53,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: mn,
                 semanticReads: vecMask(n).union(vecMask(m)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, .q), vec(n, .q), vec(m, .q)],
+                operandCount: sink.emit(vec(d, .q), vec(n, .q), vec(m, .q)),
                 scalableEffect: .readsStreamingMode,
             )
         }
@@ -68,7 +68,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: .ext,
                 semanticReads: vecMask(d).union(vecMask(m)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, .b), vec(d, .b), vec(m, .b), .immediate(value: imm8, width: 8)],
+                operandCount: sink.emit(vec(d, .b), vec(d, .b), vec(m, .b), .immediate(value: imm8, width: 8)),
                 scalableEffect: .readsStreamingMode,
             )
         }
@@ -78,7 +78,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: .ext,
                 semanticReads: groupMask(m, count: 2),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, .b), group(m, count: 2, .b), .immediate(value: imm8, width: 8)],
+                operandCount: sink.emit(vec(d, .b), group(m, count: 2, .b), .immediate(value: imm8, width: 8)),
                 scalableEffect: .readsStreamingMode,
             )
         }
@@ -89,24 +89,24 @@ extension SVEPermuteMemoryDecode {
 
     /// TBL/TBX/TBXQ, DUPQ/EXTQ, INSR, UNPK, PMOV — split by bits[12:10].
     @inline(__always)
-    static func decodePermMisc(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePermMisc(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sz = sz2(e)
         // The misc column requires bit21=1 (the `1` fixed above bits[20:16] in
         // every one of these classes); bit21=0 words are holes.
         guard (e >> 21) & 1 == 1 else { return undefined(e, a) }
         switch (e >> 10) & 0b111 {
         case 0b001: // DUPQ / EXTQ (SVE2p1), bits[15:10]=001001.
-            return (e >> 22) & 1 == 1 ? decodeExtq(e, a) : decodeDupq(e, a)
+            return (e >> 22) & 1 == 1 ? decodeExtq(e, a, &sink) : decodeDupq(e, a, &sink)
         case 0b010: // TBL two-register (opc=01, bit10=0).
-            return decodeTbl(e, a, sz: sz)
+            return decodeTbl(e, a, sz: sz, &sink)
         case 0b011: // TBX (opc=01, bit10=1).
-            return decodeTbx(e, a, sz: sz)
+            return decodeTbx(e, a, sz: sz, &sink)
         case 0b100: // TBL single-register (opc=10, bit10=0).
-            return decodeTbl(e, a, sz: sz)
+            return decodeTbl(e, a, sz: sz, &sink)
         case 0b101: // TBXQ (opc=10, bit10=1).
-            return decodeTbx(e, a, sz: sz)
+            return decodeTbx(e, a, sz: sz, &sink)
         case 0b110: // INSR / UNPK / PMOV — split by bits[20:16].
-            return decodeInsrUnpkPmov(e, a, sz: sz)
+            return decodeInsrUnpkPmov(e, a, sz: sz, &sink)
         default:
             return undefined(e, a)
         }
@@ -115,7 +115,7 @@ extension SVEPermuteMemoryDecode {
     /// TBL — `sve_int_perm_tbl<sz,opc>`: `sz · 1 · Zm · 001 · opc[12:11] · 0 ·
     /// Zn · Zd`. opc=10 single-reg `{Zn}`, opc=01 two-reg `{Zn,Zn+1}` (SVE2).
     @inline(__always)
-    static func decodeTbl(_ e: UInt32, _ a: UInt64, sz: UInt8) -> DecodedDraft {
+    static func decodeTbl(_ e: UInt32, _ a: UInt64, sz: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), m = rm(e), el = esize(sz)
         let opc = (e >> 11) & 0b11
         let list: Operand
@@ -130,7 +130,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: .tbl,
             semanticReads: readList.union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), list, vec(m, el)],
+            operandCount: sink.emit(vec(d, el), list, vec(m, el)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -138,7 +138,7 @@ extension SVEPermuteMemoryDecode {
     /// TBX / TBXQ — `sve2_int_perm_tbx<sz,opc>`: bit10=1. opc=01 TBX (`Zd=_Zd`,
     /// destructive), opc=10 TBXQ.
     @inline(__always)
-    static func decodeTbx(_ e: UInt32, _ a: UInt64, sz: UInt8) -> DecodedDraft {
+    static func decodeTbx(_ e: UInt32, _ a: UInt64, sz: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), m = rm(e), el = esize(sz)
         let opc = (e >> 11) & 0b11
         switch opc {
@@ -147,7 +147,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: .tbx,
                 semanticReads: vecMask(d).union(vecMask(n)).union(vecMask(m)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), vec(n, el), vec(m, el)],
+                operandCount: sink.emit(vec(d, el), vec(n, el), vec(m, el)),
                 scalableEffect: .readsStreamingMode,
             )
         // opc ∈ {01, 10} (bit10=1 dispatch); the final arm doubles as opc=10.
@@ -156,7 +156,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: .tbxq,
                 semanticReads: vecMask(d).union(vecMask(n)).union(vecMask(m)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), vec(n, el), vec(m, el)],
+                operandCount: sink.emit(vec(d, el), vec(n, el), vec(m, el)),
                 scalableEffect: .readsStreamingMode,
             )
         }
@@ -167,7 +167,7 @@ extension SVEPermuteMemoryDecode {
     /// of the 5-bit `ind_tsz` field at bits[20:16] (B: tsz{0}=1, index above;
     /// H: tsz{1}=1; S: tsz{2}=1; D: tsz{3}=1).
     @inline(__always)
-    static func decodeDupq(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeDupq(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard (e >> 22) & 0b11 == 0b00 else { return undefined(e, a) } // dupq fixes bits[23:22]=00
         let d = rd(e), n = rn(e)
         let tsz = UInt8((e >> 16) & 0x1F)
@@ -176,7 +176,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: .dupq,
             semanticReads: vecMask(n),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), vecIndexed(n, el, lane: index)],
+            operandCount: sink.emit(vec(d, el), vecIndexed(n, el, lane: index)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -184,7 +184,7 @@ extension SVEPermuteMemoryDecode {
     /// EXTQ — `sve2p1_extq`: `Zdn,Zdn,Zm,#imm4` extract within 128-bit segments.
     /// imm4 = bits[19:16].
     @inline(__always)
-    static func decodeExtq(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeExtq(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard (e >> 22) & 0b11 == 0b01 else { return undefined(e, a) } // extq fixes bits[23:22]=01
         guard (e >> 20) & 1 == 0 else { return undefined(e, a) } // extq fixes bit20=0
         let d = rd(e), m = rn(e)
@@ -193,7 +193,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: .extq,
             semanticReads: vecMask(d).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, .b), vec(d, .b), vec(m, .b), .immediate(value: imm4, width: 4)],
+            operandCount: sink.emit(vec(d, .b), vec(d, .b), vec(m, .b), .immediate(value: imm4, width: 4)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -201,29 +201,29 @@ extension SVEPermuteMemoryDecode {
     /// INSR (bits[20:16]=00100 GPR / 10100 SIMD), UNPK (bits[20:16]=1000x/1001x),
     /// PMOV (bits[20:16]=01010/01011).
     @inline(__always)
-    static func decodeInsrUnpkPmov(_ e: UInt32, _ a: UInt64, sz: UInt8) -> DecodedDraft {
+    static func decodeInsrUnpkPmov(_ e: UInt32, _ a: UInt64, sz: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         // PMOV (`sve2p1_vector_to_pred`/`_pred_to_vector`) fixes bits[21:19]=101;
         // its element/index ride bits[23:22]:[18:17], so bits[20:16] alone can't
         // distinguish it (the p.d/p.h/p.s forms carry bits[20:16]=01000/01010/
         // 01100). Route it by its fixed field first.
-        if (e >> 19) & 0b111 == 0b101 { return decodePmov(e, a) }
+        if (e >> 19) & 0b111 == 0b101 { return decodePmov(e, a, &sink) }
         switch (e >> 16) & 0x1F {
-        case 0b00100: return decodeInsr(e, a, sz: sz, fromSIMD: false)
-        case 0b10100: return decodeInsr(e, a, sz: sz, fromSIMD: true)
-        case 0b10000, 0b10001, 0b10010, 0b10011: return decodeUnpk(e, a, sz: sz)
-        case 0b11000: return decodeRevVector(e, a, sz: sz) // REV vector (unpredicated)
+        case 0b00100: return decodeInsr(e, a, sz: sz, fromSIMD: false, &sink)
+        case 0b10100: return decodeInsr(e, a, sz: sz, fromSIMD: true, &sink)
+        case 0b10000, 0b10001, 0b10010, 0b10011: return decodeUnpk(e, a, sz: sz, &sink)
+        case 0b11000: return decodeRevVector(e, a, sz: sz, &sink) // REV vector (unpredicated)
         default: return undefined(e, a)
         }
     }
 
     /// REV (vector, unpredicated) — `sve_int_perm_reverse_z`: `Zd.<T>, Zn.<T>`.
     @inline(__always)
-    static func decodeRevVector(_ e: UInt32, _ a: UInt64, sz: UInt8) -> DecodedDraft {
+    static func decodeRevVector(_ e: UInt32, _ a: UInt64, sz: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), el = esize(sz)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .rev,
             semanticReads: vecMask(n), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), vec(n, el)],
+            operandCount: sink.emit(vec(d, el), vec(n, el)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -231,14 +231,14 @@ extension SVEPermuteMemoryDecode {
     /// INSR — `sve_int_perm_insrs` (GPR) / `sve_int_perm_insrv` (SIMD&FP).
     /// Destructive: `Zdn.<T>, <R|V>m`.
     @inline(__always)
-    static func decodeInsr(_ e: UInt32, _ a: UInt64, sz: UInt8, fromSIMD: Bool) -> DecodedDraft {
+    static func decodeInsr(_ e: UInt32, _ a: UInt64, sz: UInt8, fromSIMD: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), m = rn(e), el = esize(sz)
         if fromSIMD {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .insr,
                 semanticReads: vecMask(d).union(vecMask(m)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), simdScalar(m, el)],
+                operandCount: sink.emit(vec(d, el), simdScalar(m, el)),
                 scalableEffect: .readsStreamingMode,
             )
         }
@@ -246,7 +246,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: .insr,
             semanticReads: vecMask(d).union(gprMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), gpr(m, el)],
+            operandCount: sink.emit(vec(d, el), gpr(m, el)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -255,7 +255,7 @@ extension SVEPermuteMemoryDecode {
     /// opc bits[17:16]: 00 sunpklo, 01 sunpkhi, 10 uunpklo, 11 uunpkhi. Source
     /// element is half the destination (sz gives the destination H/S/D).
     @inline(__always)
-    static func decodeUnpk(_ e: UInt32, _ a: UInt64, sz: UInt8) -> DecodedDraft {
+    static func decodeUnpk(_ e: UInt32, _ a: UInt64, sz: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e)
         let destEl = esize(sz)
         // Source element is one size smaller than the destination (H←B, S←H,
@@ -272,7 +272,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: mn,
             semanticReads: vecMask(n),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, destEl), vec(n, src)],
+            operandCount: sink.emit(vec(d, destEl), vec(n, src)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -282,7 +282,7 @@ extension SVEPermuteMemoryDecode {
     /// bits[20:16] low bit) selects vector→pred vs pred→vector. Rendered
     /// `pmov Pd.<T>, Zn` or `pmov Zd, Pn.<T>` (with an optional `[index]`).
     @inline(__always)
-    static func decodePmov(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePmov(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bit16=0 → vector-to-pred (052a…); bit16=1 → pred-to-vector (052b…).
         let toPred = (e >> 16) & 1 == 0
         let d = rd(e), n = rn(e)
@@ -303,7 +303,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: .pmov,
                 semanticReads: vecMask(n),
                 semanticWrites: .empty, category: .sve,
-                operands: [predElem(d, el, role: .result), zn],
+                operandCount: sink.emit(predElem(d, el, role: .result), zn),
                 scalableWrites: predRead(d),
                 scalableEffect: .readsStreamingMode,
             )
@@ -318,7 +318,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: .pmov,
             semanticReads: .empty,
             semanticWrites: vecMask(d), category: .sve,
-            operands: [zd, predElem(n, el, role: .governing)],
+            operandCount: sink.emit(zd, predElem(n, el, role: .governing)),
             scalableReads: predRead(n),
             scalableEffect: .readsStreamingMode,
         )
@@ -340,7 +340,7 @@ extension SVEPermuteMemoryDecode {
     /// Predicate ZIP/UZP/TRN (`sve_int_perm_bin_perm_pp`, bit20=0), PUNPK
     /// (bit20=1, bits[19:17]=000), REV-pred (bit20=1, bits[19:16]=0100).
     @inline(__always)
-    static func decodePredicatePerm(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicatePerm(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The predicate-permute classes fix bit21=1 (bits[21:20]=10 bin_perm_pp,
         // 11 punpk/rev) and bit9=0, bit4=0 (the fixed bits around the 4-bit
         // Pn/Pd fields); words that set those are holes.
@@ -362,7 +362,7 @@ extension SVEPermuteMemoryDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: mn,
                 semanticReads: .empty, semanticWrites: .empty, category: .sve,
-                operands: [predElem(d, el, role: .result), predElem(n, el, role: .governing), predElem(m, el, role: .governing)],
+                operandCount: sink.emit(predElem(d, el, role: .result), predElem(n, el, role: .governing), predElem(m, el, role: .governing)),
                 scalableReads: predRead(n).insertingPredicate(m),
                 scalableWrites: predRead(d),
                 scalableEffect: .readsStreamingMode,
@@ -379,7 +379,7 @@ extension SVEPermuteMemoryDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .rev,
                 semanticReads: .empty, semanticWrites: .empty, category: .sve,
-                operands: [predElem(d, el, role: .result), predElem(n, el, role: .governing)],
+                operandCount: sink.emit(predElem(d, el, role: .result), predElem(n, el, role: .governing)),
                 scalableReads: predRead(n), scalableWrites: predRead(d),
                 scalableEffect: .readsStreamingMode,
             )
@@ -395,7 +395,7 @@ extension SVEPermuteMemoryDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mn,
             semanticReads: .empty, semanticWrites: .empty, category: .sve,
-            operands: [predElem(d, .h, role: .result), predElem(n, .b, role: .governing)],
+            operandCount: sink.emit(predElem(d, .h, role: .result), predElem(n, .b, role: .governing)),
             scalableReads: predRead(n), scalableWrites: predRead(d),
             scalableEffect: .readsStreamingMode,
         )
@@ -408,7 +408,7 @@ extension SVEPermuteMemoryDecode {
     /// which does not reach here — it is at bits[23:16]=101_1010 with its own
     /// [15:13]). Here: `Zd.<T>, Zn.<T>, Zm.<T>`.
     @inline(__always)
-    static func decodeVectorPerm(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeVectorPerm(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // `sve_int_perm_bin_perm_zz` fixes bit21=1.
         guard (e >> 21) & 1 == 1 else { return undefined(e, a) }
         let mn: Mnemonic
@@ -426,7 +426,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: mn,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), vec(n, el), vec(m, el)],
+            operandCount: sink.emit(vec(d, el), vec(n, el), vec(m, el)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -436,37 +436,37 @@ extension SVEPermuteMemoryDecode {
     /// COMPACT/EXPAND, SPLICE, CLASTA/B-to-vector, LASTA/B-to-SIMD, REVB/H/W/D,
     /// RBIT — `sve_int_perm_*` with bits[15:13]=100, split by bits[20:16].
     @inline(__always)
-    static func decodePredicatedUnary(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicatedUnary(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // These classes fix bit21=1; bit21=0 words are holes.
         guard (e >> 21) & 1 == 1 else { return undefined(e, a) }
         let sz = sz2(e), field = (e >> 16) & 0x1F
         let d = rd(e), n = rn(e), g = pg3(e), el = esize(sz)
         switch field {
-        case 0b00001: return unaryPred(e, a, .compact, d: d, n: n, g: g, el: el)
-        case 0b10001: return unaryPred(e, a, .expand, d: d, n: n, g: g, el: el)
-        case 0b00010: return lastToSIMD(e, a, ab: false, el: el)
-        case 0b00011: return lastToSIMD(e, a, ab: true, el: el)
-        case 0b00100: return revMerging(e, a, .revb, d: d, n: n, g: g, el: el)
-        case 0b00101: return revMerging(e, a, .revh, d: d, n: n, g: g, el: el)
-        case 0b00110: return revMerging(e, a, .revw, d: d, n: n, g: g, el: el)
-        case 0b00111: return revMerging(e, a, .rbit, d: d, n: n, g: g, el: el)
-        case 0b01110: return revMerging(e, a, .revd, d: d, n: n, g: g, el: .q)
-        case 0b01000: return clastToVector(e, a, ab: false, el: el)
-        case 0b01001: return clastToVector(e, a, ab: true, el: el)
-        case 0b01010: return clastToSIMD(e, a, ab: false, el: el)
-        case 0b01011: return clastToSIMD(e, a, ab: true, el: el)
+        case 0b00001: return unaryPred(e, a, .compact, d: d, n: n, g: g, el: el, &sink)
+        case 0b10001: return unaryPred(e, a, .expand, d: d, n: n, g: g, el: el, &sink)
+        case 0b00010: return lastToSIMD(e, a, ab: false, el: el, &sink)
+        case 0b00011: return lastToSIMD(e, a, ab: true, el: el, &sink)
+        case 0b00100: return revMerging(e, a, .revb, d: d, n: n, g: g, el: el, &sink)
+        case 0b00101: return revMerging(e, a, .revh, d: d, n: n, g: g, el: el, &sink)
+        case 0b00110: return revMerging(e, a, .revw, d: d, n: n, g: g, el: el, &sink)
+        case 0b00111: return revMerging(e, a, .rbit, d: d, n: n, g: g, el: el, &sink)
+        case 0b01110: return revMerging(e, a, .revd, d: d, n: n, g: g, el: .q, &sink)
+        case 0b01000: return clastToVector(e, a, ab: false, el: el, &sink)
+        case 0b01001: return clastToVector(e, a, ab: true, el: el, &sink)
+        case 0b01010: return clastToSIMD(e, a, ab: false, el: el, &sink)
+        case 0b01011: return clastToSIMD(e, a, ab: true, el: el, &sink)
         case 0b01100: // SPLICE destructive — `Zdn.<T>, Pg, Zdn.<T>, Zm.<T>`.
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .splice,
                 semanticReads: vecMask(d).union(vecMask(n)), semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), govern(g, .none), vec(d, el), vec(n, el)],
+                operandCount: sink.emit(vec(d, el), govern(g, .none), vec(d, el), vec(n, el)),
                 scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
             )
         case 0b01101: // SPLICE constructive (SVE2) — `Zd.<T>, Pg, {Zn,Zn+1}`.
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .splice,
                 semanticReads: groupMask(n, count: 2), semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), govern(g, .none), group(n, count: 2, el)],
+                operandCount: sink.emit(vec(d, el), govern(g, .none), group(n, count: 2, el)),
                 scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
             )
         default:
@@ -476,11 +476,11 @@ extension SVEPermuteMemoryDecode {
 
     /// COMPACT / EXPAND — `Zd.<T>, Pg, Zn.<T>` (bare governing predicate).
     @inline(__always)
-    static func unaryPred(_ e: UInt32, _ a: UInt64, _ mn: Mnemonic, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize) -> DecodedDraft {
+    static func unaryPred(_ e: UInt32, _ a: UInt64, _ mn: Mnemonic, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: mn,
             semanticReads: vecMask(n), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), govern(g, .none), vec(n, el)],
+            operandCount: sink.emit(vec(d, el), govern(g, .none), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
@@ -500,60 +500,60 @@ extension SVEPermuteMemoryDecode {
 
     /// REVB/REVH/REVW/REVD/RBIT predicated-merging (`/m`) — dest read, partial.
     @inline(__always)
-    static func revMerging(_ e: UInt32, _ a: UInt64, _ mn: Mnemonic, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize) -> DecodedDraft {
+    static func revMerging(_ e: UInt32, _ a: UInt64, _ mn: Mnemonic, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         guard revSizeOK(mn, sz2(e)) else { return undefined(e, a) }
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mn,
             semanticReads: vecMask(d).union(vecMask(n)), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), govern(g, .merging), vec(n, el)],
+            operandCount: sink.emit(vec(d, el), govern(g, .merging), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: [.readsStreamingMode, .partialWrite],
         )
     }
 
     /// REVB/REVH/REVW/REVD/RBIT predicated-zeroing (`/z`) — full write.
     @inline(__always)
-    static func revZeroing(_ e: UInt32, _ a: UInt64, _ mn: Mnemonic, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize) -> DecodedDraft {
+    static func revZeroing(_ e: UInt32, _ a: UInt64, _ mn: Mnemonic, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         guard revSizeOK(mn, sz2(e)) else { return undefined(e, a) }
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mn,
             semanticReads: vecMask(n), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), govern(g, .zeroing), vec(n, el)],
+            operandCount: sink.emit(vec(d, el), govern(g, .zeroing), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
 
     /// LASTA/LASTB writing a SIMD&FP scalar — `<V>d, Pg, Zn.<T>`.
     @inline(__always)
-    static func lastToSIMD(_ e: UInt32, _ a: UInt64, ab: Bool, el: ScalarSize) -> DecodedDraft {
+    static func lastToSIMD(_ e: UInt32, _ a: UInt64, ab: Bool, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), g = pg3(e)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: ab ? .lastb : .lasta,
             semanticReads: vecMask(n), semanticWrites: vecMask(d), category: .sve,
-            operands: [simdScalar(d, el), govern(g, .none), vec(n, el)],
+            operandCount: sink.emit(simdScalar(d, el), govern(g, .none), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
 
     /// CLASTA/B writing a vector — destructive `Zdn` conditional extract.
     @inline(__always)
-    static func clastToVector(_ e: UInt32, _ a: UInt64, ab: Bool, el: ScalarSize) -> DecodedDraft {
+    static func clastToVector(_ e: UInt32, _ a: UInt64, ab: Bool, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), g = pg3(e)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: ab ? .clastb : .clasta,
             semanticReads: vecMask(d).union(vecMask(n)), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), govern(g, .none), vec(d, el), vec(n, el)],
+            operandCount: sink.emit(vec(d, el), govern(g, .none), vec(d, el), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
 
     /// CLASTA/B writing a SIMD&FP scalar — `<V>dn, Pg, <V>dn, Zm.<T>`.
     @inline(__always)
-    static func clastToSIMD(_ e: UInt32, _ a: UInt64, ab: Bool, el: ScalarSize) -> DecodedDraft {
+    static func clastToSIMD(_ e: UInt32, _ a: UInt64, ab: Bool, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), g = pg3(e)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: ab ? .clastb : .clasta,
             semanticReads: vecMask(d).union(vecMask(n)), semanticWrites: vecMask(d), category: .sve,
-            operands: [simdScalar(d, el), govern(g, .none), simdScalar(d, el), vec(n, el)],
+            operandCount: sink.emit(simdScalar(d, el), govern(g, .none), simdScalar(d, el), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
@@ -564,46 +564,46 @@ extension SVEPermuteMemoryDecode {
     /// (`clast_rz`) writing a GPR, and the REVB/H/W/D/RBIT predicated-zeroing
     /// (`/z`) twins. Split by bits[20:16].
     @inline(__always)
-    static func decodeLastToGPR(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeLastToGPR(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // These classes fix bit21=1; bit21=0 words are holes.
         guard (e >> 21) & 1 == 1 else { return undefined(e, a) }
         let sz = sz2(e), el = esize(sz)
         let d = rd(e), n = rn(e), g = pg3(e)
         switch (e >> 16) & 0x1F {
         case 0b00000: // LASTA to GPR — `<R>d, Pg, Zn.<T>`.
-            return lastToGPR(e, a, ab: false, d: d, n: n, g: g, el: el)
+            return lastToGPR(e, a, ab: false, d: d, n: n, g: g, el: el, &sink)
         case 0b00001: // LASTB to GPR.
-            return lastToGPR(e, a, ab: true, d: d, n: n, g: g, el: el)
-        case 0b00100: return revZeroing(e, a, .revb, d: d, n: n, g: g, el: el)
-        case 0b00101: return revZeroing(e, a, .revh, d: d, n: n, g: g, el: el)
-        case 0b00110: return revZeroing(e, a, .revw, d: d, n: n, g: g, el: el)
-        case 0b00111: return revZeroing(e, a, .rbit, d: d, n: n, g: g, el: el)
-        case 0b01110: return revZeroing(e, a, .revd, d: d, n: n, g: g, el: .q)
+            return lastToGPR(e, a, ab: true, d: d, n: n, g: g, el: el, &sink)
+        case 0b00100: return revZeroing(e, a, .revb, d: d, n: n, g: g, el: el, &sink)
+        case 0b00101: return revZeroing(e, a, .revh, d: d, n: n, g: g, el: el, &sink)
+        case 0b00110: return revZeroing(e, a, .revw, d: d, n: n, g: g, el: el, &sink)
+        case 0b00111: return revZeroing(e, a, .rbit, d: d, n: n, g: g, el: el, &sink)
+        case 0b01110: return revZeroing(e, a, .revd, d: d, n: n, g: g, el: .q, &sink)
         case 0b10000: // CLASTA to GPR — `<R>dn, Pg, <R>dn, Zm.<T>`.
-            return clastToGPR(e, a, ab: false, d: d, n: n, g: g, el: el)
+            return clastToGPR(e, a, ab: false, d: d, n: n, g: g, el: el, &sink)
         case 0b10001: // CLASTB to GPR.
-            return clastToGPR(e, a, ab: true, d: d, n: n, g: g, el: el)
+            return clastToGPR(e, a, ab: true, d: d, n: n, g: g, el: el, &sink)
         default:
             return undefined(e, a)
         }
     }
 
     @inline(__always)
-    static func lastToGPR(_ e: UInt32, _ a: UInt64, ab: Bool, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize) -> DecodedDraft {
+    static func lastToGPR(_ e: UInt32, _ a: UInt64, ab: Bool, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: ab ? .lastb : .lasta,
             semanticReads: vecMask(n), semanticWrites: gprMask(d), category: .sve,
-            operands: [gpr(d, el), govern(g, .none), vec(n, el)],
+            operandCount: sink.emit(gpr(d, el), govern(g, .none), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
 
     @inline(__always)
-    static func clastToGPR(_ e: UInt32, _ a: UInt64, ab: Bool, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize) -> DecodedDraft {
+    static func clastToGPR(_ e: UInt32, _ a: UInt64, ab: Bool, d: UInt8, n: UInt8, g: UInt8, el: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: ab ? .clastb : .clasta,
             semanticReads: vecMask(n).union(gprMask(d)), semanticWrites: gprMask(d), category: .sve,
-            operands: [gpr(d, el), govern(g, .none), gpr(d, el), vec(n, el)],
+            operandCount: sink.emit(gpr(d, el), govern(g, .none), gpr(d, el), vec(n, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
@@ -613,7 +613,7 @@ extension SVEPermuteMemoryDecode {
     /// SEL — `sve_int_sel_vvv`: `Zd.<T>, Pg, Zn.<T>, Zm.<T>`. Pg is a data
     /// selector (governing, bare, 4-bit at bits[13:10]).
     @inline(__always)
-    static func decodeSel(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeSel(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // SEL — `sve_int_sel_vvv`: bit21=1, bits[15:14]=11 (bit13 is Pg's top).
         guard (e >> 21) & 1 == 1, (e >> 14) & 0b11 == 0b11 else { return undefined(e, a) }
         let d = rd(e), n = rn(e), m = rm(e), el = esize(sz2(e))
@@ -626,7 +626,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: .mov,
                 semanticReads: vecMask(d).union(vecMask(n)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), .scalablePredicate(ScalablePredicateRef(registerIndex: g, qualifier: .merging, role: .governing)), vec(n, el)],
+                operandCount: sink.emit(vec(d, el), .scalablePredicate(ScalablePredicateRef(registerIndex: g, qualifier: .merging, role: .governing)), vec(n, el)),
                 scalableReads: predRead(g), scalableEffect: [.readsStreamingMode, .partialWrite],
             )
         }
@@ -634,7 +634,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: .sel,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), govP, vec(n, el), vec(m, el)],
+            operandCount: sink.emit(vec(d, el), govP, vec(n, el), vec(m, el)),
             scalableReads: predRead(g), scalableEffect: .readsStreamingMode,
         )
     }
@@ -644,7 +644,7 @@ extension SVEPermuteMemoryDecode {
     /// TBLQ/UZPQ1/UZPQ2/ZIPQ1/ZIPQ2 — `sve2p1_permute_vec_elems_q<sz,opc>` at
     /// top byte 0x44: `01000100 · sz · 0 · Zm · 111 · opc[12:10] · Zn · Zd`.
     @inline(__always)
-    static func decodeQuadwordPermute(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeQuadwordPermute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), m = rm(e), el = esize(sz2(e))
         let mn: Mnemonic
         switch (e >> 10) & 0b111 {
@@ -661,7 +661,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: .tblq,
                 semanticReads: vecMask(n).union(vecMask(m)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), group(n, count: 1, el), vec(m, el)],
+                operandCount: sink.emit(vec(d, el), group(n, count: 1, el), vec(m, el)),
                 scalableEffect: .readsStreamingMode,
             )
         }
@@ -669,7 +669,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: mn,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), vec(n, el), vec(m, el)],
+            operandCount: sink.emit(vec(d, el), vec(n, el), vec(m, el)),
             scalableEffect: .readsStreamingMode,
         )
     }

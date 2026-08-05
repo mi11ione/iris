@@ -10,7 +10,7 @@
 enum SystemMoveDecode {
     @inline(__always)
     static func decode(
-        encoding: UInt32, address: UInt64, L: UInt8,
+        encoding: UInt32, address: UInt64, L: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let op0 = UInt8((encoding >> 19) & 0x3)
         let op1 = UInt8((encoding >> 16) & 0x7)
@@ -30,7 +30,7 @@ enum SystemMoveDecode {
                 mnemonic: .msr,
                 semanticReads: RegisterSet.empty.inserting(rtRef),
                 category: .branchesExceptionSystem,
-                operands: [.systemRegister(sysreg), .register(rtRef)],
+                operandCount: sink.emit(.systemRegister(sysreg), .register(rtRef)),
             )
         }
         // MRS — write Rt, read sysreg (sysreg reads not in the GP set).
@@ -40,7 +40,7 @@ enum SystemMoveDecode {
             mnemonic: .mrs,
             semanticWrites: RegisterSet.empty.inserting(rtRef),
             category: .branchesExceptionSystem,
-            operands: [.register(rtRef), .systemRegister(sysreg)],
+            operandCount: sink.emit(.register(rtRef), .systemRegister(sysreg)),
         )
     }
 
@@ -49,7 +49,7 @@ enum SystemMoveDecode {
     /// even (Rt<0> == 1 is UNDEFINED). op0 = 2 + o0 (o0 = bit 19).
     @inline(__always)
     static func decodeD128(
-        encoding: UInt32, address: UInt64, L: UInt8,
+        encoding: UInt32, address: UInt64, L: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let Rt = UInt8(encoding & 0x1F)
         if Rt & 1 != 0 {
@@ -74,7 +74,7 @@ enum SystemMoveDecode {
                 mnemonic: .msrr,
                 semanticReads: pair,
                 category: .branchesExceptionSystem,
-                operands: [.systemRegister(sysreg), .register(rt1), .register(rt2)],
+                operandCount: sink.emit(.systemRegister(sysreg), .register(rt1), .register(rt2)),
             )
         }
         // MRRS — write the pair, read sysreg.
@@ -84,7 +84,7 @@ enum SystemMoveDecode {
             mnemonic: .mrrs,
             semanticWrites: pair,
             category: .branchesExceptionSystem,
-            operands: [.register(rt1), .register(rt2), .systemRegister(sysreg)],
+            operandCount: sink.emit(.register(rt1), .register(rt2), .systemRegister(sysreg)),
         )
     }
 }

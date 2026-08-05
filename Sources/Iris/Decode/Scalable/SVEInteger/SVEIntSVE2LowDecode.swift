@@ -20,23 +20,23 @@
 
 extension SVEIntegerDecode {
     @inline(__always)
-    static func decodeSVE2Low(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if (e >> 21) & 1 == 1 { return decodeSVE2Indexed(e, a) }
+    static func decodeSVE2Low(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if (e >> 21) & 1 == 1 { return decodeSVE2Indexed(e, a, &sink) }
         switch (e >> 10) & 0b111111 {
-        case 0b000000, 0b000001: return decodeDotProduct(e, a) // sve_intx_dot
-        case 0b000010, 0b000011: return decodeMultiplyAddLong(e, a) // SQDMLALBT/SQDMLSLBT
-        case 0b000100 ... 0b001111: return decodeComplexArith(e, a) // CDOT/CMLA/SQRDCMLAH
-        case 0b010000 ... 0b011101: return decodeMultiplyAddLong(e, a) // the long MLA/MLS family
-        case 0b011110: return decodeDotProductMixed(e, a) // USDOT
-        case 0b100000 ... 0b100111: return decodeSVE2ArithPredicated(e, a) // b13=0 half
+        case 0b000000, 0b000001: return decodeDotProduct(e, a, &sink) // sve_intx_dot
+        case 0b000010, 0b000011: return decodeMultiplyAddLong(e, a, &sink) // SQDMLALBT/SQDMLSLBT
+        case 0b000100 ... 0b001111: return decodeComplexArith(e, a, &sink) // CDOT/CMLA/SQRDCMLAH
+        case 0b010000 ... 0b011101: return decodeMultiplyAddLong(e, a, &sink) // the long MLA/MLS family
+        case 0b011110: return decodeDotProductMixed(e, a, &sink) // USDOT
+        case 0b100000 ... 0b100111: return decodeSVE2ArithPredicated(e, a, &sink) // b13=0 half
         case 0b101000 ... 0b101111:
             // b13=1: `sve2_int_arith_pred`'s pairwise opcodes all set b20; the
             // predicated unary / pairwise-accumulate classes all clear it.
-            return (e >> 20) & 1 == 1 ? decodeSVE2ArithPredicated(e, a) : decodeUnaryPairwise(e, a)
-        case 0b110000, 0b110001: return decodeClamp(e, a) // SCLAMP/UCLAMP
-        case 0b110010, 0b110011: return decodeTwoWayDotProduct(e, a) // sz splits vector vs indexed
-        case 0b110100, 0b110110: return decodeCheckedPointerMultiplyAdd(e, a) // MLAPT/MADPT
-        case 0b110101, 0b110111: return decodeAbsoluteDifferenceAccumulate(e, a) // SABAL/UABAL
+            return (e >> 20) & 1 == 1 ? decodeSVE2ArithPredicated(e, a, &sink) : decodeUnaryPairwise(e, a, &sink)
+        case 0b110000, 0b110001: return decodeClamp(e, a, &sink) // SCLAMP/UCLAMP
+        case 0b110010, 0b110011: return decodeTwoWayDotProduct(e, a, &sink) // sz splits vector vs indexed
+        case 0b110100, 0b110110: return decodeCheckedPointerMultiplyAdd(e, a, &sink) // MLAPT/MADPT
+        case 0b110101, 0b110111: return decodeAbsoluteDifferenceAccumulate(e, a, &sink) // SABAL/UABAL
         default: return undefined(e, a) // 011111, and 111xxx (the SVE-permute/memory ZIPQ region, never in scope)
         }
     }
@@ -47,7 +47,7 @@ extension SVEIntegerDecode {
     /// Zdn is read and only its active lanes are written. Zm sits at
     /// [9:5]; [20:16] is the opcode.
     @inline(__always)
-    static func decodeSVE2ArithPredicated(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeSVE2ArithPredicated(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let mnemonic = sve2ArithPredicatedMnemonic((e >> 16) & 0b11111, pairwise: (e >> 13) & 1 == 1)
         else { return undefined(e, a) }
         let dn = zd(e), m = zn(e), g = pg3(e), size = sz(e)
@@ -55,7 +55,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size)],
+            operandCount: sink.emit(vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -116,30 +116,30 @@ extension SVEIntegerDecode {
     /// dot product accumulating into Zda. The source width is not simply one size
     /// down: `.h`/`.s` destinations both read `.b`, and `.d` reads `.h`.
     @inline(__always)
-    static func decodeDotProduct(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeDotProduct(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let szf = (e >> 22) & 0b11
         guard szf != 0 else { return undefined(e, a) }
         return accumulateZZZ(
             e, a, mnemonic: (e >> 10) & 1 == 0 ? .sdot : .udot,
-            dest: elementSize(szf), source: szf == 0b11 ? .h : .b,
+            dest: elementSize(szf), source: szf == 0b11 ? .h : .b, &sink,
         )
     }
 
     /// `usdot <Zda>.S, <Zn>.B, <Zm>.B` — the mixed-sign dot product (`.s` only).
     @inline(__always)
-    static func decodeDotProductMixed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeDotProductMixed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard (e >> 22) & 0b11 == 0b10 else { return undefined(e, a) }
-        return accumulateZZZ(e, a, mnemonic: .usdot, dest: .s, source: .b)
+        return accumulateZZZ(e, a, mnemonic: .usdot, dest: .s, source: .b, &sink)
     }
 
     /// bits[15:10] = 11001x holds two different instructions distinguished only
     /// by their size field: the two-way vector `sdot`/`udot` (`.s` ← `.h`) at
     /// sz=00, and the SVE2p1 *indexed* two-way dot at sz=10.
     @inline(__always)
-    static func decodeTwoWayDotProduct(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeTwoWayDotProduct(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic = (e >> 10) & 1 == 0 ? .sdot : .udot
         switch (e >> 22) & 0b11 {
-        case 0b00: return accumulateZZZ(e, a, mnemonic: mnemonic, dest: .s, source: .h)
+        case 0b00: return accumulateZZZ(e, a, mnemonic: mnemonic, dest: .s, source: .h, &sink)
         case 0b10:
             // Indexed: Zm ∈ Z0-Z7 at [18:16], the 2-bit element index at [20:19].
             let da = zd(e), n = zn(e)
@@ -148,10 +148,7 @@ extension SVEIntegerDecode {
                 address: a, encoding: e, mnemonic: mnemonic,
                 semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
                 semanticWrites: vecMask(da), category: .sve,
-                operands: [
-                    vec(da, .s), vec(n, .h),
-                    .scalableVector(ScalableVectorRef(registerIndex: m, element: .h, elementIndex: index)),
-                ],
+                operandCount: sink.emit(vec(da, .s), vec(n, .h), .scalableVector(ScalableVectorRef(registerIndex: m, element: .h, elementIndex: index))),
                 scalableEffect: .readsStreamingMode,
             )
         default: return undefined(e, a)
@@ -161,14 +158,14 @@ extension SVEIntegerDecode {
     // MARK: sve2_int_mla — the multiply-add-long / multiply-subtract-long family
 
     @inline(__always)
-    static func decodeMultiplyAddLong(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMultiplyAddLong(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let szf = (e >> 22) & 0b11
         let opc = (e >> 10) & 0b111111
         // SQRDMLAH/SQRDMLSH are the two same-width members of this class; every
         // other member widens, so its `.b` destination (sz=00) is reserved.
         if opc == 0b011100 || opc == 0b011101 {
             let size = elementSize(szf)
-            return accumulateZZZ(e, a, mnemonic: opc == 0b011100 ? .sqrdmlah : .sqrdmlsh, dest: size, source: size)
+            return accumulateZZZ(e, a, mnemonic: opc == 0b011100 ? .sqrdmlah : .sqrdmlsh, dest: size, source: size, &sink)
         }
         guard szf != 0, let source = narrower(elementSize(szf)) else { return undefined(e, a) }
         let mnemonic: Mnemonic
@@ -192,13 +189,13 @@ extension SVEIntegerDecode {
         case 0b011010: .sqdmlslb
         default: .sqdmlslt // 0b011011
         }
-        return accumulateZZZ(e, a, mnemonic: mnemonic, dest: elementSize(szf), source: source)
+        return accumulateZZZ(e, a, mnemonic: mnemonic, dest: elementSize(szf), source: source, &sink)
     }
 
     // MARK: sve2_complex_int_arith — CDOT / CMLA / SQRDCMLAH (rotation immediate)
 
     @inline(__always)
-    static func decodeComplexArith(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeComplexArith(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let szf = (e >> 22) & 0b11
         let mnemonic: Mnemonic
         let dest = elementSize(szf)
@@ -220,10 +217,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [
-                vec(da, dest), vec(n, source), vec(m, source),
-                .immediate(value: Int64((e >> 10) & 0b11) * 90, width: 16),
-            ],
+            operandCount: sink.emit(vec(da, dest), vec(n, source), vec(m, source), .immediate(value: Int64((e >> 10) & 0b11) * 90, width: 16)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -231,7 +225,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_clamp — SCLAMP / UCLAMP
 
     @inline(__always)
-    static func decodeClamp(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeClamp(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Three-source: Zd carries the value being clamped, Zn/Zm the bounds. The
         // ASL reads Zd as a plain operand and then recomputes every lane, so it is
         // a destination read with a *full* write.
@@ -241,7 +235,7 @@ extension SVEIntegerDecode {
             mnemonic: (e >> 10) & 1 == 0 ? .sclamp : .uclamp,
             semanticReads: vecMask(d).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, size), vec(n, size), vec(m, size)],
+            operandCount: sink.emit(vec(d, size), vec(n, size), vec(m, size)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -253,7 +247,7 @@ extension SVEIntegerDecode {
     /// and zeroing (b18=0,b17=1) forms, and the pairwise-accumulate SADALP/UADALP
     /// (b18=1,b17=0).
     @inline(__always)
-    static func decodeUnaryPairwise(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnaryPairwise(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let szf = (e >> 22) & 0b11
         let d = zd(e), n = zn(e), g = pg3(e)
         switch ((e >> 18) & 1, (e >> 17) & 1) {
@@ -266,7 +260,7 @@ extension SVEIntegerDecode {
                 mnemonic: (e >> 16) & 1 == 0 ? .sadalp : .uadalp,
                 semanticReads: vecMask(d).union(vecMask(n)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, elementSize(szf)), govern(g, .merging), vec(n, source)],
+                operandCount: sink.emit(vec(d, elementSize(szf)), govern(g, .merging), vec(n, source)),
                 scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
                 scalableEffect: [.readsStreamingMode, .partialWrite],
             )
@@ -284,7 +278,7 @@ extension SVEIntegerDecode {
                 address: a, encoding: e, mnemonic: mnemonic,
                 semanticReads: merging ? vecMask(d).union(vecMask(n)) : vecMask(n),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, size), govern(g, merging ? .merging : .zeroing), vec(n, size)],
+                operandCount: sink.emit(vec(d, size), govern(g, merging ? .merging : .zeroing), vec(n, size)),
                 scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
                 scalableEffect: merging ? [.readsStreamingMode, .partialWrite] : .readsStreamingMode,
             )
@@ -295,11 +289,11 @@ extension SVEIntegerDecode {
     // MARK: sve_int_mla_cpa / sve_int_mad_cpa — FEAT_CPA checked-pointer multiply-add
 
     @inline(__always)
-    static func decodeCheckedPointerMultiplyAdd(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCheckedPointerMultiplyAdd(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard (e >> 22) & 0b11 == 0b11 else { return undefined(e, a) } // `.d` only
         let d = zd(e), m = zm(e)
         if (e >> 11) & 1 == 0 { // MLAPT — `<Zda>.D, <Zn>.D, <Zm>.D`
-            return accumulateZZZ(e, a, mnemonic: .mlapt, dest: .d, source: .d)
+            return accumulateZZZ(e, a, mnemonic: .mlapt, dest: .d, source: .d, &sink)
         }
         // MADPT — `<Zdn>.D, <Zm>.D, <Za>.D`: the multiplicand is Zdn, the addend Za at [9:5].
         let za = zn(e)
@@ -307,7 +301,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: .madpt,
             semanticReads: vecMask(d).union(vecMask(m)).union(vecMask(za)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, .d), vec(m, .d), vec(za, .d)],
+            operandCount: sink.emit(vec(d, .d), vec(m, .d), vec(za, .d)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -318,14 +312,14 @@ extension SVEIntegerDecode {
     /// Zda is read and every output lane recomputed, so the write is full.
     @inline(__always)
     static func accumulateZZZ(
-        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, dest: ScalarSize, source: ScalarSize,
+        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, dest: ScalarSize, source: ScalarSize, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let da = zd(e), n = zn(e), m = zm(e)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, dest), vec(n, source), vec(m, source)],
+            operandCount: sink.emit(vec(da, dest), vec(n, source), vec(m, source)),
             scalableEffect: .readsStreamingMode,
         )
     }

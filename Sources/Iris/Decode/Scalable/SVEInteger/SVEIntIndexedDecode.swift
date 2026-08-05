@@ -30,47 +30,47 @@ extension SVEIntegerDecode {
     }
 
     @inline(__always)
-    static func decodeSVE2Indexed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeSVE2Indexed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch (e >> 10) & 0b111111 {
-        case 0b000000, 0b000001: decodeIndexedDotProduct(e, a)
-        case 0b000110, 0b000111: decodeIndexedDotProductMixed(e, a)
-        case 0b010000 ... 0b011111: decodeIndexedComplexArith(e, a)
-        case 0b110000 ... 0b111111: decodeIndexedMultiply(e, a)
+        case 0b000000, 0b000001: decodeIndexedDotProduct(e, a, &sink)
+        case 0b000110, 0b000111: decodeIndexedDotProductMixed(e, a, &sink)
+        case 0b010000 ... 0b011111: decodeIndexedComplexArith(e, a, &sink)
+        case 0b110000 ... 0b111111: decodeIndexedMultiply(e, a, &sink)
         // Everything else in b21=1 belongs to sve2_int_mla_by_indexed_elem:
         // 00001x / 00010x (same-width MLA/MLS/SQRDMLAH/SQRDMLSH), 0010xx-0011xx
         // (SQDMLAL/SQDMLSL) and 10xxxx (S/UMLAL, S/UMLSL).
-        default: decodeIndexedMultiplyAdd(e, a)
+        default: decodeIndexedMultiplyAdd(e, a, &sink)
         }
     }
 
     // MARK: sve_intx_dot_by_indexed_elem(_x) — SDOT / UDOT indexed
 
     @inline(__always)
-    static func decodeIndexedDotProduct(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIndexedDotProduct(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic = (e >> 10) & 1 == 0 ? .sdot : .udot
         // b23=0 is the `_x` class (`.h` ← `.b`); b23=1 gives `.s` ← `.b` / `.d` ← `.h`.
         let width = indexedWidth(e)
         let source: ScalarSize = width == .doubleword ? .h : .b
         return indexedDraft(
             e, a, mnemonic: mnemonic, width: width, source: source,
-            dest: destElement(width), extraIndexBit: false,
+            dest: destElement(width), extraIndexBit: false, &sink,
         )
     }
 
     /// `usdot`/`sudot <Zda>.S, <Zn>.B, <Zm>.B[<index>]` — `.s` destination only.
     @inline(__always)
-    static func decodeIndexedDotProductMixed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIndexedDotProductMixed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard indexedWidth(e) == .word else { return undefined(e, a) }
         return indexedDraft(
             e, a, mnemonic: (e >> 10) & 1 == 0 ? .usdot : .sudot,
-            width: .word, source: .b, dest: .s, extraIndexBit: false,
+            width: .word, source: .b, dest: .s, extraIndexBit: false, &sink,
         )
     }
 
     // MARK: sve2_int_mla_by_indexed_elem — MLA/MLS/SQRDMLAH + the long forms
 
     @inline(__always)
-    static func decodeIndexedMultiplyAdd(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIndexedMultiplyAdd(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let width = indexedWidth(e)
         let dest = destElement(width)
         let top = (e >> 10) & 1 == 1
@@ -91,14 +91,14 @@ extension SVEIntegerDecode {
         guard let source = indexedSource(dest, widening: widening) else { return undefined(e, a) }
         return indexedDraft(
             e, a, mnemonic: mnemonic, width: width, source: source,
-            dest: dest, extraIndexBit: widening,
+            dest: dest, extraIndexBit: widening, &sink,
         )
     }
 
     // MARK: sve2_int_mul_by_indexed_elem — MUL / SQDMULH / SMULLB / …
 
     @inline(__always)
-    static func decodeIndexedMultiply(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIndexedMultiply(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let width = indexedWidth(e)
         let dest = destElement(width)
         let top = (e >> 10) & 1 == 1
@@ -125,10 +125,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [
-                vec(d, dest), vec(n, source),
-                .scalableVector(ScalableVectorRef(registerIndex: m, element: source, elementIndex: index)),
-            ],
+            operandCount: sink.emit(vec(d, dest), vec(n, source), .scalableVector(ScalableVectorRef(registerIndex: m, element: source, elementIndex: index))),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -136,7 +133,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_complex_int_arith_indexed — CDOT / CMLA / SQRDCMLAH indexed
 
     @inline(__always)
-    static func decodeIndexedComplexArith(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIndexedComplexArith(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // These encode only two widths, and b22 names them directly (b23 is fixed):
         // CDOT is `.s` ← `.b` / `.d` ← `.h`; CMLA/SQRDCMLAH are same-width `.h`/`.s`.
         guard (e >> 23) & 1 == 1 else { return undefined(e, a) }
@@ -159,11 +156,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [
-                vec(da, dest), vec(n, source),
-                .scalableVector(ScalableVectorRef(registerIndex: m, element: source, elementIndex: index)),
-                .immediate(value: Int64((e >> 10) & 0b11) * 90, width: 16),
-            ],
+            operandCount: sink.emit(vec(da, dest), vec(n, source), .scalableVector(ScalableVectorRef(registerIndex: m, element: source, elementIndex: index)), .immediate(value: Int64((e >> 10) & 0b11) * 90, width: 16)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -220,7 +213,7 @@ extension SVEIntegerDecode {
     @inline(__always)
     static func indexedDraft(
         _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, width: IndexedWidth,
-        source: ScalarSize, dest: ScalarSize, extraIndexBit: Bool,
+        source: ScalarSize, dest: ScalarSize, extraIndexBit: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let da = zd(e), n = zn(e)
         let (m, index) = indexedOperand(e, width: width, extraIndexBit: extraIndexBit)
@@ -228,10 +221,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [
-                vec(da, dest), vec(n, source),
-                .scalableVector(ScalableVectorRef(registerIndex: m, element: source, elementIndex: index)),
-            ],
+            operandCount: sink.emit(vec(da, dest), vec(n, source), .scalableVector(ScalableVectorRef(registerIndex: m, element: source, elementIndex: index))),
             scalableEffect: .readsStreamingMode,
         )
     }

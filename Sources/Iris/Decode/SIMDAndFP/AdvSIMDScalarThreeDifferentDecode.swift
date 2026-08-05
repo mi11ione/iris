@@ -8,7 +8,7 @@
 
 enum AdvSIMDScalarThreeDifferentDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
@@ -43,11 +43,7 @@ enum AdvSIMDScalarThreeDifferentDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: dstSize),
-                simdfpScalarOperand(Rn, size: srcSize),
-                simdfpScalarOperand(Rm, size: srcSize),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: dstSize), simdfpScalarOperand(Rn, size: srcSize), simdfpScalarOperand(Rm, size: srcSize)),
         )
     }
 }

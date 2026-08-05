@@ -13,7 +13,7 @@
 //   size=01, bit13=1 → LUTI4 .16b, list {Vn.16b},        index = bit14
 enum AdvSIMDLUTDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // LUT forms are 128-bit only (Q=1); Q=0 is unallocated.
         guard (encoding >> 30) & 1 == 1 else { return .undefined(at: address, encoding: encoding) }
         let size = UInt8((encoding >> 22) & 0x3)
@@ -52,15 +52,15 @@ enum AdvSIMDLUTDecode {
             }
         }
 
-        var operands: [Operand] = [simdfpVectorOperand(Rd, arrangement: arrangement)]
-        operands.reserveCapacity(2 + listCount)
+        let operandMark = sink.mark
+        sink.append(simdfpVectorOperand(Rd, arrangement: arrangement))
         var reads: RegisterSet = .empty
         for i in 0 ..< listCount {
             let r = (Rn &+ UInt8(i)) & 0x1F
-            operands.append(simdfpVectorOperand(r, arrangement: arrangement))
+            sink.append(simdfpVectorOperand(r, arrangement: arrangement))
             reads = simdfpInsertingVector(r, into: reads)
         }
-        operands.append(simdfpLaneOperand(Rm, index: index))
+        sink.append(simdfpLaneOperand(Rm, index: index))
         reads = simdfpInsertingVector(Rm, into: reads)
 
         return DecodedDraft(
@@ -70,7 +70,7 @@ enum AdvSIMDLUTDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 }

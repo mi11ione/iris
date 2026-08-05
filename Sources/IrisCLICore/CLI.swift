@@ -12,7 +12,7 @@ import Iris
 /// diagnostics, never error messages.
 public enum CLI {
     /// The tool's release version, matching the package tag.
-    public static let version = "0.6.0"
+    public static let version = "0.7.0"
 
     /// Exit code for success.
     public static let exitSuccess: Int32 = 0
@@ -94,12 +94,18 @@ public enum CLI {
     ) -> Int32 {
         let stream = InstructionStream(bytes: bytes, features: invocation.directDecodeFeatures)
         if invocation.json {
+            // One buffer for the whole stream, one `String` at the end, in
+            // place of one per record plus one per field within each.
+            var out = TextBytes(capacity: Swift.max(1024, stream.records.count * 320))
             for instruction in stream {
-                let line = invocation.slim
-                    ? JSONText.slimInstructionLine(instruction)
-                    : JSONText.instructionLine(instruction)
-                writeOutput(line + "\n")
+                if invocation.slim {
+                    JSONText.putSlimInstructionLine(instruction, into: &out)
+                } else {
+                    JSONText.putInstructionLine(instruction, into: &out)
+                }
+                out.put(UInt8(ascii: "\n"))
             }
+            if out.count > 0 { writeOutput(out.makeString()) }
             return exitSuccess
         }
         let renderer = ListingRenderer(palette: palette, includeSemantics: invocation.semantics)
@@ -195,14 +201,24 @@ public enum CLI {
                         // filtered-out lines too, so the idiom still resolves
                         // when only its completing half is in scope).
                         var preceding: Instruction?
+                        var out = TextBytes(capacity: Swift.max(1024, stream.records.count * 320))
                         for instruction in stream {
                             defer { preceding = instruction }
                             guard scope.contains(instruction.address) else { continue }
-                            let line = invocation.slim
-                                ? JSONText.slimInstructionLine(instruction, context: jsonContext, preceding: preceding)
-                                : JSONText.instructionLine(instruction, context: jsonContext, preceding: preceding)
-                            writeOutput(line + "\n")
+                            if invocation.slim {
+                                JSONText.putSlimInstructionLine(
+                                    instruction, context: jsonContext,
+                                    preceding: preceding, into: &out,
+                                )
+                            } else {
+                                JSONText.putInstructionLine(
+                                    instruction, context: jsonContext,
+                                    preceding: preceding, into: &out,
+                                )
+                            }
+                            out.put(UInt8(ascii: "\n"))
                         }
+                        if out.count > 0 { writeOutput(out.makeString()) }
                     }
                 } else {
                     let renderer = ListingRenderer(palette: palette, includeSemantics: invocation.semantics)

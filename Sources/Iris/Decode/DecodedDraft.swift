@@ -2,18 +2,22 @@
 // Licensed under the Apache License, Version 2.0
 //
 // DecodedDraft. Mutable work-in-progress type the dispatcher passes to
-// family decoders and alias rules. The stream commits a draft into an
-// `InstructionRecord` by allocating an operand range and replacing the
-// inline `operands` array with `(operandStart, operandCount)` indices;
-// tier-0 `decode` materializes a draft into a standalone `Instruction`.
+// family decoders. The stream commits a draft into an `InstructionRecord`
+// by pairing it with the operand range the decode emitted; tier-0 `decode`
+// materializes a draft into a standalone `Instruction`. Operands do not
+// live on the draft: the family decoders emit them straight into the
+// stream's `OperandSink` and the draft carries only the count.
 
 /// Mutable per-word decode result, used by the dispatcher and family
 /// decoders before commit into the stream's record buffer.
 ///
 /// A `DecodedDraft` holds the same semantic content as an
-/// ``InstructionRecord``, plus an inline `operands` array (instead of
-/// the record's side-buffer indices). Family decoders construct drafts;
-/// alias rules mutate drafts; the stream commits drafts.
+/// ``InstructionRecord``, minus the operands themselves: those are emitted
+/// into the stream's ``OperandSink`` and the draft records only how many.
+/// Family decoders construct drafts; the stream commits them. Every field
+/// is an integer or a raw-valued enum, so copying a draft through the
+/// decode return chain is a memcpy with no outlined copy or destroy —
+/// which is what carrying an operand collection here cost.
 struct DecodedDraft: Sendable, Equatable {
     var address: UInt64
     var encoding: UInt32
@@ -28,7 +32,11 @@ struct DecodedDraft: Sendable, Equatable {
     var flagEffect: FlagEffect
     var scalableEffect: ScalableEffect
     var category: Category
-    var operands: [Operand]
+    /// Number of operands this draft emitted into the stream's
+    /// ``OperandSink``. The operands themselves live in the sink; their
+    /// start is the sink's length before this word was dispatched, so the
+    /// draft carries no index.
+    var operandCount: UInt8
 
     init(
         address: UInt64,
@@ -41,7 +49,7 @@ struct DecodedDraft: Sendable, Equatable {
         memoryOrdering: MemoryOrdering = [],
         flagEffect: FlagEffect = .none,
         category: Category,
-        operands: [Operand] = [],
+        operandCount: UInt8 = 0,
         scalableReads: ScalableRegisterSet = .empty,
         scalableWrites: ScalableRegisterSet = .empty,
         scalableEffect: ScalableEffect = .none,
@@ -59,7 +67,7 @@ struct DecodedDraft: Sendable, Equatable {
         self.flagEffect = flagEffect
         self.scalableEffect = scalableEffect
         self.category = category
-        self.operands = operands
+        self.operandCount = operandCount
     }
 
     /// Construct the UNDEFINED draft for an encoding the
@@ -77,14 +85,20 @@ struct DecodedDraft: Sendable, Equatable {
     /// one allocated encoding in the `op0=0` reserved tier
     /// (`bits[31:16] == 0`, `imm16` = bits[15:0]). Exception-generating, no
     /// register effects. Owned by the decoder core, not a family decoder.
-    static func udf(at address: UInt64, encoding: UInt32) -> DecodedDraft {
+    static func udf(
+        at address: UInt64,
+        encoding: UInt32,
+        _ sink: inout OperandSink,
+    ) -> DecodedDraft {
         DecodedDraft(
             address: address,
             encoding: encoding,
             mnemonic: .udf,
             branchClass: .exception,
             category: .branchesExceptionSystem,
-            operands: [.unsignedImmediate(value: UInt64(encoding & 0xFFFF), width: 16)],
+            operandCount: sink.emit(
+                .unsignedImmediate(value: UInt64(encoding & 0xFFFF), width: 16),
+            ),
         )
     }
 

@@ -11,45 +11,69 @@
 /// category. Family categories dispatch to their canonicalizer; the
 /// sentinel categories render directives.
 enum DisassemblyText {
+    /// The scratch size the returning entry point renders into.
+    ///
+    /// Every instruction in the decode corpora renders to at most 66 bytes,
+    /// and 99.99% of them to 64 or fewer, so this is one cache line of
+    /// stack for effectively the whole ISA. The dozen scalable
+    /// multi-vector forms above it promote to the heap inside ``TextBytes``
+    /// and render in full — the buffer never truncates.
+    static let scratchCapacity = 64
+
     static func render(_ instruction: Instruction) -> String {
+        withUnsafeTemporaryAllocation(of: UInt8.self, capacity: scratchCapacity) { scratch in
+            var out = TextBytes(scratch: scratch.baseAddress!, capacity: scratch.count)
+            renderBytes(instruction, into: &out)
+            return out.makeString()
+        }
+    }
+
+    /// Render straight into a UTF-8 buffer. Families that have a byte path
+    /// write into `out` directly; the rest still build a `String` and are
+    /// appended, so the path is adopted one family at a time.
+    static func renderBytes(_ instruction: Instruction, into out: inout TextBytes) {
         switch instruction.record.category {
         case .undefined, .dataInCodeMarker:
             // Raw word as a data directive — lowercase, unpadded hex,
             // matching the shipped AMX-unknown `.long` convention. The
             // data-marker's span kind lives on the stream's span list
             // and diagnostics, not in the per-word text.
-            return ".long 0x\(String(instruction.record.encoding, radix: 16))"
+            out.put(".long 0x")
+            out.putHex(UInt64(instruction.record.encoding))
         case .truncatedTail:
             // Exactly tailByteCount residual bytes, two-digit lowercase
             // hex each (the byte-directive convention). The packed
             // encoding holds at most 4 bytes; hand-built counts beyond
             // that clamp to what the word carries.
             let count = min(instruction.record.tailByteCount, 4)
-            if count == 0 { return ".byte" }
-            var parts: [String] = []
-            parts.reserveCapacity(count)
-            for k in 0 ..< count {
-                let byte = UInt8(truncatingIfNeeded: instruction.record.encoding >> (8 * UInt32(k)))
-                let hex = String(byte, radix: 16)
-                parts.append(byte < 0x10 ? "0x0\(hex)" : "0x\(hex)")
+            if count == 0 {
+                out.put(".byte")
+                return
             }
-            return ".byte " + parts.joined(separator: ", ")
+            out.put(".byte ")
+            for k in 0 ..< count {
+                if k > 0 { out.put(", ") }
+                let byte = UInt8(truncatingIfNeeded: instruction.record.encoding >> (8 * UInt32(k)))
+                out.put("0x")
+                if byte < 0x10 { out.put(UInt8(ascii: "0")) }
+                out.putHex(UInt64(byte))
+            }
         case .dataProcessingImmediate:
-            return DPICanonicalizer.format(instruction)
+            DPICanonicalizer.format(instruction, into: &out)
         case .branchesExceptionSystem:
-            return BESCanonicalizer.format(instruction)
+            BESCanonicalizer.format(instruction, into: &out)
         case .dataProcessingRegister:
-            return DPRCanonicalizer.format(instruction)
+            DPRCanonicalizer.format(instruction, into: &out)
         case .loadsAndStores:
-            return LSCanonicalizer.format(instruction)
+            LSCanonicalizer.format(instruction, into: &out)
         case .simdAndFP:
-            return SIMDFPCanonicalizer.format(instruction)
+            SIMDFPCanonicalizer.format(instruction, into: &out)
         case .pointerAuthentication, .crypto, .amx, .memoryTagging:
-            return CryptoAppleExtensionsCanonicalizer.format(instruction)
+            CryptoAppleExtensionsCanonicalizer.format(instruction, into: &out)
         case .sve:
-            return SVEDisassembly.render(instruction)
+            SVEDisassembly.render(instruction, into: &out)
         case .sme:
-            return SMEDisassembly.render(instruction)
+            SMEDisassembly.render(instruction, into: &out)
         }
     }
 }
@@ -68,4 +92,17 @@ public func normalizeDisassembly(_ s: String) -> String {
     }
     t = t.lowercased()
     return t.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+}
+
+public extension Instruction {
+    /// Append this instruction's canonical text to `out`, with no
+    /// intermediate `String`.
+    ///
+    /// ``text`` renders through the same path and then constructs a
+    /// `String`; a caller assembling a larger document — a listing line,
+    /// a whole section — wants the bytes appended to the buffer it is
+    /// already building instead.
+    func appendText(to out: inout TextBytes) {
+        DisassemblyText.renderBytes(self, into: &out)
+    }
 }

@@ -12,7 +12,7 @@
 enum LogicalShiftedDecode {
     @inline(__always)
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let opc = UInt8((encoding >> 29) & 0x3)
         let shiftBits = UInt8((encoding >> 22) & 0x3)
@@ -52,7 +52,7 @@ enum LogicalShiftedDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rmRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rmRef)),
             )
         }
 
@@ -67,7 +67,7 @@ enum LogicalShiftedDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6)],
+                operandCount: sink.emit(.register(rdRef), shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6)),
             )
         }
 
@@ -82,7 +82,7 @@ enum LogicalShiftedDecode {
                 semanticWrites: .empty,
                 flagEffect: .nzcv,
                 category: .dataProcessingRegister,
-                operands: [.register(rnRef), shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6)],
+                operandCount: sink.emit(.register(rnRef), shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6)),
             )
         }
 
@@ -105,10 +105,7 @@ enum LogicalShiftedDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: baseFlagEffect,
             category: .dataProcessingRegister,
-            operands: [
-                .register(rdRef), .register(rnRef),
-                shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6),
-            ],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6)),
         )
     }
 

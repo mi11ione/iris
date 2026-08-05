@@ -75,7 +75,7 @@ enum LSEAtomicDecode {
     ]
 
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         let A = UInt8((encoding >> 23) & 1)
         let R = UInt8((encoding >> 22) & 1)
@@ -119,9 +119,12 @@ enum LSEAtomicDecode {
             ? .empty
             : lsInsertingNonZero(reg: rtRef, into: .empty)
 
-        let operands: [Operand] = useAlias
-            ? [.register(rsRef), .memory(MemoryOperand(base: .register(rnRef)))]
-            : [.register(rsRef), .register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))]
+        let operandCount = useAlias
+            ? sink.emit(.register(rsRef), .memory(MemoryOperand(base: .register(rnRef))))
+            : sink.emit(
+                .register(rsRef), .register(rtRef),
+                .memory(MemoryOperand(base: .register(rnRef))),
+            )
 
         return DecodedDraft(
             address: address,
@@ -134,7 +137,7 @@ enum LSEAtomicDecode {
             memoryOrdering: ordering,
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: operands,
+            operandCount: operandCount,
         )
     }
 

@@ -139,13 +139,13 @@ struct SVEFloatingPointSemanticAttributeTests {
     }
 
     @Test func hasMergingGoverningReadsTheOperandList() {
-        let merging: [Operand] = [
+        let merging: Instruction.Operands = [
             .scalableVector(ScalableVectorRef(registerIndex: 0, element: .h)),
             .scalablePredicate(ScalablePredicateRef(registerIndex: 1, qualifier: .merging, role: .governing)),
         ]
         #expect(SVEFloatingPointSemanticAttributes.hasMergingGoverning(merging))
 
-        let zeroing: [Operand] = [
+        let zeroing: Instruction.Operands = [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 1, qualifier: .zeroing, role: .governing)),
         ]
         #expect(!SVEFloatingPointSemanticAttributes.hasMergingGoverning(zeroing))

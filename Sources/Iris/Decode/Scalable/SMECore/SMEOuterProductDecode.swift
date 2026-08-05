@@ -80,20 +80,14 @@ extension SMECoreDecode {
     /// record. Reads `Zn`, `Zm`, the two governing predicates,
     /// and (accumulating) the `ZAda` tile; writes the `ZAda` tile (partial).
     @inline(__always)
-    static func decodeOuterProduct(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeOuterProduct(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let row = outerProductRow(e) else { return undefined(e, a) }
         let tileIndex = zada(e, row.tile)
         let znIndex = zn(e), zmIndex = zm(e)
         let pnIndex = pn3(e), pmIndex = pm3(e)
         let tileMask = ZATileMask(tile: tileIndex, element: row.tile)
 
-        let operands: [Operand] = [
-            .zaTile(index: tileIndex, element: row.tile),
-            govern(pnIndex, .merging),
-            govern(pmIndex, .merging),
-            vec(znIndex, row.source),
-            vec(zmIndex, row.source),
-        ]
+        let operandCount = sink.emit(.zaTile(index: tileIndex, element: row.tile), govern(pnIndex, .merging), govern(pmIndex, .merging), vec(znIndex, row.source), vec(zmIndex, row.source))
         // Z sources are SIMD/Z reads; the two governing predicates + the
         // accumulator tile are scalable reads; the tile is a (partial) write.
         let reads = vecMask(znIndex).union(vecMask(zmIndex))
@@ -103,7 +97,7 @@ extension SMECoreDecode {
             address: a, encoding: e, mnemonic: row.mnemonic,
             semanticReads: reads,
             category: .sme,
-            operands: operands,
+            operandCount: operandCount,
             scalableReads: scalableReads,
             scalableWrites: scalableWrites,
             scalableEffect: [.readsStreamingMode, .partialWrite],

@@ -18,67 +18,67 @@
 
 extension SVEIntegerDecode {
     @inline(__always)
-    static func decodeSVE2High(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeSVE2High(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch e & 0xFFFF_E420 {
-        case 0x4531_4000: return decodeMultiVectorExtractNarrow(e, a) // sve2p1_multi_vec_extract_narrow
+        case 0x4531_4000: return decodeMultiVectorExtractNarrow(e, a, &sink) // sve2p1_multi_vec_extract_narrow
         default: break
         }
         switch e & 0xFF3E_F800 {
-        case 0x4500_D800: return decodeComplexAddition(e, a) // sve2_int_cadd
+        case 0x4500_D800: return decodeComplexAddition(e, a, &sink) // sve2_int_cadd
         default: break
         }
         switch e & 0xFFE0_FC00 {
-        case 0x4520_A000: return decodeHistogramSegment(e, a) // sve2_hist_gen_segment
+        case 0x4520_A000: return decodeHistogramSegment(e, a, &sink) // sve2_hist_gen_segment
         default: break
         }
         switch e & 0xFFA7_E400 {
-        case 0x4520_4000: return decodeSaturatingExtractNarrow(e, a, top: false) // …_bottom
-        case 0x4520_4400: return decodeSaturatingExtractNarrow(e, a, top: true) // …_top
+        case 0x4520_4000: return decodeSaturatingExtractNarrow(e, a, top: false, &sink) // …_bottom
+        case 0x4520_4400: return decodeSaturatingExtractNarrow(e, a, top: true, &sink) // …_top
         default: break
         }
         switch e & 0xFFE0_C420 {
-        case 0x45A0_0000: return decodeMultiVectorShiftNarrow(e, a) // sve2p1_multi_vec_shift_narrow
+        case 0x45A0_0000: return decodeMultiVectorShiftNarrow(e, a, &sink) // sve2p1_multi_vec_shift_narrow
         default: break
         }
         switch e & 0xFF20_FC00 {
-        case 0x4500_9800: return decodeIntegerMatmul(e, a) // sve_int_matmul
+        case 0x4500_9800: return decodeIntegerMatmul(e, a, &sink) // sve_int_matmul
         default: break
         }
         switch e & 0xFFA0_F000 {
-        case 0x4500_A000: return decodeShiftLeftLong(e, a) // sve2_bitwise_shift_left_long
+        case 0x4500_A000: return decodeShiftLeftLong(e, a, &sink) // sve2_bitwise_shift_left_long
         default: break
         }
         switch e & 0xFF20_F800 {
-        case 0x4500_9000: return decodeXorInterleaved(e, a) // sve2_bitwise_xor_interleaved
-        case 0x4500_F000: return decodeShiftInsert(e, a) // sve2_int_bin_shift_imm (SLI/SRI)
+        case 0x4500_9000: return decodeXorInterleaved(e, a, &sink) // sve2_bitwise_xor_interleaved
+        case 0x4500_F000: return decodeShiftInsert(e, a, &sink) // sve2_int_bin_shift_imm (SLI/SRI)
         default: break
         }
         switch e & 0xFFA0_E000 {
-        case 0x4520_8000: return decodeCharacterMatch(e, a) // sve2_char_match
-        case 0x45A0_C000: return decodeHistogramCount(e, a) // sve2_hist_gen_vector
+        case 0x4520_8000: return decodeCharacterMatch(e, a, &sink) // sve2_char_match
+        case 0x45A0_C000: return decodeHistogramCount(e, a, &sink) // sve2_hist_gen_vector
         default: break
         }
         switch e & 0xFF20_E400 {
-        case 0x4520_6000: return decodeAddSubNarrowHigh(e, a, top: false) // …_bottom
-        case 0x4520_6400: return decodeAddSubNarrowHigh(e, a, top: true) // …_top
+        case 0x4520_6000: return decodeAddSubNarrowHigh(e, a, top: false, &sink) // …_bottom
+        case 0x4520_6400: return decodeAddSubNarrowHigh(e, a, top: true, &sink) // …_top
         default: break
         }
         switch e & 0xFF20_F000 {
-        case 0x4500_E000: return decodeAccumulateShift(e, a) // sve2_int_bin_accum_shift_imm
+        case 0x4500_E000: return decodeAccumulateShift(e, a, &sink) // sve2_int_bin_accum_shift_imm
         default: break
         }
         switch e & 0xFFA0_C400 {
-        case 0x4520_0000: return decodeShiftNarrow(e, a, top: false) // …_narrow_bottom
-        case 0x4520_0400: return decodeShiftNarrow(e, a, top: true) // …_narrow_top
+        case 0x4520_0000: return decodeShiftNarrow(e, a, top: false, &sink) // …_narrow_bottom
+        case 0x4520_0400: return decodeShiftNarrow(e, a, top: true, &sink) // …_narrow_top
         default: break
         }
         switch e & 0xFF20_C000 {
-        case 0x4500_C000: return decodeAbsoluteDifferenceAccumulate(e, a) // sve2_int_absdiff_accum
-        case 0x4500_8000: return decodeMiscellaneous(e, a) // sve2_misc
+        case 0x4500_C000: return decodeAbsoluteDifferenceAccumulate(e, a, &sink) // sve2_int_absdiff_accum
+        case 0x4500_8000: return decodeMiscellaneous(e, a, &sink) // sve2_misc
         default: break
         }
         switch e & 0xFF20_8000 {
-        case 0x4500_0000: return decodeWideIntegerArith(e, a) // sve2_wide_int_arith
+        case 0x4500_0000: return decodeWideIntegerArith(e, a, &sink) // sve2_wide_int_arith
         default: return undefined(e, a)
         }
     }
@@ -93,7 +93,7 @@ extension SVEIntegerDecode {
     enum WideningShape { case long, wide, polynomial }
 
     @inline(__always)
-    static func decodeWideIntegerArith(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeWideIntegerArith(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let (mnemonic, shape) = wideIntegerArithMnemonic((e >> 10) & 0b11111) else {
             return undefined(e, a)
         }
@@ -114,7 +114,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, dest), vec(n, shape == .wide ? dest : source), vec(m, source)],
+            operandCount: sink.emit(vec(d, dest), vec(n, shape == .wide ? dest : source), vec(m, source)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -159,7 +159,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_misc — bit-permute (same width) + interleaved-long (widening)
 
     @inline(__always)
-    static func decodeMiscellaneous(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMiscellaneous(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let szf = (e >> 22) & 0b11
         let d = zd(e), n = zn(e), m = zm(e)
         let mnemonic: Mnemonic
@@ -179,18 +179,18 @@ extension SVEIntegerDecode {
                 address: a, encoding: e, mnemonic: long,
                 semanticReads: vecMask(n).union(vecMask(m)),
                 semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, elementSize(szf)), vec(n, source), vec(m, source)],
+                operandCount: sink.emit(vec(d, elementSize(szf)), vec(n, source), vec(m, source)),
                 scalableEffect: .readsStreamingMode,
             )
         default: return undefined(e, a)
         }
-        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: elementSize(szf))
+        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: elementSize(szf), &sink)
     }
 
     // MARK: sve2_bitwise_xor_interleaved — EORBT / EORTB (destructive, dest read)
 
     @inline(__always)
-    static func decodeXorInterleaved(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeXorInterleaved(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let d = zd(e), n = zn(e), m = zm(e), size = sz(e)
         // The odd (EORBT) / even (EORTB) elements of the destination are left
         // unmodified, so Zd is both read and only partially written.
@@ -199,7 +199,7 @@ extension SVEIntegerDecode {
             mnemonic: (e >> 10) & 1 == 0 ? .eorbt : .eortb,
             semanticReads: vecMask(d).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, size), vec(n, size), vec(m, size)],
+            operandCount: sink.emit(vec(d, size), vec(n, size), vec(m, size)),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
     }
@@ -213,7 +213,7 @@ extension SVEIntegerDecode {
     /// carry-propagating ADCL/SBCL, and the same-width SABA/UABA. Every form
     /// accumulates: Zda is read and every output lane recomputed.
     @inline(__always)
-    static func decodeAbsoluteDifferenceAccumulate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeAbsoluteDifferenceAccumulate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let szf = (e >> 22) & 0b11
         let opc = (e >> 10) & 0b1111
         let mnemonic: Mnemonic
@@ -260,7 +260,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, element), vec(n, source), vec(m, source)],
+            operandCount: sink.emit(vec(da, element), vec(n, source), vec(m, source)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -268,7 +268,7 @@ extension SVEIntegerDecode {
     // MARK: sve_int_matmul — SMMLA / USMMLA / UMMLA (accumulate, .s ← .b × .b)
 
     @inline(__always)
-    static func decodeIntegerMatmul(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIntegerMatmul(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic
         switch (e >> 22) & 0b11 {
         case 0b00: mnemonic = .smmla
@@ -281,7 +281,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, .s), vec(n, .b), vec(m, .b)],
+            operandCount: sink.emit(vec(da, .s), vec(n, .b), vec(m, .b)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -289,7 +289,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_int_bin_accum_shift_imm — SSRA / USRA / SRSRA / URSRA
 
     @inline(__always)
-    static func decodeAccumulateShift(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeAccumulateShift(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The full four-size tsz: tszh = b23:22, tszl:imm3 = b20:16.
         guard let (element, esize, tsz) = decodeTsz(tszHigh: (e >> 22) & 0b11, low: (e >> 16) & 0b11111, lowBits: 5)
         else { return undefined(e, a) }
@@ -304,10 +304,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [
-                vec(da, element), vec(n, element),
-                .immediate(value: 2 * Int64(esize) - Int64(tsz), width: 8),
-            ],
+            operandCount: sink.emit(vec(da, element), vec(n, element), .immediate(value: 2 * Int64(esize) - Int64(tsz), width: 8)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -315,7 +312,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_int_bin_shift_imm — SRI / SLI (bitwise insert)
 
     @inline(__always)
-    static func decodeShiftInsert(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeShiftInsert(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let (element, esize, tsz) = decodeTsz(tszHigh: (e >> 22) & 0b11, low: (e >> 16) & 0b11111, lowBits: 5)
         else { return undefined(e, a) }
         // SRI shifts right (amount 1…esize), SLI left (0…esize-1). Both leave the
@@ -328,7 +325,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: left ? .sli : .sri,
             semanticReads: vecMask(d).union(vecMask(n)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, element), vec(n, element), .immediate(value: amount, width: 8)],
+            operandCount: sink.emit(vec(d, element), vec(n, element), .immediate(value: amount, width: 8)),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
     }
@@ -336,7 +333,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_bitwise_shift_left_long — SSHLLB / SSHLLT / USHLLB / USHLLT
 
     @inline(__always)
-    static func decodeShiftLeftLong(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeShiftLeftLong(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // tsz = b22 : b20:19 : imm3 — its highest set bit names the *source*
         // element (the destination is one size up). A `.d` source would need b23,
         // which this class fixes to 0, so the one-bit tszHigh caps the source
@@ -356,10 +353,7 @@ extension SVEIntegerDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n), semanticWrites: vecMask(d), category: .sve,
-            operands: [
-                vec(d, dest), vec(n, source),
-                .immediate(value: Int64(tsz) - Int64(esize), width: 8),
-            ],
+            operandCount: sink.emit(vec(d, dest), vec(n, source), .immediate(value: Int64(tsz) - Int64(esize), width: 8)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -367,7 +361,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_int_cadd — CADD / SQCADD (complex addition, ±90° rotation)
 
     @inline(__always)
-    static func decodeComplexAddition(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeComplexAddition(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let dn = zd(e), size = sz(e)
         let m = zn(e) // Zm sits at [9:5] here, not the usual [20:16]
         return DecodedDraft(
@@ -375,10 +369,7 @@ extension SVEIntegerDecode {
             mnemonic: (e >> 16) & 1 == 0 ? .cadd : .sqcadd,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [
-                vec(dn, size), vec(dn, size), vec(m, size),
-                .immediate(value: (e >> 10) & 1 == 0 ? 90 : 270, width: 16),
-            ],
+            operandCount: sink.emit(vec(dn, size), vec(dn, size), vec(m, size), .immediate(value: (e >> 10) & 1 == 0 ? 90 : 270, width: 16)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -386,17 +377,14 @@ extension SVEIntegerDecode {
     // MARK: sve2_char_match — MATCH / NMATCH (write a predicate AND NZCV)
 
     @inline(__always)
-    static func decodeCharacterMatch(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCharacterMatch(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let pd = zd(e), n = zn(e), m = zm(e), g = pg3(e), size = sz(e)
         return DecodedDraft(
             address: a, encoding: e,
             mnemonic: (e >> 4) & 1 == 0 ? .match : .nmatch,
             semanticReads: vecMask(n).union(vecMask(m)),
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)),
-                govern(g, .zeroing), vec(n, size), vec(m, size),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)), govern(g, .zeroing), vec(n, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableWrites: ScalableRegisterSet.empty.insertingPredicate(pd),
             scalableEffect: .readsStreamingMode,
@@ -406,22 +394,22 @@ extension SVEIntegerDecode {
     // MARK: sve2_hist_gen_vector / _segment — HISTCNT / HISTSEG
 
     @inline(__always)
-    static func decodeHistogramCount(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeHistogramCount(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Only `.s` and `.d` encode (the class fixes b23=1, so sz is 10 or 11).
         let d = zd(e), n = zn(e), m = zm(e), g = pg3(e), size = sz(e)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .histcnt,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, size), govern(g, .zeroing), vec(n, size), vec(m, size)],
+            operandCount: sink.emit(vec(d, size), govern(g, .zeroing), vec(n, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: .readsStreamingMode,
         )
     }
 
     @inline(__always)
-    static func decodeHistogramSegment(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeHistogramSegment(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The sub-dispatch signature already pins sz=00, so HISTSEG is `.b`-only.
-        unpredicatedZZZ(e, a, mnemonic: .histseg, size: .b)
+        unpredicatedZZZ(e, a, mnemonic: .histseg, size: .b, &sink)
     }
 }

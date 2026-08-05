@@ -23,29 +23,33 @@ struct SVEDecoder: FamilyDecoder, Sendable {
 
     init() {}
 
+    var tag: FamilyTag {
+        .sve
+    }
+
     var op0Values: Set<UInt8> {
         Self.sveOp0Values
     }
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features _: Features,
+        encoding: UInt32, address: UInt64, features _: Features, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // SVE predicate & control owns a precise slice of the tier, spanning
         // two of the coarse encoding regions — the predicate region and a
         // carve-out of the integer region — so it is gated by an exact
         // encoding predicate and intercepts first.
         if isSVEPredicateControlEncoding(encoding) {
-            return SVEPredicateControlDecode.decode(encoding: encoding, address: address)
+            return SVEPredicateControlDecode.decode(encoding: encoding, address: address, &sink)
         }
         if isSVEIntegerEncoding(encoding) {
-            return SVEIntegerDecode.decode(encoding: encoding, address: address)
+            return SVEIntegerDecode.decode(encoding: encoding, address: address, &sink)
         }
         if isSVEFloatingPointEncoding(encoding) {
-            return SVEFloatingPointDecode.decode(encoding: encoding, address: address)
+            return SVEFloatingPointDecode.decode(encoding: encoding, address: address, &sink)
         }
         if isSVEPermuteMemoryCryptoEncoding(encoding) {
-            return SVEPermuteMemoryDecode.decode(encoding: encoding, address: address)
+            return SVEPermuteMemoryDecode.decode(encoding: encoding, address: address, &sink)
         }
         // What the four predicates above leave is exactly the predicate-as-
         // counter carve SME2 owns (WHILE→PN/pair, PEXT, PTRUE-counter,
@@ -54,6 +58,6 @@ struct SVEDecoder: FamilyDecoder, Sendable {
         // holds and the tail takes no test of its own. An architecturally-
         // unallocated hole inside the carve returns a well-formed UNDEFINED
         // record (category .sve) from the carve's own decoder.
-        return SME2PredicateDecode.decode(encoding: encoding, address: address)
+        return SME2PredicateDecode.decode(encoding: encoding, address: address, &sink)
     }
 }

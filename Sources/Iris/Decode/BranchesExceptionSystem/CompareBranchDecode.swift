@@ -9,7 +9,7 @@
 
 enum CompareBranchDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 1)
         let op = UInt8((encoding >> 24) & 1)
         let imm19 = Int32(bitPattern: (encoding >> 5) & 0x7FFFF)
@@ -25,7 +25,7 @@ enum CompareBranchDecode {
             semanticReads: RegisterSet.empty.inserting(reg),
             branchClass: .conditional,
             category: .branchesExceptionSystem,
-            operands: [.register(reg), .label(byteOffset: byteOffset)],
+            operandCount: sink.emit(.register(reg), .label(byteOffset: byteOffset)),
         )
     }
 }

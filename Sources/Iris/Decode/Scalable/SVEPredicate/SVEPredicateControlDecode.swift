@@ -17,71 +17,71 @@ enum SVEPredicateControlDecode {
     /// Decode an in-scope SVE predicate/control word. Precondition (by
     /// construction, not asserted): `isSVEPredicateControlEncoding(encoding)`.
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (encoding >> 24) & 0xFF == 0x25 {
-            return decodePredicateRegion(encoding: encoding, address: address)
+            return decodePredicateRegion(encoding: encoding, address: address, &sink)
         }
-        return decodeIntegerRegion(encoding: encoding, address: address)
+        return decodeIntegerRegion(encoding: encoding, address: address, &sink)
     }
 
     /// 0x25 region sub-dispatch (G1–G6).
     @inline(__always)
-    static func decodePredicateRegion(encoding e: UInt32, address a: UInt64) -> DecodedDraft {
+    static func decodePredicateRegion(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let b21 = (e >> 21) & 1
         let b15_14 = (e >> 14) & 0b11
         if b21 == 0 {
             switch b15_14 {
             case 0b01:
                 if (e >> 20) & 1 == 0 {
-                    return decodePredicateLogical(e, a)
+                    return decodePredicateLogical(e, a, &sink)
                 }
-                return decodeBreak(e, a) // BRKA/BRKB (b19=0) or BRKN (b19=1)
+                return decodeBreak(e, a, &sink) // BRKA/BRKB (b19=0) or BRKN (b19=1)
             // b15:14==11. The scope predicate admits only 01 above and 11 here
             // when b21==0 (00/10 are integer-compare-to-predicate, out of
             // scope), so the dispatch needs no unreachable UNDEFINED arm.
             default:
                 if (e >> 20) & 1 == 0 {
-                    return decodeBreakPair(e, a) // BRKPA/BRKPB
+                    return decodeBreakPair(e, a, &sink) // BRKPA/BRKPB
                 }
                 if (e >> 19) & 1 == 0 {
-                    return decodePtest(e, a)
+                    return decodePtest(e, a, &sink)
                 }
-                return decodePredicateMisc(e, a) // PTRUE(S)/PFALSE/RDFFR/PFIRST/PNEXT
+                return decodePredicateMisc(e, a, &sink) // PTRUE(S)/PFALSE/RDFFR/PFIRST/PNEXT
             }
         }
         switch b15_14 {
         case 0b00:
-            return decodeWhileTerm(e, a) // G6
+            return decodeWhileTerm(e, a, &sink) // G6
         // b15:14==10. The scope predicate admits only 00 above and 10 here when
         // b21==1 (01/11 are PSEL/PEXT/WHILE-counter and wide-/FP-immediate, out
         // of scope), so the dispatch needs no unreachable UNDEFINED arm.
         default:
-            return decodePredicateCount(e, a) // G5 + WRFFR/SETFFR
+            return decodePredicateCount(e, a, &sink) // G5 + WRFFR/SETFFR
         }
     }
 
     // MARK: G1 — PTRUE / PTRUES / PFALSE / PTEST
 
     @inline(__always)
-    static func decodePredicateMisc(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicateMisc(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let b15_10 = (e >> 10) & 0b111111
         if b15_10 == 0b111000 {
-            return decodePtrue(e, a) // PTRUE / PTRUES
+            return decodePtrue(e, a, &sink) // PTRUE / PTRUES
         }
         if b15_10 == 0b111001 {
-            return decodePfalse(e, a)
+            return decodePfalse(e, a, &sink)
         }
         if b15_10 == 0b111100 {
-            return decodeRdffr(e, a) // G4 predicated/unpredicated RDFFR
+            return decodeRdffr(e, a, &sink) // G4 predicated/unpredicated RDFFR
         }
         // bits[15:11] == 11000 — PFIRST / PNEXT. The scope predicate admits only
         // the three bits[15:10] values above and this pattern in the
         // predicate-misc sub-region, so no UNDEFINED tail is reachable.
-        return decodeFirstNext(e, a)
+        return decodeFirstNext(e, a, &sink)
     }
 
     @inline(__always)
-    static func decodePtrue(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePtrue(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b18:17 must be 0, b4 must be 0.
         if (e >> 17) & 0b11 != 0 || (e >> 4) & 1 != 0 { return undefined(e, a) }
         let s = (e >> 16) & 1
@@ -91,16 +91,13 @@ enum SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: s == 1 ? .ptrues : .ptrue,
             flagEffect: s == 1 ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: sz, role: .result)),
-                .svePredicatePattern(SVEPredicatePattern(raw: pat)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: sz, role: .result)), .svePredicatePattern(SVEPredicatePattern(raw: pat))),
             scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
         )
     }
 
     @inline(__always)
-    static func decodePfalse(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePfalse(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b23:22, b18:16, b9, b8:4 all zero.
         if (e >> 22) & 0b11 != 0 || (e >> 16) & 0b111 != 0
             || (e >> 9) & 1 != 0 || (e >> 4) & 0b11111 != 0
@@ -110,13 +107,13 @@ enum SVEPredicateControlDecode {
         let pd = UInt8(e & 0xF)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .pfalse, category: .sve,
-            operands: [.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result))],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result))),
             scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
         )
     }
 
     @inline(__always)
-    static func decodePtest(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePtest(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // sz(b23:22)==01, b18:16==0, b9==0, b4:0==0.
         if (e >> 22) & 0b11 != 0b01 || (e >> 16) & 0b111 != 0
             || (e >> 9) & 1 != 0 || (e & 0b11111) != 0
@@ -128,10 +125,7 @@ enum SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .ptest,
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))),
             scalableReads: predSet(pg).insertingPredicate(pn),
             scalableEffect: .readsStreamingMode,
         )
@@ -140,7 +134,7 @@ enum SVEPredicateControlDecode {
     // MARK: G2 — Predicate logical (+ the 7 aliases)
 
     @inline(__always)
-    static func decodePredicateLogical(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicateLogical(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let opcBits: UInt32 = (((e >> 23) & 1) << 3) | (((e >> 22) & 1) << 2) | (((e >> 9) & 1) << 1) | ((e >> 4) & 1)
         let opc = UInt8(opcBits)
         if opc == 0b0111 { return undefined(e, a) } // SELS slot, unallocated
@@ -153,19 +147,19 @@ enum SVEPredicateControlDecode {
         switch opc {
         case 0b1000, 0b1100: // ORR / ORRS → MOV/MOVS when Pg==Pn==Pm
             if pg == pn, pn == pm {
-                return movAlias2(e, a, mnemonic: setsFlags ? .movs : .mov, pd: pd, pn: pn, setsFlags: setsFlags)
+                return movAlias2(e, a, mnemonic: setsFlags ? .movs : .mov, pd: pd, pn: pn, setsFlags: setsFlags, &sink)
             }
         case 0b0000, 0b0100: // AND / ANDS → MOV/MOVS when Pm==Pn
             if pm == pn {
-                return movAlias3z(e, a, mnemonic: setsFlags ? .movs : .mov, pd: pd, pg: pg, pn: pn, setsFlags: setsFlags)
+                return movAlias3z(e, a, mnemonic: setsFlags ? .movs : .mov, pd: pd, pg: pg, pn: pn, setsFlags: setsFlags, &sink)
             }
         case 0b0011: // SEL → MOV/M when Pm==Pd
             if pm == pd {
-                return movAliasM(e, a, pd: pd, pg: pg, pn: pn)
+                return movAliasM(e, a, pd: pd, pg: pg, pn: pn, &sink)
             }
         case 0b0010, 0b0110: // EOR / EORS → NOT/NOTS when Pm==Pg
             if pm == pg {
-                return notAlias(e, a, mnemonic: setsFlags ? .nots : .not, pd: pd, pg: pg, pn: pn, setsFlags: setsFlags)
+                return notAlias(e, a, mnemonic: setsFlags ? .nots : .not, pd: pd, pg: pg, pn: pn, setsFlags: setsFlags, &sink)
             }
         default:
             break
@@ -178,12 +172,7 @@ enum SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             flagEffect: setsFlags ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(pgRef),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pm, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(pgRef), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)), .scalablePredicate(ScalablePredicateRef(registerIndex: pm, element: .b))),
             scalableReads: predSet(pg).insertingPredicate(pn).insertingPredicate(pm),
             scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
         )
@@ -192,15 +181,12 @@ enum SVEPredicateControlDecode {
     /// `MOV <Pd>.B, <Pn>.B` (from ORR) / `MOVS …` (from ORRS): 2-operand.
     @inline(__always)
     static func movAlias2(
-        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, pd: UInt8, pn: UInt8, setsFlags: Bool,
+        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, pd: UInt8, pn: UInt8, setsFlags: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             flagEffect: setsFlags ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))),
             scalableReads: predSet(pn), scalableWrites: predSet(pd),
             scalableEffect: .readsStreamingMode,
         )
@@ -209,16 +195,12 @@ enum SVEPredicateControlDecode {
     /// `MOV <Pd>.B, <Pg>/Z, <Pn>.B` (from AND) / `MOVS …` (from ANDS): 3-operand /z.
     @inline(__always)
     static func movAlias3z(
-        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, pd: UInt8, pg: UInt8, pn: UInt8, setsFlags: Bool,
+        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, pd: UInt8, pg: UInt8, pn: UInt8, setsFlags: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             flagEffect: setsFlags ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))),
             scalableReads: predSet(pg).insertingPredicate(pn), scalableWrites: predSet(pd),
             scalableEffect: .readsStreamingMode,
         )
@@ -227,14 +209,10 @@ enum SVEPredicateControlDecode {
     /// `MOV <Pd>.B, <Pg>/M, <Pn>.B` (from SEL, Pm==Pd): reads Pd (as Pm source),
     /// FULL write of Pd — partialWrite stays CLEAR despite the /M token.
     @inline(__always)
-    static func movAliasM(_ e: UInt32, _ a: UInt64, pd: UInt8, pg: UInt8, pn: UInt8) -> DecodedDraft {
+    static func movAliasM(_ e: UInt32, _ a: UInt64, pd: UInt8, pg: UInt8, pn: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: .mov, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .merging, role: .governing)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .merging, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))),
             scalableReads: predSet(pg).insertingPredicate(pn).insertingPredicate(pd),
             scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
         )
@@ -243,16 +221,12 @@ enum SVEPredicateControlDecode {
     /// `NOT <Pd>.B, <Pg>/Z, <Pn>.B` (from EOR, Pm==Pg) / `NOTS …` (from EORS).
     @inline(__always)
     static func notAlias(
-        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, pd: UInt8, pg: UInt8, pn: UInt8, setsFlags: Bool,
+        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, pd: UInt8, pg: UInt8, pn: UInt8, setsFlags: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             flagEffect: setsFlags ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))),
             scalableReads: predSet(pg).insertingPredicate(pn), scalableWrites: predSet(pd),
             scalableEffect: .readsStreamingMode,
         )
@@ -282,7 +256,7 @@ enum SVEPredicateControlDecode {
     // MARK: G3 — Break / partition
 
     @inline(__always)
-    static func decodeBreak(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeBreak(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b19 discriminates BRKA/BRKB (0) from BRKN (1). b18:16==0, b9==0.
         if (e >> 16) & 0b111 != 0 || (e >> 9) & 1 != 0 { return undefined(e, a) }
         let pg = UInt8((e >> 10) & 0xF)
@@ -295,12 +269,7 @@ enum SVEPredicateControlDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: s == 1 ? .brkns : .brkn,
                 flagEffect: s == 1 ? .nzcv : .none, category: .sve,
-                operands: [
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)),
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b)),
-                ],
+                operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)), .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b))),
                 scalableReads: predSet(pg).insertingPredicate(pn).insertingPredicate(pd),
                 scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
             )
@@ -321,17 +290,13 @@ enum SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             flagEffect: s == 1 ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: merging ? .merging : .zeroing, role: .governing)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: merging ? .merging : .zeroing, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))),
             scalableReads: reads, scalableWrites: predSet(pd), scalableEffect: effect,
         )
     }
 
     @inline(__always)
-    static func decodeBreakPair(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeBreakPair(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // BRKPA/BRKPB (+S). b23==0, b9==0. S=b22, op=b4.
         if (e >> 23) & 1 != 0 || (e >> 9) & 1 != 0 { return undefined(e, a) }
         let s = (e >> 22) & 1
@@ -344,19 +309,14 @@ enum SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             flagEffect: s == 1 ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pm, element: .b)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b)), .scalablePredicate(ScalablePredicateRef(registerIndex: pm, element: .b))),
             scalableReads: predSet(pg).insertingPredicate(pn).insertingPredicate(pm),
             scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
         )
     }
 
     @inline(__always)
-    static func decodeFirstNext(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFirstNext(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // opc {b18:16, b10:9}: 00000 PFIRST (sz fixed 01), 00110 PNEXT. b4==0.
         if (e >> 4) & 1 != 0 { return undefined(e, a) }
         let opcHi = (e >> 16) & 0b111
@@ -368,11 +328,7 @@ enum SVEPredicateControlDecode {
             if (e >> 22) & 0b11 != 0b01 { return undefined(e, a) }
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .pfirst, flagEffect: .nzcv, category: .sve,
-                operands: [
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: .b, role: .result)),
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)),
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: .b)),
-                ],
+                operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: .b))),
                 scalableReads: predSet(pg).insertingPredicate(pdn), scalableWrites: predSet(pdn),
                 scalableEffect: [.readsStreamingMode, .partialWrite],
             )
@@ -382,11 +338,7 @@ enum SVEPredicateControlDecode {
             let sz = elementSize(e >> 22)
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .pnext, flagEffect: .nzcv, category: .sve,
-                operands: [
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: sz, role: .result)),
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)),
-                    .scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: sz)),
-                ],
+                operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: sz, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pdn, element: sz))),
                 scalableReads: predSet(pg).insertingPredicate(pdn), scalableWrites: predSet(pdn),
                 scalableEffect: .readsStreamingMode,
             )
@@ -397,7 +349,7 @@ enum SVEPredicateControlDecode {
     // MARK: G4 — First-fault register (RDFFR; WRFFR/SETFFR are in the count file)
 
     @inline(__always)
-    static func decodeRdffr(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeRdffr(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b16: 0 predicated, 1 unpredicated. S=b22. S&&unpred UNDEFINED.
         // Fixed SBZ bits (mask 0xFFFFFE10 / 0xFFFFFFF0): b23, b18:17, b9, b4 = 0.
         if (e >> 23) & 1 != 0 || (e >> 17) & 0b11 != 0
@@ -414,7 +366,7 @@ enum SVEPredicateControlDecode {
             if (e >> 5) & 0xF != 0 { return undefined(e, a) }
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .rdffr, category: .sve,
-                operands: [.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result))],
+                operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result))),
                 scalableReads: ScalableRegisterSet.empty.insertingFFR(),
                 scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
             )
@@ -423,10 +375,7 @@ enum SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: s == 1 ? .rdffrs : .rdffr,
             flagEffect: s == 1 ? .nzcv : .none, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: .b, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, qualifier: .zeroing, role: .governing))),
             scalableReads: predSet(pg).insertingFFR(), scalableWrites: predSet(pd),
             scalableEffect: .readsStreamingMode,
         )

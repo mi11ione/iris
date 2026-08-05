@@ -13,7 +13,7 @@
 enum LoadStoreIndexedDecode {
     @_optimize(speed)
     static func decode(
-        encoding: UInt32, address: UInt64, writebackKind: Writeback,
+        encoding: UInt32, address: UInt64, writebackKind: Writeback, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         let opc = UInt8((encoding >> 22) & 0x3)
@@ -77,17 +77,14 @@ enum LoadStoreIndexedDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .memory(MemoryOperand(
-                    base: .register(rnRef),
-                    index: nil,
-                    displacement: displacement,
-                    extend: .none,
-                    shift: 0,
-                    writeback: writebackKind,
-                )),
-            ],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(
+                base: .register(rnRef),
+                index: nil,
+                displacement: displacement,
+                extend: .none,
+                shift: 0,
+                writeback: writebackKind,
+            ))),
         )
     }
 }

@@ -9,7 +9,7 @@
 enum WFXTDecode {
     @inline(__always)
     static func decode(
-        encoding: UInt32, address: UInt64, op2: UInt8, Rt: UInt8,
+        encoding: UInt32, address: UInt64, op2: UInt8, Rt: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let mnemonic: Mnemonic
         switch op2 {
@@ -25,7 +25,7 @@ enum WFXTDecode {
             mnemonic: mnemonic,
             semanticReads: RegisterSet.empty.inserting(rtRef),
             category: .branchesExceptionSystem,
-            operands: [.register(rtRef)],
+            operandCount: sink.emit(.register(rtRef)),
         )
     }
 }

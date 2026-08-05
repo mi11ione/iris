@@ -18,7 +18,7 @@ extension SVEIntegerDecode {
     // MARK: G1 — predicated integer arith / logical (destructive /M)
 
     @inline(__always)
-    static func decodePredicatedArithLog(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicatedArithLog(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let mnemonic = predicatedArithLogMnemonic((e >> 16) & 0b11111, sz: (e >> 22) & 0b11) else {
             return undefined(e, a)
         }
@@ -29,9 +29,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(d).union(vecMask(n)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [
-                vec(d, size), govern(g, .merging), vec(d, size), vec(n, size),
-            ],
+            operandCount: sink.emit(vec(d, size), govern(g, .merging), vec(d, size), vec(n, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -72,7 +70,7 @@ extension SVEIntegerDecode {
     // MARK: G3 — predicated unary (/M or /Z)
 
     @inline(__always)
-    static func decodePredicatedUnary(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicatedUnary(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let merging = (e >> 20) & 1 == 1 // b20: 1 = /M (sve_int_un_pred_arit), 0 = /Z (…_z, SVE2p2)
         guard let mnemonic = predicatedUnaryMnemonic((e >> 16) & 0b1111, sz: (e >> 22) & 0b11) else {
             return undefined(e, a)
@@ -87,9 +85,7 @@ extension SVEIntegerDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: vecMask(d), category: .sve,
-            operands: [
-                vec(d, size), govern(g, merging ? .merging : .zeroing), vec(n, size),
-            ],
+            operandCount: sink.emit(vec(d, size), govern(g, merging ? .merging : .zeroing), vec(n, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: effect,
         )
@@ -122,7 +118,7 @@ extension SVEIntegerDecode {
     // MARK: G4 — predicated multiply-add (MLA/MLS accumulate; MAD/MSB multiply)
 
     @inline(__always)
-    static func decodeMultiplyAddMLA(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMultiplyAddMLA(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // `mla Zda.T, Pg/m, Zn.T, Zm.T` — Zda [4:0] accumulate, Zn [9:5], Zm [20:16].
         let da = zd(e), n = zn(e), m = zm(e), g = pg3(e), size = sz(e)
         let mnemonic: Mnemonic = (e >> 13) & 1 == 0 ? .mla : .mls
@@ -130,14 +126,14 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, size), govern(g, .merging), vec(n, size), vec(m, size)],
+            operandCount: sink.emit(vec(da, size), govern(g, .merging), vec(n, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
     }
 
     @inline(__always)
-    static func decodeMultiplyAddMAD(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMultiplyAddMAD(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // `mad Zdn.T, Pg/m, Zm.T, Za.T` — Zdn [4:0] multiplicand, Zm [20:16], Za [9:5].
         let dn = zd(e), m = zm(e), za = zn(e), g = pg3(e), size = sz(e)
         let mnemonic: Mnemonic = (e >> 13) & 1 == 0 ? .mad : .msb
@@ -145,7 +141,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn).union(vecMask(m)).union(vecMask(za)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [vec(dn, size), govern(g, .merging), vec(m, size), vec(za, size)],
+            operandCount: sink.emit(vec(dn, size), govern(g, .merging), vec(m, size), vec(za, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -154,12 +150,12 @@ extension SVEIntegerDecode {
     // MARK: G5 — reductions (write a scalar SIMD register; SVE2p1 quadword → NEON vector)
 
     @inline(__always)
-    static func decodeReduction(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeReduction(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // sve_int_reduce and sve2p1_int_reduce_q share b15:13=001, and b18 is the
         // bit that separates them: every scalar-reduction opcode clears it, every
         // quadword-reduction opcode sets it.
         if (e >> 18) & 1 == 1 {
-            return decodeReductionQuadword(e, a)
+            return decodeReductionQuadword(e, a, &sink)
         }
         guard let mnemonic = reductionMnemonic((e >> 16) & 0b11111) else { return undefined(e, a) }
         let vd = zd(e), n = zn(e), g = pg3(e), size = sz(e)
@@ -173,10 +169,7 @@ extension SVEIntegerDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n), semanticWrites: vecMask(vd), category: .sve,
-            operands: [
-                .vectorRegister(VectorRegisterRef(registerIndex: vd, view: .scalar(size: destSize))),
-                govern(g, .none), vec(n, size),
-            ],
+            operandCount: sink.emit(.vectorRegister(VectorRegisterRef(registerIndex: vd, view: .scalar(size: destSize))), govern(g, .none), vec(n, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: .readsStreamingMode,
         )
@@ -207,7 +200,7 @@ extension SVEIntegerDecode {
     /// one element, so the result is a whole NEON vector whose arrangement is the
     /// element size packed into 128 bits (`.b` → `v0.16b`, `.d` → `v0.2d`).
     @inline(__always)
-    static func decodeReductionQuadword(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeReductionQuadword(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic
         switch (e >> 16) & 0b11111 {
         case 0b00101: mnemonic = .addqv
@@ -231,10 +224,7 @@ extension SVEIntegerDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n), semanticWrites: vecMask(vd), category: .sve,
-            operands: [
-                .vectorRegister(VectorRegisterRef(registerIndex: vd, view: .full(arrangement: arrangement))),
-                govern(g, .none), vec(n, size),
-            ],
+            operandCount: sink.emit(.vectorRegister(VectorRegisterRef(registerIndex: vd, view: .full(arrangement: arrangement))), govern(g, .none), vec(n, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: .readsStreamingMode,
         )
@@ -243,9 +233,9 @@ extension SVEIntegerDecode {
     // MARK: G2 — predicated shifts (register, wide, and immediate with tsz)
 
     @inline(__always)
-    static func decodePredicatedShift(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if (e >> 20) & 1 == 0 { return decodePredicatedShiftImmediate(e, a) } // sve_int_bin_pred_shift_imm
-        if (e >> 19) & 1 == 1 { return decodePredicatedShiftWide(e, a) } // wide (Zm.D)
+    static func decodePredicatedShift(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if (e >> 20) & 1 == 0 { return decodePredicatedShiftImmediate(e, a, &sink) } // sve_int_bin_pred_shift_imm
+        if (e >> 19) & 1 == 1 { return decodePredicatedShiftWide(e, a, &sink) } // wide (Zm.D)
         // Register shift `<mn> Zdn.T, Pg/m, Zdn.T, Zm.T` — opc[18:16].
         let mnemonic: Mnemonic
         switch (e >> 16) & 0b111 {
@@ -257,11 +247,11 @@ extension SVEIntegerDecode {
         case 0b111: mnemonic = .lslr
         default: return undefined(e, a)
         }
-        return predicatedShiftRegisterDraft(e, a, mnemonic: mnemonic, wide: false)
+        return predicatedShiftRegisterDraft(e, a, mnemonic: mnemonic, wide: false, &sink)
     }
 
     @inline(__always)
-    static func decodePredicatedShiftWide(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicatedShiftWide(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if sz(e) == .d { return undefined(e, a) } // wide requires source < .d
         let mnemonic: Mnemonic
         switch (e >> 16) & 0b111 {
@@ -270,25 +260,25 @@ extension SVEIntegerDecode {
         case 0b011: mnemonic = .lsl
         default: return undefined(e, a)
         }
-        return predicatedShiftRegisterDraft(e, a, mnemonic: mnemonic, wide: true)
+        return predicatedShiftRegisterDraft(e, a, mnemonic: mnemonic, wide: true, &sink)
     }
 
     /// Shared predicated register/wide shift draft: `Zdn.T, Pg/m, Zdn.T, Zm.<T|d>`.
     @inline(__always)
-    static func predicatedShiftRegisterDraft(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, wide: Bool) -> DecodedDraft {
+    static func predicatedShiftRegisterDraft(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, wide: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         let d = zd(e), m = zn(e), g = pg3(e), size = sz(e)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(d).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, size), govern(g, .merging), vec(d, size), vec(m, wide ? .d : size)],
+            operandCount: sink.emit(vec(d, size), govern(g, .merging), vec(d, size), vec(m, wide ? .d : size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
     }
 
     @inline(__always)
-    static func decodePredicatedShiftImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicatedShiftImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // opc[18:16] + b19 select the operation; the element and amount come
         // from the tsz field (tszh [23:22], tszl:imm3 [9:5]).
         let selector = (((e >> 19) & 1) << 3) | ((e >> 16) & 0b111)
@@ -313,7 +303,7 @@ extension SVEIntegerDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(d), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, element), govern(g, .merging), vec(d, element), .immediate(value: amount, width: 8)],
+            operandCount: sink.emit(vec(d, element), govern(g, .merging), vec(d, element), .immediate(value: amount, width: 8)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )

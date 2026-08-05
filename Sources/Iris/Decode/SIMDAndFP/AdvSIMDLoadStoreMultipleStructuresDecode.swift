@@ -10,7 +10,7 @@
 
 enum AdvSIMDLoadStoreMultipleStructuresDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let postIndexed = ((encoding >> 23) & 1) == 1
         let L = UInt8((encoding >> 22) & 0x1)
@@ -47,13 +47,12 @@ enum AdvSIMDLoadStoreMultipleStructuresDecode {
         let totalBytes = UInt64(totalRegs) * 8 * (1 + UInt64(Q))
 
         // Build vector list.
-        var operands: [Operand] = []
-        operands.reserveCapacity(Int(totalRegs) + 2)
+        let operandMark = sink.mark
         var listReads: RegisterSet = .empty
         var listWrites: RegisterSet = .empty
         for i in 0 ..< Int(totalRegs) {
             let r = (Rt &+ UInt8(i)) & 0x1F
-            operands.append(simdfpVectorOperand(r, arrangement: arrangement))
+            sink.append(simdfpVectorOperand(r, arrangement: arrangement))
             if L == 1 {
                 listWrites = simdfpInsertingVector(r, into: listWrites)
             } else {
@@ -85,7 +84,7 @@ enum AdvSIMDLoadStoreMultipleStructuresDecode {
                 extend: .none, shift: 0, writeback: .none,
             )
         }
-        operands.append(.memory(memOperand))
+        sink.append(.memory(memOperand))
 
         var reads = listReads
         reads = simdfpInsertingNonZeroGPR(reg: rnRef, into: reads)
@@ -109,7 +108,7 @@ enum AdvSIMDLoadStoreMultipleStructuresDecode {
             memoryAccess: L == 1 ? .load : .store,
             memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 

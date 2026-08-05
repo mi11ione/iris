@@ -14,7 +14,7 @@
 
 enum AdvSIMDThreeSameDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
@@ -29,12 +29,12 @@ enum AdvSIMDThreeSameDecode {
         if opcode >= 0b11000 {
             return decodeFPFamily(
                 encoding: encoding, address: address,
-                Q: Q, U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd,
+                Q: Q, U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd, &sink,
             )
         }
         return decodeIntFamily(
             encoding: encoding, address: address,
-            Q: Q, U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd,
+            Q: Q, U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd, &sink,
         )
     }
 
@@ -43,7 +43,7 @@ enum AdvSIMDThreeSameDecode {
     private static func decodeIntFamily(
         encoding: UInt32, address: UInt64,
         Q: UInt8, U: UInt8, size: UInt8, opcode: UInt8,
-        Rm: UInt8, Rn: UInt8, Rd: UInt8,
+        Rm: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let arrangement = arrangementFromSizeQ(size: size, Q: Q)
         // Bitwise logical opcodes (16..23 in U=0; bit-select in U=1).
@@ -63,14 +63,14 @@ enum AdvSIMDThreeSameDecode {
                 return makeTwoOperandRecord(
                     address: address, encoding: encoding,
                     mnemonic: .mov, Rd: Rd, Rn: Rn,
-                    arrangement: actualArrangement,
+                    arrangement: actualArrangement, &sink,
                 )
             }
             return makeThreeOperandRecord(
                 address: address, encoding: encoding,
                 mnemonic: m, Rd: Rd, Rn: Rn, Rm: Rm,
                 arrangement: actualArrangement,
-                destReadsItself: U == 1 && (size == 0b01 || size == 0b10 || size == 0b11),
+                destReadsItself: U == 1 && (size == 0b01 || size == 0b10 || size == 0b11), &sink,
             )
         }
         // Int three-same proper. (U, opcode) determines mnemonic;
@@ -92,7 +92,7 @@ enum AdvSIMDThreeSameDecode {
             address: address, encoding: encoding,
             mnemonic: m, Rd: Rd, Rn: Rn, Rm: Rm,
             arrangement: arrangement,
-            destReadsItself: destReadsItself,
+            destReadsItself: destReadsItself, &sink,
         )
     }
 
@@ -204,7 +204,7 @@ enum AdvSIMDThreeSameDecode {
     private static func decodeFPFamily(
         encoding: UInt32, address: UInt64,
         Q: UInt8, U: UInt8, size: UInt8, opcode: UInt8,
-        Rm: UInt8, Rn: UInt8, Rd: UInt8,
+        Rm: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // sz = size[0] (bit[22]): 0 = S, 1 = D.
         let sz = (size & 0b01)
@@ -254,7 +254,7 @@ enum AdvSIMDThreeSameDecode {
             address: address, encoding: encoding,
             mnemonic: m, Rd: Rd, Rn: Rn, Rm: Rm,
             arrangement: arrangement,
-            destReadsItself: destReadsItself,
+            destReadsItself: destReadsItself, &sink,
         )
     }
 
@@ -264,7 +264,7 @@ enum AdvSIMDThreeSameDecode {
         address: UInt64, encoding: UInt32, mnemonic: Mnemonic,
         Rd: UInt8, Rn: UInt8, Rm: UInt8,
         arrangement: VectorArrangement,
-        destReadsItself: Bool,
+        destReadsItself: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         var reads = simdfpInsertingVector(Rn, into: .empty)
         reads = simdfpInsertingVector(Rm, into: reads)
@@ -278,11 +278,7 @@ enum AdvSIMDThreeSameDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: arrangement),
-                simdfpVectorOperand(Rn, arrangement: arrangement),
-                simdfpVectorOperand(Rm, arrangement: arrangement),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement), simdfpVectorOperand(Rm, arrangement: arrangement)),
         )
     }
 
@@ -290,7 +286,7 @@ enum AdvSIMDThreeSameDecode {
     @_effects(readonly)
     private static func makeTwoOperandRecord(
         address: UInt64, encoding: UInt32, mnemonic: Mnemonic,
-        Rd: UInt8, Rn: UInt8, arrangement: VectorArrangement,
+        Rd: UInt8, Rn: UInt8, arrangement: VectorArrangement, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         DecodedDraft(
             address: address, encoding: encoding,
@@ -299,10 +295,7 @@ enum AdvSIMDThreeSameDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: arrangement),
-                simdfpVectorOperand(Rn, arrangement: arrangement),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement)),
         )
     }
 }

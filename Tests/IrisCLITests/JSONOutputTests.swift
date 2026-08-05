@@ -297,3 +297,34 @@ struct JSONOutputTests {
         ])
     }
 }
+
+/// Validates `JSONText.putString(_:into:)` — the byte-path string
+/// escaper. The `String`-returning `string(_:)` is exercised by the
+/// records above; this is the same escaping table on the path the CLI
+/// actually renders through, so both have to agree character for
+/// character.
+@Suite("JSON / byte-path string escaping")
+struct JSONByteStringTests {
+    private func rendered(_ value: String) -> String {
+        var out = TextBytes(capacity: 64)
+        JSONText.putString(value, into: &out)
+        return out.makeString()
+    }
+
+    @Test func matchesTheStringPathForEveryEscapeClass() {
+        for value in [
+            "plain",
+            "with \"quotes\"",
+            "with \\ backslash",
+            "line\nbreak",
+            "carriage\rreturn",
+            "tab\there",
+            "bell\u{07}control",
+            "null\u{00}byte",
+            "unicode ✓ π",
+            "",
+        ] {
+            #expect(rendered(value) == JSONText.string(value), "escaping diverged for \(value.debugDescription)")
+        }
+    }
+}

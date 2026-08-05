@@ -79,7 +79,7 @@ public enum SVEFloatingPointSemanticChecker {
         }
         // Predicate reads / writes: comparing the WHOLE scalable set keeps
         // "no SVE-FP form touches FFR, ZA or ZT0" a checked property.
-        let expPredW = SVEFloatingPointSemanticAttributes.expectedPredicateWrites(Array(Array(draft.operands)))
+        let expPredW = SVEFloatingPointSemanticAttributes.expectedPredicateWrites(draft.operands)
         if draft.scalableWrites != ScalableRegisterSet(bits: UInt64(expPredW)) {
             return SVEFPSemanticIssue(
                 field: "predicateWrites",
@@ -87,7 +87,7 @@ public enum SVEFloatingPointSemanticChecker {
                 expected: "0x\(String(expPredW, radix: 16))",
             )
         }
-        let expPredR = SVEFloatingPointSemanticAttributes.expectedPredicateReads(Array(Array(draft.operands)))
+        let expPredR = SVEFloatingPointSemanticAttributes.expectedPredicateReads(draft.operands)
         if draft.scalableReads != ScalableRegisterSet(bits: UInt64(expPredR)) {
             return SVEFPSemanticIssue(
                 field: "predicateReads",
@@ -125,7 +125,7 @@ public enum SVEFloatingPointSemanticAttributes {
     @_effects(readonly)
     public static func expectedScalableEffect(for draft: Instruction) -> ScalableEffect {
         var effect: ScalableEffect = .readsStreamingMode
-        if hasMergingGoverning(Array(Array(draft.operands))) || preservesDestination(draft.mnemonic) {
+        if hasMergingGoverning(draft.operands) || preservesDestination(draft.mnemonic) {
             effect.insert(.partialWrite)
         }
         return effect
@@ -174,7 +174,7 @@ public enum SVEFloatingPointSemanticAttributes {
     /// The result-role predicate operands — only the compares write a
     /// predicate in SVE-FP.
     @_effects(readonly)
-    public static func expectedPredicateWrites(_ ops: [Operand]) -> UInt16 {
+    public static func expectedPredicateWrites(_ ops: Instruction.Operands) -> UInt16 {
         var mask: UInt16 = 0
         for op in ops {
             if case let .scalablePredicate(p) = op, p.role == .result {
@@ -188,7 +188,7 @@ public enum SVEFloatingPointSemanticAttributes {
     /// plus the result predicate when a governing predicate is merging (the
     /// structural invariant; inert here since SVE-FP's compares are all `/Z`).
     @_effects(readonly)
-    public static func expectedPredicateReads(_ ops: [Operand]) -> UInt16 {
+    public static func expectedPredicateReads(_ ops: Instruction.Operands) -> UInt16 {
         var reads: UInt16 = 0
         var results: UInt16 = 0
         var merging = false
@@ -208,7 +208,7 @@ public enum SVEFloatingPointSemanticAttributes {
     /// which therefore write no register at all.
     @_effects(readonly)
     public static func expectedRegisterWrites(for draft: Instruction) -> UInt64 {
-        guard let first = Array(draft.operands).first else { return 0 }
+        guard let first = draft.operands.first else { return 0 }
         return registerMask(first)
     }
 
@@ -216,7 +216,7 @@ public enum SVEFloatingPointSemanticAttributes {
     /// reads it (merging predicate, accumulator, clamp, or preserving write).
     @_effects(readonly)
     public static func expectedRegisterReads(for draft: Instruction) -> UInt64 {
-        let ops = Array(draft.operands)
+        let ops = draft.operands
         guard let first = ops.first else { return 0 }
         var mask: UInt64 = 0
         for index in 1 ..< ops.count {
@@ -253,7 +253,7 @@ public enum SVEFloatingPointSemanticAttributes {
 
     /// Whether any governing predicate operand is merging (`/M`).
     @_effects(readonly)
-    public static func hasMergingGoverning(_ ops: [Operand]) -> Bool {
+    public static func hasMergingGoverning(_ ops: Instruction.Operands) -> Bool {
         for op in ops {
             if case let .scalablePredicate(p) = op, p.qualifier == .merging {
                 return true

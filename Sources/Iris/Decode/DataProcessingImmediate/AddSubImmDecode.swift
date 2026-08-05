@@ -7,7 +7,7 @@
 
 enum AddSubImmDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let op = UInt8((encoding >> 30) & 0x1)
         let S = UInt8((encoding >> 29) & 0x1)
@@ -40,7 +40,7 @@ enum AddSubImmDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [.register(rdRef), .register(rnRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef)),
             )
         }
 
@@ -48,11 +48,10 @@ enum AddSubImmDecode {
         // CMP = SUBS Rd=XZR (op=1, S=1, Rd=31); CMN = ADDS Rd=XZR (op=0, S=1, Rd=31).
         if S == 1, Rd == 31 {
             let mnemonic: Mnemonic = op == 1 ? .cmp : .cmn
-            var operands: [Operand] = []
-            operands.reserveCapacity(sh == 1 ? 3 : 2)
-            operands.append(.register(rnRef))
-            operands.append(.unsignedImmediate(value: UInt64(imm12), width: 12))
-            if sh == 1 { operands.append(.shiftAmount(kind: .lsl, amount: 12)) }
+            let operandMark = sink.mark
+            sink.append(.register(rnRef))
+            sink.append(.unsignedImmediate(value: UInt64(imm12), width: 12))
+            if sh == 1 { sink.append(.shiftAmount(kind: .lsl, amount: 12)) }
             return DecodedDraft(
                 address: address,
                 encoding: encoding,
@@ -61,7 +60,7 @@ enum AddSubImmDecode {
                 semanticWrites: .empty,
                 flagEffect: .nzcv,
                 category: .dataProcessingImmediate,
-                operands: operands,
+                operandCount: sink.count(since: operandMark),
             )
         }
 
@@ -71,12 +70,11 @@ enum AddSubImmDecode {
         } else {
             S == 0 ? .sub : .subs
         }
-        var operands: [Operand] = []
-        operands.reserveCapacity(sh == 1 ? 4 : 3)
-        operands.append(.register(rdRef))
-        operands.append(.register(rnRef))
-        operands.append(.unsignedImmediate(value: UInt64(imm12), width: 12))
-        if sh == 1 { operands.append(.shiftAmount(kind: .lsl, amount: 12)) }
+        let operandMark = sink.mark
+        sink.append(.register(rdRef))
+        sink.append(.register(rnRef))
+        sink.append(.unsignedImmediate(value: UInt64(imm12), width: 12))
+        if sh == 1 { sink.append(.shiftAmount(kind: .lsl, amount: 12)) }
         return DecodedDraft(
             address: address,
             encoding: encoding,
@@ -85,7 +83,7 @@ enum AddSubImmDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: S == 1 ? .nzcv : .none,
             category: .dataProcessingImmediate,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 }

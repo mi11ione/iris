@@ -23,7 +23,7 @@ enum AtomicExtensionsDecode {
     ]
 
     @_optimize(speed)
-    static func decodeLSUI(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeLSUI(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The dispatcher routes only size ∈ {00, 01} here (size 11 is MTE
         // STG post-index, handled elsewhere; 10 falls to UNDEFINED there).
         let size = UInt8((encoding >> 30) & 0x3)
@@ -60,7 +60,7 @@ enum AtomicExtensionsDecode {
                 semanticReads: reads, semanticWrites: .empty, branchClass: .none,
                 memoryAccess: .atomic, memoryOrdering: ordering, flagEffect: .none,
                 category: .loadsAndStores,
-                operands: [.register(rsRef), .memory(MemoryOperand(base: .register(rnRef)))],
+                operandCount: sink.emit(.register(rsRef), .memory(MemoryOperand(base: .register(rnRef)))),
             )
         }
 
@@ -73,10 +73,7 @@ enum AtomicExtensionsDecode {
             semanticReads: reads, semanticWrites: writes, branchClass: .none,
             memoryAccess: .atomic, memoryOrdering: ordering, flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rsRef), .register(rtRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rsRef), .register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 
@@ -107,7 +104,7 @@ enum AtomicExtensionsDecode {
     ]
 
     @_optimize(speed)
-    static func decodeRCWNonPair(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeRCWNonPair(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The dispatcher routes only size ∈ {00, 01} and op ∈
         // {1001, 1010, 1011} here.
         let size = UInt8((encoding >> 30) & 0x3)
@@ -119,7 +116,7 @@ enum AtomicExtensionsDecode {
         }
         let row = Int(size) * 3 + opSlot
         return decodeRCWThreeReg(
-            encoding: encoding, address: address, mnemonic: rcwRows[row][orderSlot(encoding)],
+            encoding: encoding, address: address, mnemonic: rcwRows[row][orderSlot(encoding)], &sink,
         )
     }
 
@@ -133,7 +130,7 @@ enum AtomicExtensionsDecode {
     ]
 
     @_optimize(speed)
-    static func decodeRCWCas(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeRCWCas(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The dispatcher routes only size ∈ {00, 01} here.
         let size = UInt8((encoding >> 30) & 0x3)
         if (encoding >> 12) & 0xF != 0b0000 {
@@ -141,14 +138,14 @@ enum AtomicExtensionsDecode {
         }
         return decodeRCWThreeReg(
             encoding: encoding, address: address,
-            mnemonic: rcwCasRows[Int(size)][orderSlot(encoding)],
+            mnemonic: rcwCasRows[Int(size)][orderSlot(encoding)], &sink,
         )
     }
 
     /// Shared body for RCW non-pair / CAS: `Xs, Xt, [Xn]`, 64-bit, RMW of Xt.
     @_optimize(speed)
     private static func decodeRCWThreeReg(
-        encoding: UInt32, address: UInt64, mnemonic: Mnemonic,
+        encoding: UInt32, address: UInt64, mnemonic: Mnemonic, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let Rs = UInt8((encoding >> 16) & 0x1F)
         let Rn = UInt8((encoding >> 5) & 0x1F)
@@ -165,10 +162,7 @@ enum AtomicExtensionsDecode {
             semanticReads: reads, semanticWrites: writes, branchClass: .none,
             memoryAccess: .atomic, memoryOrdering: orderingFor(encoding), flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rsRef), .register(rtRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rsRef), .register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 
@@ -189,7 +183,7 @@ enum AtomicExtensionsDecode {
     /// Decode an RCW pair op (op ∈ {1001,1010,1011}); returns nil for ops
     /// outside the RCW-pair set so the caller can try LSE128.
     @_optimize(speed)
-    static func decodeRCWPair(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    static func decodeRCWPair(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // The dispatcher routes only size ∈ {00, 01} here.
         let size = UInt8((encoding >> 30) & 0x3)
         let op = UInt8((encoding >> 12) & 0xF)
@@ -221,10 +215,7 @@ enum AtomicExtensionsDecode {
             semanticReads: reads, semanticWrites: writes, branchClass: .none,
             memoryAccess: .atomic, memoryOrdering: orderingFor(encoding), flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef), .register(rsRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rtRef), .register(rsRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 
@@ -237,7 +228,7 @@ enum AtomicExtensionsDecode {
     ]
 
     @_optimize(speed)
-    static func decodeRCWCasp(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeRCWCasp(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The dispatcher routes only size ∈ {00, 01} here.
         let size = UInt8((encoding >> 30) & 0x3)
         if (encoding >> 12) & 0xF != 0b0000 {
@@ -270,10 +261,7 @@ enum AtomicExtensionsDecode {
             semanticReads: reads, semanticWrites: writes, branchClass: .none,
             memoryAccess: .atomic, memoryOrdering: orderingFor(encoding), flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rs0), .register(rs1), .register(rt0), .register(rt1),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rs0), .register(rs1), .register(rt0), .register(rt1), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 
@@ -283,7 +271,7 @@ enum AtomicExtensionsDecode {
     // bits[23:22]: 00=stilp (pre-index store, disp = -2*datasize),
     // 01=ldiapp (post-index load, disp = +2*datasize). `Wt,Wt2,[Xn,#d]!` etc.
     @_optimize(speed)
-    static func decodeRCPC3Pair(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeRCPC3Pair(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         // Only the word/dword sizes are STILP/LDIAPP.
         if size < 0b10 {
@@ -340,7 +328,7 @@ enum AtomicExtensionsDecode {
             semanticReads: reads, semanticWrites: writes, branchClass: .none,
             memoryAccess: isLoad ? .load : .store, memoryOrdering: isLoad ? [.acquire] : [.release],
             flagEffect: .none, category: .loadsAndStores,
-            operands: [.register(rtRef), .register(rt2Ref), .memory(mem)],
+            operandCount: sink.emit(.register(rtRef), .register(rt2Ref), .memory(mem)),
         )
     }
 
@@ -350,7 +338,7 @@ enum AtomicExtensionsDecode {
     /// size ∈ {10=W,11=X}. bits[23:22]: 10=stlr (pre-index, disp=-datasize),
     /// 11=ldapr (post-index, disp=+datasize). `Wt/Xt, [Xn]{,#d}`.
     @_optimize(speed)
-    static func decodeRCPC3Single(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeRCPC3Single(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         if size < 0b10 {
             return .undefined(at: address, encoding: encoding)
@@ -395,7 +383,7 @@ enum AtomicExtensionsDecode {
             semanticReads: reads, semanticWrites: writes, branchClass: .none,
             memoryAccess: isLoad ? .load : .store, memoryOrdering: ordering,
             flagEffect: .none, category: .loadsAndStores,
-            operands: [.register(rtRef), .memory(mem)],
+            operandCount: sink.emit(.register(rtRef), .memory(mem)),
         )
     }
 
@@ -405,7 +393,7 @@ enum AtomicExtensionsDecode {
     // bits[20:16]=11111, bits[15:13]=000, bit[12]=0, bits[11:10]=11.
     // bits[15:12]=0000 → gcsstr, 0001 → gcssttr. `Xt, [Xn]` store.
     @_optimize(speed)
-    static func decodeGCS(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeGCS(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (encoding >> 30) != 0b11 || (encoding >> 22) & 0x3 != 0b00
             || (encoding >> 16) & 0x1F != 0x1F
         {
@@ -429,7 +417,7 @@ enum AtomicExtensionsDecode {
             semanticReads: reads, semanticWrites: .empty, branchClass: .none,
             memoryAccess: .store, memoryOrdering: [], flagEffect: .none,
             category: .loadsAndStores,
-            operands: [.register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 

@@ -13,7 +13,7 @@ enum PCRelDecode {
     @inline(__always)
     @_optimize(speed)
     @_effects(readonly)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let op = UInt8((encoding >> 31) & 0x1) // 0 = ADR, 1 = ADRP
         let Rd = UInt8(encoding & 0x1F)
 
@@ -43,7 +43,7 @@ enum PCRelDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: .none,
             category: .dataProcessingImmediate,
-            operands: [.register(rdRef), operand],
+            operandCount: sink.emit(.register(rdRef), operand),
         )
     }
 

@@ -8,7 +8,7 @@
 
 enum AdvSIMDScalarPairwiseDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
         let opcode = UInt8((encoding >> 12) & 0x1F)
@@ -27,10 +27,7 @@ enum AdvSIMDScalarPairwiseDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [
-                    simdfpScalarOperand(Rd, size: .d),
-                    simdfpVectorOperand(Rn, arrangement: .d2),
-                ],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: .d), simdfpVectorOperand(Rn, arrangement: .d2)),
             )
         }
         // FP16 scalar pairwise (U=0, sz22=0): result .h, src .2h. opcode
@@ -52,10 +49,7 @@ enum AdvSIMDScalarPairwiseDecode {
                     semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                     branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                     flagEffect: .none, category: .simdAndFP,
-                    operands: [
-                        simdfpScalarOperand(Rd, size: .h),
-                        simdfpVectorOperand(Rn, arrangement: .h2),
-                    ],
+                    operandCount: sink.emit(simdfpScalarOperand(Rd, size: .h), simdfpVectorOperand(Rn, arrangement: .h2)),
                 )
             }
         }
@@ -82,10 +76,7 @@ enum AdvSIMDScalarPairwiseDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [
-                    simdfpScalarOperand(Rd, size: elementSize),
-                    simdfpVectorOperand(Rn, arrangement: arrangement),
-                ],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: elementSize), simdfpVectorOperand(Rn, arrangement: arrangement)),
             )
         }
         return .undefined(at: address, encoding: encoding)

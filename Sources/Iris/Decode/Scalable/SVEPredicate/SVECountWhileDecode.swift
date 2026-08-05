@@ -9,22 +9,22 @@ extension SVEPredicateControlDecode {
     // MARK: G5 — Predicate count (+ WRFFR / SETFFR)
 
     @inline(__always)
-    static func decodePredicateCount(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicateCount(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The scope predicate pins b20==0 for this sub-region, and for b19==1 it
         // pins b13==0 and b12:11 ∈ {00,01,10} — so neither field is re-checked
         // here and the dispatch below needs no UNDEFINED arm.
         if (e >> 19) & 1 == 0 {
-            return decodeCntp(e, a)
+            return decodeCntp(e, a, &sink)
         }
         switch (e >> 11) & 0b11 {
-        case 0b00: return decodeCountPredicate(e, a, scalar: false)
-        case 0b01: return decodeCountPredicate(e, a, scalar: true)
-        default: return decodeFfrWrite(e, a) // b12:11 == 10 — WRFFR/SETFFR.
+        case 0b00: return decodeCountPredicate(e, a, scalar: false, &sink)
+        case 0b01: return decodeCountPredicate(e, a, scalar: true, &sink)
+        default: return decodeFfrWrite(e, a, &sink) // b12:11 == 10 — WRFFR/SETFFR.
         }
     }
 
     @inline(__always)
-    static func decodeCntp(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCntp(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b18:16==000 and b9==0 are pinned by the scope predicate — the
         // FIRSTP/LASTP siblings (b18:16 001/010) and the CNTP-as-counter form
         // (b9==1) belong to SME2 and never arrive here.
@@ -35,11 +35,7 @@ extension SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .cntp,
             semanticWrites: gpr64Mask(rd), category: .sve,
-            operands: [
-                .register(gpr64(rd)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: sz)),
-            ],
+            operandCount: sink.emit(.register(gpr64(rd)), .scalablePredicate(ScalablePredicateRef(registerIndex: pg, role: .governing)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: sz))),
             scalableReads: predSet(pg).insertingPredicate(pn),
             scalableEffect: .readsStreamingMode,
         )
@@ -48,7 +44,7 @@ extension SVEPredicateControlDecode {
     /// INCP/DECP/SQINCP/UQINCP/SQDECP/UQDECP — scalar (`scalar==true`) or
     /// vector. `op = b18:16`; the predicate `Pm` (b8:5) is a data SOURCE.
     @inline(__always)
-    static func decodeCountPredicate(_ e: UInt32, _ a: UInt64, scalar: Bool) -> DecodedDraft {
+    static func decodeCountPredicate(_ e: UInt32, _ a: UInt64, scalar: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 9) & 1 != 0 { return undefined(e, a) } // b9 SBZ (mask 0xFF3FFE00)
         let op = (e >> 16) & 0b111
         if op > 0b101 { return undefined(e, a) } // 110/111 unallocated
@@ -65,10 +61,7 @@ extension SVEPredicateControlDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: mnemonic,
                 semanticReads: vecMask(dn), semanticWrites: vecMask(dn), category: .sve,
-                operands: [
-                    .scalableVector(ScalableVectorRef(registerIndex: dn, element: sz)),
-                    pmOp,
-                ],
+                operandCount: sink.emit(.scalableVector(ScalableVectorRef(registerIndex: dn, element: sz)), pmOp),
                 scalableReads: pmReads, scalableEffect: .readsStreamingMode,
             )
         }
@@ -80,7 +73,7 @@ extension SVEPredicateControlDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: mnemonic,
                 semanticReads: gpr64Mask(dn), semanticWrites: gpr64Mask(dn), category: .sve,
-                operands: [.register(gpr64(dn)), pmOp],
+                operandCount: sink.emit(.register(gpr64(dn)), pmOp),
                 scalableReads: pmReads, scalableEffect: .readsStreamingMode,
             )
         }
@@ -90,20 +83,18 @@ extension SVEPredicateControlDecode {
         let is64 = (e >> 10) & 1 == 1
         let mnemonic = countPredicateSatMnemonic(op)
         let mask = gpr64Mask(dn) // same physical reg for every view
-        var ops: [Operand] = [.register(gpr64(dn)), pmOp]
-        ops.reserveCapacity(3)
-        if !is64 {
-            let signed = op & 1 == 0
-            if signed {
-                ops.append(.register(gpr32(dn))) // trailing 32-bit source-view
-            } else {
-                ops[0] = .register(gpr32(dn)) // W dest
-            }
-        }
+        // Destination view chosen before emission: the unsigned 32-bit form
+        // REPLACES the dest rather than appending, which a sink cannot undo.
+        let signed = op & 1 == 0
+        let dest: Operand = (!is64 && !signed) ? .register(gpr32(dn)) : .register(gpr64(dn))
+        let operandCount: UInt8 = (!is64 && signed)
+            ? sink.emit(dest, pmOp, .register(gpr32(dn))) // trailing 32-bit source-view
+            : sink.emit(dest, pmOp)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: mask, semanticWrites: mask, category: .sve,
-            operands: ops, scalableReads: pmReads, scalableEffect: .readsStreamingMode,
+            operandCount: operandCount, scalableReads: pmReads,
+            scalableEffect: .readsStreamingMode,
         )
     }
 
@@ -130,7 +121,7 @@ extension SVEPredicateControlDecode {
     }
 
     @inline(__always)
-    static func decodeFfrWrite(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFfrWrite(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b12:11==10. b18: 0=WRFFR, 1=SETFFR. b23:22, b17:16, b10:9, b4:0 fixed.
         if (e >> 22) & 0b11 != 0 || (e >> 16) & 0b11 != 0 || (e >> 9) & 0b11 != 0 || (e & 0x1F) != 0 {
             return undefined(e, a)
@@ -147,7 +138,7 @@ extension SVEPredicateControlDecode {
         let pn = UInt8((e >> 5) & 0xF)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .wrffr, category: .sve,
-            operands: [.scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: .b))),
             scalableReads: predSet(pn),
             scalableWrites: ScalableRegisterSet.empty.insertingFFR(),
             scalableEffect: .readsStreamingMode,
@@ -157,22 +148,22 @@ extension SVEPredicateControlDecode {
     // MARK: G6 — Loop predicates (WHILE / WHILERW / WHILEWR / CTERM)
 
     @inline(__always)
-    static func decodeWhileTerm(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeWhileTerm(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 13) & 1 == 0 {
-            return decodeWhile(e, a)
+            return decodeWhile(e, a, &sink)
         }
         let b12_10 = (e >> 10) & 0b111
         if b12_10 == 0b000 {
-            return decodeCterm(e, a)
+            return decodeCterm(e, a, &sink)
         }
         // b12:10 == 100 — WHILERW/WHILEWR. With b13==1 the scope predicate
         // admits only 000 above and 100 here, so no UNDEFINED tail is
         // reachable.
-        return decodeWhileRwWr(e, a)
+        return decodeWhileRwWr(e, a, &sink)
     }
 
     @inline(__always)
-    static func decodeWhile(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeWhile(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // sz=b23:22, sf=b12 (0=W,1=X), U=b11, lt=b10, eq=b4. cc from (U,lt,eq).
         let sz = elementSize(e >> 22)
         let sf = (e >> 12) & 1
@@ -189,10 +180,7 @@ extension SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic, semanticReads: reads,
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: sz, role: .result)),
-                rnOp, rmOp,
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: sz, role: .result)), rnOp, rmOp),
             scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
         )
     }
@@ -212,7 +200,7 @@ extension SVEPredicateControlDecode {
     }
 
     @inline(__always)
-    static func decodeWhileRwWr(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeWhileRwWr(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Operands always X. b4: 0=WR, 1=RW.
         let sz = elementSize(e >> 22)
         let rm = UInt8((e >> 16) & 0x1F)
@@ -223,16 +211,13 @@ extension SVEPredicateControlDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: gpr64Mask(rn).union(gpr64Mask(rm)),
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: sz, role: .result)),
-                .register(gpr64(rn)), .register(gpr64(rm)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: sz, role: .result)), .register(gpr64(rn)), .register(gpr64(rm))),
             scalableWrites: predSet(pd), scalableEffect: .readsStreamingMode,
         )
     }
 
     @inline(__always)
-    static func decodeCterm(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCterm(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b23 must be 1, b3:0 must be 0. sz=b22 (0=W,1=X). b4: 0=EQ,1=NE.
         if (e >> 23) & 1 != 1 || (e & 0xF) != 0 { return undefined(e, a) }
         let is64 = (e >> 22) & 1 == 1
@@ -249,7 +234,7 @@ extension SVEPredicateControlDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic, semanticReads: reads,
             flagEffect: [.writesN, .writesV, .readsC], category: .sve,
-            operands: [rnOp, rmOp],
+            operandCount: sink.emit(rnOp, rmOp),
         )
     }
 

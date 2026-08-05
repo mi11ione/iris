@@ -7,7 +7,7 @@
 
 enum FPDataProcessing3SourceDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // M (bit31) is a fixed 0 for FP DP 3-source; M=1 is reserved.
         if (encoding >> 31) & 1 == 1 {
             return .undefined(at: address, encoding: encoding)
@@ -51,7 +51,7 @@ enum FPDataProcessing3SourceDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .simdAndFP,
-            operands: [vd, vn, vm, va],
+            operandCount: sink.emit(vd, vn, vm, va),
         )
     }
 }

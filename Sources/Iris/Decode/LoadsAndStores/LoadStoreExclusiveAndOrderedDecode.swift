@@ -33,7 +33,7 @@
 
 enum LoadStoreExclusiveAndOrderedDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         let o2 = UInt8((encoding >> 23) & 1)
         let L = UInt8((encoding >> 22) & 1)
@@ -157,11 +157,7 @@ enum LoadStoreExclusiveAndOrderedDecode {
                 memoryOrdering: memoryOrdering,
                 flagEffect: .none,
                 category: .loadsAndStores,
-                operands: [
-                    .register(rsRef),
-                    .register(rtRef),
-                    .memory(MemoryOperand(base: .register(rnRef))),
-                ],
+                operandCount: sink.emit(.register(rsRef), .register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
             )
         }
 
@@ -187,10 +183,7 @@ enum LoadStoreExclusiveAndOrderedDecode {
             memoryOrdering: memoryOrdering,
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 }

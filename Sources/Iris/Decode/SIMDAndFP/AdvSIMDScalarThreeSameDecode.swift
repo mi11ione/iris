@@ -9,7 +9,7 @@
 
 enum AdvSIMDScalarThreeSameDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
@@ -20,12 +20,12 @@ enum AdvSIMDScalarThreeSameDecode {
         if opcode >= 0b11000 {
             return decodeFPFamily(
                 encoding: encoding, address: address,
-                U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd,
+                U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd, &sink,
             )
         }
         return decodeIntFamily(
             encoding: encoding, address: address,
-            U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd,
+            U: U, size: size, opcode: opcode, Rm: Rm, Rn: Rn, Rd: Rd, &sink,
         )
     }
 
@@ -34,7 +34,7 @@ enum AdvSIMDScalarThreeSameDecode {
     private static func decodeIntFamily(
         encoding: UInt32, address: UInt64,
         U: UInt8, size: UInt8, opcode: UInt8,
-        Rm: UInt8, Rn: UInt8, Rd: UInt8,
+        Rm: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // Scalar three-same only operates on D-element typically (size=11);
         // some ops (SQADD/SQSUB/etc.) accept all element sizes B/H/S/D.
@@ -86,11 +86,7 @@ enum AdvSIMDScalarThreeSameDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: elementSize),
-                simdfpScalarOperand(Rn, size: elementSize),
-                simdfpScalarOperand(Rm, size: elementSize),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: elementSize), simdfpScalarOperand(Rn, size: elementSize), simdfpScalarOperand(Rm, size: elementSize)),
         )
     }
 
@@ -99,7 +95,7 @@ enum AdvSIMDScalarThreeSameDecode {
     private static func decodeFPFamily(
         encoding: UInt32, address: UInt64,
         U: UInt8, size: UInt8, opcode: UInt8,
-        Rm: UInt8, Rn: UInt8, Rd: UInt8,
+        Rm: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let sz = size & 1
         let altBit = (size >> 1) & 1
@@ -126,11 +122,7 @@ enum AdvSIMDScalarThreeSameDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: elementSize),
-                simdfpScalarOperand(Rn, size: elementSize),
-                simdfpScalarOperand(Rm, size: elementSize),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: elementSize), simdfpScalarOperand(Rn, size: elementSize), simdfpScalarOperand(Rm, size: elementSize)),
         )
     }
 }

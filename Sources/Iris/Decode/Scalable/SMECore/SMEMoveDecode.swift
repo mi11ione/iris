@@ -12,21 +12,21 @@
 extension SMECoreDecode {
     /// Decode an SME move / zero / accumulate word.
     @inline(__always)
-    static func decodeMoveZero(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if e & 0xFFFF_FF00 == 0xC008_0000 { return decodeZero(e, a) }
+    static func decodeMoveZero(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if e & 0xFFFF_FF00 == 0xC008_0000 { return decodeZero(e, a, &sink) }
         let addS = e & 0xFFFF_001C
-        if addS == 0xC090_0000 { return decodeAddHV(e, a, .s, .addha) }
-        if addS == 0xC091_0000 { return decodeAddHV(e, a, .s, .addva) }
+        if addS == 0xC090_0000 { return decodeAddHV(e, a, .s, .addha, &sink) }
+        if addS == 0xC091_0000 { return decodeAddHV(e, a, .s, .addva, &sink) }
         let addD = e & 0xFFFF_0018
-        if addD == 0xC0D0_0000 { return decodeAddHV(e, a, .d, .addha) }
-        if addD == 0xC0D1_0000 { return decodeAddHV(e, a, .d, .addva) }
-        if let element = movaInsertElement(e) { return decodeMovaInsert(e, a, element) }
+        if addD == 0xC0D0_0000 { return decodeAddHV(e, a, .d, .addha, &sink) }
+        if addD == 0xC0D1_0000 { return decodeAddHV(e, a, .d, .addva, &sink) }
+        if let element = movaInsertElement(e) { return decodeMovaInsert(e, a, element, &sink) }
         // The core claim for these cells (`smeIsCoreMoveZero`) admits exactly
         // the five blocks tested here, and the four above are ruled out, so
         // what remains is a MOVA extract — no UNDEFINED fallthrough is
         // reachable. (The dense SME2 residue sharing the cells never arrives:
         // it fails the core claim and decodes in SME2.)
-        return decodeMovaExtract(e, a, movaExtractElement(e))
+        return decodeMovaExtract(e, a, movaExtractElement(e), &sink)
     }
 
     // MARK: - MOVA (rendered `mov`)
@@ -63,21 +63,17 @@ extension SMECoreDecode {
     /// MOVA insert — `mov <ZAd><h|v>.<T>[Wv, off], Pg/m, Zn.<T>`. Reads `Zn`
     /// and the select `Wv`; reads+writes the tile (merging).
     @inline(__always)
-    static func decodeMovaInsert(_ e: UInt32, _ a: UInt64, _ element: ScalarSize) -> DecodedDraft {
+    static func decodeMovaInsert(_ e: UInt32, _ a: UInt64, _ element: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let slice = tileSlice(e, element, UInt8(e & 0xF))
         let znIndex = zn(e), pg = pn3(e)
         let tileMask = slice.zaMask
-        let operands: [Operand] = [
-            .zaTileSlice(slice),
-            govern(pg, .merging),
-            vec(znIndex, element),
-        ]
+        let operandCount = sink.emit(.zaTileSlice(slice), govern(pg, .merging), vec(znIndex, element))
         let reads = vecMask(znIndex).union(gprMask(12 &+ rv(e)))
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .mov,
             semanticReads: reads,
             category: .sme,
-            operands: operands,
+            operandCount: operandCount,
             scalableReads: predRead(pg).inserting(tileMask),
             scalableWrites: ScalableRegisterSet.empty.inserting(tileMask),
             scalableEffect: [.readsStreamingMode, .partialWrite],
@@ -88,22 +84,18 @@ extension SMECoreDecode {
     /// tile, the select `Wv`, and `Zd` (merging preserves inactive lanes);
     /// writes `Zd` (partial).
     @inline(__always)
-    static func decodeMovaExtract(_ e: UInt32, _ a: UInt64, _ element: ScalarSize) -> DecodedDraft {
+    static func decodeMovaExtract(_ e: UInt32, _ a: UInt64, _ element: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let slice = tileSlice(e, element, UInt8((e >> 5) & 0xF))
         let zdIndex = zd(e), pg = pn3(e)
         let tileMask = slice.zaMask
-        let operands: [Operand] = [
-            vec(zdIndex, element),
-            govern(pg, .merging),
-            .zaTileSlice(slice),
-        ]
+        let operandCount = sink.emit(vec(zdIndex, element), govern(pg, .merging), .zaTileSlice(slice))
         let reads = vecMask(zdIndex).union(gprMask(12 &+ rv(e)))
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .mov,
             semanticReads: reads,
             semanticWrites: vecMask(zdIndex),
             category: .sme,
-            operands: operands,
+            operandCount: operandCount,
             scalableReads: predRead(pg).inserting(tileMask),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -115,14 +107,17 @@ extension SMECoreDecode {
     /// zero; the operands mirror the rendered list. The write is
     /// exact (not partial): imm8 replicated into a 16-bit residue mask.
     @inline(__always)
-    static func decodeZero(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeZero(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let imm8 = UInt8(e & 0xFF)
-        let operands = zeroTileList(imm8).map { Operand.zaTile(index: $0.index, element: $0.element) }
+        let operandMark = sink.mark
+        for tile in zeroTileList(imm8) {
+            sink.append(.zaTile(index: tile.index, element: tile.element))
+        }
         let mask = ZATileMask(bits: UInt16(imm8) | (UInt16(imm8) << 8))
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .zero,
             category: .sme,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
             scalableWrites: ScalableRegisterSet.empty.inserting(mask),
         )
     }
@@ -155,21 +150,16 @@ extension SMECoreDecode {
     /// Decode `ADDHA` / `ADDVA <ZAda>.<T>, Pn/m, Pm/m, Zn.<T>` — a predicated
     /// horizontal / vertical accumulate into a `ZA` tile.
     @inline(__always)
-    static func decodeAddHV(_ e: UInt32, _ a: UInt64, _ element: ScalarSize, _ mnemonic: Mnemonic) -> DecodedDraft {
+    static func decodeAddHV(_ e: UInt32, _ a: UInt64, _ element: ScalarSize, _ mnemonic: Mnemonic, _ sink: inout OperandSink) -> DecodedDraft {
         let tileIndex = element == .s ? UInt8(e & 0x3) : UInt8(e & 0x7)
         let znIndex = zn(e), pn = pn3(e), pm = pm3(e)
         let tileMask = ZATileMask(tile: tileIndex, element: element)
-        let operands: [Operand] = [
-            .zaTile(index: tileIndex, element: element),
-            govern(pn, .merging),
-            govern(pm, .merging),
-            vec(znIndex, element),
-        ]
+        let operandCount = sink.emit(.zaTile(index: tileIndex, element: element), govern(pn, .merging), govern(pm, .merging), vec(znIndex, element))
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(znIndex),
             category: .sme,
-            operands: operands,
+            operandCount: operandCount,
             scalableReads: predRead(pn).union(predRead(pm)).inserting(tileMask),
             scalableWrites: ScalableRegisterSet.empty.inserting(tileMask),
             scalableEffect: [.readsStreamingMode, .partialWrite],

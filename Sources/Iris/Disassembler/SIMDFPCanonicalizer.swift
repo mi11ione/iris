@@ -10,41 +10,45 @@
 // TBL / TBX).
 
 enum SIMDFPCanonicalizer {
+    /// The byte path — rendered straight into a UTF-8 buffer. The float
+    /// immediate text stays a `String`: it is a pure numeric computation
+    /// (`fixedEightFractionText`) whose result is appended once, not a
+    /// per-token assembly.
     @_optimize(speed)
-    static func format(_ instruction: Instruction) -> String {
-        if instruction.mnemonic == .undefined {
-            return ""
-        }
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        if instruction.mnemonic == .undefined { return }
         // Crypto encodings flow through SIMDAndFPDecoder's delegation and
         // produce crypto-range mnemonics; route them to their canonicalizer.
         if CryptoAppleExtensionsCanonicalizer.owns(instruction.mnemonic) {
-            return CryptoAppleExtensionsCanonicalizer.format(instruction)
+            CryptoAppleExtensionsCanonicalizer.format(instruction, into: &out)
+            return
         }
-        let mnemonicText = instruction.mnemonic.name
-        let listSize = vectorListSize(mnemonic: instruction.mnemonic, operandCount: instruction.operands.count)
+        let ops = instruction.operands
+        let listSize = vectorListSize(mnemonic: instruction.mnemonic, operandCount: ops.count)
         let listIsLeading = listGroupingIsLeading(mnemonic: instruction.mnemonic)
-        var renderedOps: [String] = []
-        renderedOps.reserveCapacity(instruction.operands.count)
+        putMnemonic(instruction.mnemonic, into: &out)
+        if ops.isEmpty { return }
+        out.put(UInt8(ascii: " "))
         var index = 0
+        var first = true
         if listIsLeading, listSize > 0 {
-            renderedOps.append(formatVectorList(instruction.operands, start: 0, count: listSize))
+            putVectorList(ops, start: 0, count: listSize, into: &out)
             index = listSize
+            first = false
         }
-        while index < instruction.operands.count {
+        while index < ops.count {
+            if !first { out.put(", ") }
+            first = false
             // For TBL/TBX the list is at operands[1..1+listSize-1]; render
             // it as a group.
             if !listIsLeading, listSize > 0, index == 1 {
-                renderedOps.append(formatVectorList(instruction.operands, start: 1, count: listSize))
+                putVectorList(ops, start: 1, count: listSize, into: &out)
                 index += listSize
                 continue
             }
-            renderedOps.append(operandText(instruction.operands[index]))
+            putOperand(ops[index], into: &out)
             index += 1
         }
-        if renderedOps.isEmpty {
-            return mnemonicText
-        }
-        return "\(mnemonicText) \(renderedOps.joined(separator: ", "))"
     }
 
     /// Number of leading `.vectorRegister` operands that should be
@@ -79,38 +83,43 @@ enum SIMDFPCanonicalizer {
         }
     }
 
-    @_effects(readonly)
-    private static func formatVectorList(
-        _ operands: Instruction.Operands, start: Int, count: Int,
-    ) -> String {
-        var parts: [String] = []
-        parts.reserveCapacity(count)
-        var trailingIndex: String?
+    private static func putVectorList(
+        _ operands: Instruction.Operands, start: Int, count: Int, into out: inout TextBytes,
+    ) {
+        // Single-structure single-element lists (LD1/ST1 .. LD4/ST4
+        // single-element) render the lane index once *after* the closing
+        // brace — `{ v0.b, v1.b }[i]` — not per-element.
+        var trailingIndex: UInt8?
+        out.put("{ ")
         for i in 0 ..< count {
+            if i > 0 { out.put(", ") }
             let op = operands[start + i]
-            // Single-structure single-element lists (LD1/ST1 .. LD4/ST4
-            // single-element) render the lane index once *after* the closing
-            // brace — `{ v0.b, v1.b }[i]` — not per-element.
             if case let .vectorRegister(vr) = op, case let .element(arrangement, idx) = vr.view {
-                parts.append("v\(vr.registerIndex).\(scalarSuffix(arrangement.elementSize))")
-                trailingIndex = "[\(idx)]"
+                out.put(UInt8(ascii: "v"))
+                out.putDecimal(UInt64(vr.registerIndex))
+                out.put(UInt8(ascii: "."))
+                putScalarSuffix(arrangement.elementSize, into: &out)
+                trailingIndex = idx
             } else {
-                parts.append(operandText(op))
+                putOperand(op, into: &out)
             }
         }
-        let list = "{ \(parts.joined(separator: ", ")) }"
-        return trailingIndex.map { list + $0 } ?? list
+        out.put(" }")
+        if let trailingIndex {
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(trailingIndex))
+            out.put(UInt8(ascii: "]"))
+        }
     }
 
-    @_effects(readonly)
-    private static func operandText(_ op: Operand) -> String {
+    private static func putOperand(_ op: Operand, into out: inout TextBytes) {
         switch op {
         case let .vectorRegister(vr):
-            return vectorRegisterText(vr)
+            putVectorRegister(vr, into: &out)
         case let .register(r):
-            return r.name
+            RegisterNames.put(r, into: &out)
         case let .floatImmediate(bits, kind):
-            return floatImmediateText(bits: bits, kind: kind)
+            out.putString(floatImmediateText(bits: bits, kind: kind))
         case let .unsignedImmediate(value, width):
             // The 64-bit MOVI replicated-byte immediate (the only width-64
             // SIMD immediate). llvm-mc renders a zero value as 16 plain hex
@@ -118,82 +127,134 @@ enum SIMDFPCanonicalizer {
             // to 14 digits (16 when bits[63:56] are set). Everything else
             // is decimal.
             if width == 64 {
-                if value == 0 { return "#0000000000000000" }
+                if value == 0 {
+                    out.put("#0000000000000000")
+                    return
+                }
                 let digits = (value >> 56) != 0 ? 16 : 14
-                return "#0x" + hexZeroPadded(value, digits: digits)
+                out.put("#0x")
+                out.putString(hexZeroPadded(value, digits: digits))
+                return
             }
-            return "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .immediate(value, _):
-            return "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .conditionCode(cc):
-            return conditionText(cc)
+            putConditionText(cc, into: &out)
         case let .memory(mem):
-            return memoryText(mem)
+            putMemory(mem, into: &out)
         case let .shiftAmount(kind, amount):
-            return "\(shiftKindName(kind)) #\(amount)"
+            putShiftKindName(kind, into: &out)
+            out.put(" #")
+            out.putDecimal(UInt64(amount))
         case let .shiftedRegister(reg, kind, amount):
-            if kind == .lsl, amount == 0 {
-                return reg.name
-            }
-            return "\(reg.name), \(shiftKindName(kind)) #\(amount)"
+            RegisterNames.put(reg, into: &out)
+            if kind == .lsl, amount == 0 { return }
+            out.put(", ")
+            putShiftKindName(kind, into: &out)
+            out.put(" #")
+            out.putDecimal(UInt64(amount))
         case let .extendedRegister(reg, extend, shift):
-            if shift == 0 {
-                return "\(reg.name), \(extendKindName(extend))"
+            RegisterNames.put(reg, into: &out)
+            out.put(", ")
+            putExtendKindName(extend, into: &out)
+            if shift != 0 {
+                out.put(" #")
+                out.putDecimal(UInt64(shift))
             }
-            return "\(reg.name), \(extendKindName(extend)) #\(shift)"
         default:
-            return "?unsupported-operand"
+            out.put("?unsupported-operand")
         }
     }
 
-    @_effects(readonly)
-    private static func vectorRegisterText(_ vr: VectorRegisterRef) -> String {
+    private static func putVectorRegister(_ vr: VectorRegisterRef, into out: inout TextBytes) {
+        let n = UInt64(vr.registerIndex)
         switch vr.view {
         case let .full(arrangement):
-            "v\(vr.registerIndex).\(arrangementSuffix(arrangement))"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "."))
+            putArrangementSuffix(arrangement, into: &out)
         case let .scalar(size):
-            "\(scalarPrefix(size))\(vr.registerIndex)"
+            putScalarPrefix(size, into: &out)
+            out.putDecimal(n)
         case let .element(arrangement, index):
-            "v\(vr.registerIndex).\(scalarSuffix(arrangement.elementSize))[\(index)]"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "."))
+            putScalarSuffix(arrangement.elementSize, into: &out)
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(index))
+            out.put(UInt8(ascii: "]"))
         case let .elementGroup(elementSize, count, index):
-            "v\(vr.registerIndex).\(count)\(scalarSuffix(elementSize))[\(index)]"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "."))
+            out.putDecimal(UInt64(count))
+            putScalarSuffix(elementSize, into: &out)
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(index))
+            out.put(UInt8(ascii: "]"))
         case let .lane(index):
-            "v\(vr.registerIndex)[\(index)]"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(index))
+            out.put(UInt8(ascii: "]"))
         }
     }
 
-    @_effects(readonly)
-    private static func memoryText(_ mem: MemoryOperand) -> String {
+    private static func putMemory(_ mem: MemoryOperand, into out: inout TextBytes) {
         // PC-base literal loads (SIMD LDR (literal)) render as
         // `#<displacement>` with no brackets, matching llvm-mc and the
         // integer LSCanonicalizer.
-        let baseText: String
+        let baseReg: RegisterRef
         switch mem.base {
         case .pc:
-            return "#\(mem.displacement)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(mem.displacement)
+            return
         case let .register(r):
-            baseText = r.name
+            baseReg = r
         }
         let disp = mem.displacement
+        out.put(UInt8(ascii: "["))
+        RegisterNames.put(baseReg, into: &out)
         switch mem.writeback {
         case .preIndex:
-            return "[\(baseText), #\(disp)]!"
+            out.put(", #")
+            out.putDecimal(disp)
+            out.put("]!")
         case .postIndex:
             if let idx = mem.index {
-                return "[\(baseText)], \(idx.name)"
+                out.put("], ")
+                RegisterNames.put(idx, into: &out)
+                return
             }
-            return "[\(baseText)], #\(disp)"
+            out.put("], #")
+            out.putDecimal(disp)
         case .none:
             if let idx = mem.index {
-                let extPart = mem.extend == .none
-                    ? ""
-                    : ", \(extendKindName(mem.extend))\(mem.shift == 0xFF ? "" : " #\(mem.shift)")"
-                return "[\(baseText), \(idx.name)\(extPart)]"
+                out.put(", ")
+                RegisterNames.put(idx, into: &out)
+                if mem.extend != .none {
+                    out.put(", ")
+                    putExtendKindName(mem.extend, into: &out)
+                    if mem.shift != 0xFF {
+                        out.put(" #")
+                        out.putDecimal(UInt64(mem.shift))
+                    }
+                }
+                out.put(UInt8(ascii: "]"))
+                return
             }
             if disp != 0 {
-                return "[\(baseText), #\(disp)]"
+                out.put(", #")
+                out.putDecimal(disp)
             }
-            return "[\(baseText)]"
+            out.put(UInt8(ascii: "]"))
         }
     }
 
@@ -420,92 +481,92 @@ enum SIMDFPCanonicalizer {
         return String(digits[..<pointIndex]) + "." + String(digits[pointIndex...])
     }
 
-    @_effects(readonly)
-    private static func arrangementSuffix(_ a: VectorArrangement) -> String {
+    @inline(__always)
+    private static func putArrangementSuffix(_ a: VectorArrangement, into out: inout TextBytes) {
         switch a {
-        case .b8: "8b"
-        case .b16: "16b"
-        case .h4: "4h"
-        case .h8: "8h"
-        case .s2: "2s"
-        case .s4: "4s"
-        case .d1: "1d"
-        case .d2: "2d"
-        case .q1: "1q"
-        case .h2: "2h"
+        case .b8: out.put("8b")
+        case .b16: out.put("16b")
+        case .h4: out.put("4h")
+        case .h8: out.put("8h")
+        case .s2: out.put("2s")
+        case .s4: out.put("4s")
+        case .d1: out.put("1d")
+        case .d2: out.put("2d")
+        case .q1: out.put("1q")
+        case .h2: out.put("2h")
         }
     }
 
-    @_effects(readonly)
-    private static func scalarPrefix(_ s: ScalarSize) -> String {
+    @inline(__always)
+    private static func putScalarPrefix(_ s: ScalarSize, into out: inout TextBytes) {
         switch s {
-        case .b: "b"
-        case .h: "h"
-        case .s: "s"
-        case .d: "d"
-        case .q: "q"
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        case .d: out.put("d")
+        case .q: out.put("q")
         }
     }
 
-    @_effects(readonly)
-    private static func scalarSuffix(_ s: ScalarSize) -> String {
+    @inline(__always)
+    private static func putScalarSuffix(_ s: ScalarSize, into out: inout TextBytes) {
         // Element-view operands use .b/.h/.s/.d only — .q never reaches
         // here (element-indexed operand format excludes Q-form). The
         // default arm absorbs the unreachable .q case.
         switch s {
-        case .b: "b"
-        case .h: "h"
-        case .s: "s"
-        default: "d" // .d (or .q sentinel — unreachable).
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        default: out.put("d") // .d (or .q sentinel — unreachable).
         }
     }
 
-    @_effects(readonly)
-    private static func conditionText(_ cc: ConditionCode) -> String {
+    @inline(__always)
+    private static func putConditionText(_ cc: ConditionCode, into out: inout TextBytes) {
         switch cc {
-        case .eq: "eq"
-        case .ne: "ne"
-        case .cs: "hs"
-        case .cc: "lo"
-        case .mi: "mi"
-        case .pl: "pl"
-        case .vs: "vs"
-        case .vc: "vc"
-        case .hi: "hi"
-        case .ls: "ls"
-        case .ge: "ge"
-        case .lt: "lt"
-        case .gt: "gt"
-        case .le: "le"
-        case .al: "al"
-        case .nv: "nv"
+        case .eq: out.put("eq")
+        case .ne: out.put("ne")
+        case .cs: out.put("hs")
+        case .cc: out.put("lo")
+        case .mi: out.put("mi")
+        case .pl: out.put("pl")
+        case .vs: out.put("vs")
+        case .vc: out.put("vc")
+        case .hi: out.put("hi")
+        case .ls: out.put("ls")
+        case .ge: out.put("ge")
+        case .lt: out.put("lt")
+        case .gt: out.put("gt")
+        case .le: out.put("le")
+        case .al: out.put("al")
+        case .nv: out.put("nv")
         }
     }
 
-    @_effects(readonly)
-    private static func shiftKindName(_ s: ShiftKind) -> String {
+    @inline(__always)
+    private static func putShiftKindName(_ s: ShiftKind, into out: inout TextBytes) {
         switch s {
-        case .lsl: "lsl"
-        case .lsr: "lsr"
-        case .asr: "asr"
-        case .ror: "ror"
-        case .msl: "msl"
+        case .lsl: out.put("lsl")
+        case .lsr: out.put("lsr")
+        case .asr: out.put("asr")
+        case .ror: out.put("ror")
+        case .msl: out.put("msl")
         }
     }
 
-    @_effects(readonly)
-    private static func extendKindName(_ e: ExtendKind) -> String {
+    @inline(__always)
+    private static func putExtendKindName(_ e: ExtendKind, into out: inout TextBytes) {
         switch e {
-        case .none: ""
-        case .uxtb: "uxtb"
-        case .uxth: "uxth"
-        case .uxtw: "uxtw"
-        case .uxtx: "uxtx"
-        case .sxtb: "sxtb"
-        case .sxth: "sxth"
-        case .sxtw: "sxtw"
-        case .sxtx: "sxtx"
-        case .lsl: "lsl"
+        case .none: break
+        case .uxtb: out.put("uxtb")
+        case .uxth: out.put("uxth")
+        case .uxtw: out.put("uxtw")
+        case .uxtx: out.put("uxtx")
+        case .sxtb: out.put("sxtb")
+        case .sxth: out.put("sxth")
+        case .sxtw: out.put("sxtw")
+        case .sxtx: out.put("sxtx")
+        case .lsl: out.put("lsl")
         }
     }
 }

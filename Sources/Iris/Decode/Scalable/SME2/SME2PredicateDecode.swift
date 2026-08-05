@@ -16,16 +16,16 @@ enum SME2PredicateDecode {
     /// Decode an in-scope carve word. Precondition (by construction, not
     /// asserted): `isSVECounterPredicateEncoding(e)`.
     @_optimize(speed)
-    static func decode(encoding e: UInt32, address a: UInt64) -> DecodedDraft {
-        if e & 0xFF20_D010 == 0x2520_4010 { return decodeWhileCounter(e, a) }
-        if e & 0xFF20_F010 == 0x2520_5010 { return decodeWhilePair(e, a) }
-        if e & 0xFF3F_FC10 == 0x2520_7010 { return decodePext(e, a, pair: false) }
-        if e & 0xFF3F_FE10 == 0x2520_7410 { return decodePext(e, a, pair: true) }
-        if e & 0xFF3F_FFF8 == 0x2520_7810 { return decodePtrueCounter(e, a) }
-        if e & 0xFF3F_FA00 == 0x2520_8200 { return decodeCntpCounter(e, a) }
-        if e & 0xFF3F_C200 == 0x2521_8000 { return decodeFirstLastP(e, a, mnemonic: .firstp) }
-        if e & 0xFF3F_C200 == 0x2522_8000 { return decodeFirstLastP(e, a, mnemonic: .lastp) }
-        if e & 0xFF20_C210 == 0x2520_4000 { return decodePsel(e, a) }
+    static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if e & 0xFF20_D010 == 0x2520_4010 { return decodeWhileCounter(e, a, &sink) }
+        if e & 0xFF20_F010 == 0x2520_5010 { return decodeWhilePair(e, a, &sink) }
+        if e & 0xFF3F_FC10 == 0x2520_7010 { return decodePext(e, a, pair: false, &sink) }
+        if e & 0xFF3F_FE10 == 0x2520_7410 { return decodePext(e, a, pair: true, &sink) }
+        if e & 0xFF3F_FFF8 == 0x2520_7810 { return decodePtrueCounter(e, a, &sink) }
+        if e & 0xFF3F_FA00 == 0x2520_8200 { return decodeCntpCounter(e, a, &sink) }
+        if e & 0xFF3F_C200 == 0x2521_8000 { return decodeFirstLastP(e, a, mnemonic: .firstp, &sink) }
+        if e & 0xFF3F_C200 == 0x2522_8000 { return decodeFirstLastP(e, a, mnemonic: .lastp, &sink) }
+        if e & 0xFF20_C210 == 0x2520_4000 { return decodePsel(e, a, &sink) }
         return undefinedSVE(e, a)
     }
 
@@ -33,7 +33,7 @@ enum SME2PredicateDecode {
 
     /// `WHILE<cc> PNd.<T>, Xn, Xm, vlx<2|4>` — counter destination, NZCV.
     @inline(__always)
-    private static func decodeWhileCounter(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeWhileCounter(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let element = sizeElement(e)
         let pnd = 8 &+ UInt8(e & 0x7)
         let rn = UInt8((e >> 5) & 0x1F)
@@ -44,13 +44,9 @@ enum SME2PredicateDecode {
             mnemonic: whileMnemonic(unsigned: e & 0x800 != 0, less: e & 0x400 != 0, orEqual: e & 0x8 != 0),
             semanticReads: SME2Decode.dataMask(rn).union(SME2Decode.dataMask(rm)),
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(
-                    registerIndex: pnd, element: element, role: .result, isCounter: true,
-                )),
-                gprOperand(rn), gprOperand(rm),
-                .vectorLengthMultiplier(multiplier),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(
+                registerIndex: pnd, element: element, role: .result, isCounter: true,
+            )), gprOperand(rn), gprOperand(rm), .vectorLengthMultiplier(multiplier)),
             scalableWrites: SME2Decode.predMask(pnd),
             scalableEffect: .readsStreamingMode,
         )
@@ -58,7 +54,7 @@ enum SME2PredicateDecode {
 
     /// `WHILE<cc> { P2d.<T>, P2d+1.<T> }, Xn, Xm` — even/odd pair, NZCV.
     @inline(__always)
-    private static func decodeWhilePair(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeWhilePair(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let element = sizeElement(e)
         let first = UInt8(e & 0xE) // Pd<<1
         let rn = UInt8((e >> 5) & 0x1F)
@@ -68,10 +64,7 @@ enum SME2PredicateDecode {
             mnemonic: whileMnemonic(unsigned: e & 0x800 != 0, less: e & 0x400 != 0, orEqual: e & 0x1 != 0),
             semanticReads: SME2Decode.dataMask(rn).union(SME2Decode.dataMask(rm)),
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .predicateGroup(firstIndex: first, count: 2, element: element),
-                gprOperand(rn), gprOperand(rm),
-            ],
+            operandCount: sink.emit(.predicateGroup(firstIndex: first, count: 2, element: element), gprOperand(rn), gprOperand(rm)),
             scalableWrites: SME2Decode.predMask(first).union(SME2Decode.predMask(first &+ 1)),
             scalableEffect: .readsStreamingMode,
         )
@@ -79,7 +72,7 @@ enum SME2PredicateDecode {
 
     /// `PEXT Pd.<T>, PNn[i]` / `PEXT { Pd.<T>, P(d+1 mod 16).<T> }, PNn[i]`.
     @inline(__always)
-    private static func decodePext(_ e: UInt32, _ a: UInt64, pair: Bool) -> DecodedDraft {
+    private static func decodePext(_ e: UInt32, _ a: UInt64, pair: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         let element = sizeElement(e)
         let pd = UInt8(e & 0xF)
         let pnn = 8 &+ UInt8((e >> 5) & 0x7)
@@ -94,12 +87,9 @@ enum SME2PredicateDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .pext,
             category: .sve,
-            operands: [
-                destination,
-                .scalablePredicate(ScalablePredicateRef(
-                    registerIndex: pnn, isCounter: true, elementIndex: index,
-                )),
-            ],
+            operandCount: sink.emit(destination, .scalablePredicate(ScalablePredicateRef(
+                registerIndex: pnn, isCounter: true, elementIndex: index,
+            ))),
             scalableReads: SME2Decode.predMask(pnn),
             scalableWrites: writes,
             scalableEffect: .readsStreamingMode,
@@ -108,14 +98,14 @@ enum SME2PredicateDecode {
 
     /// `PTRUE PNd.<T>` — all-true counter predicate.
     @inline(__always)
-    private static func decodePtrueCounter(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodePtrueCounter(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let pnd = 8 &+ UInt8(e & 0x7)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .ptrue,
             category: .sve,
-            operands: [.scalablePredicate(ScalablePredicateRef(
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(
                 registerIndex: pnd, element: sizeElement(e), role: .result, isCounter: true,
-            ))],
+            ))),
             scalableWrites: SME2Decode.predMask(pnd),
             scalableEffect: .readsStreamingMode,
         )
@@ -123,20 +113,16 @@ enum SME2PredicateDecode {
 
     /// `CNTP Xd, PNn.<T>, vlx<2|4>` — count active counter-predicate elements.
     @inline(__always)
-    private static func decodeCntpCounter(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodeCntpCounter(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let pnn = UInt8((e >> 5) & 0xF)
         let rd = UInt8(e & 0x1F)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .cntp,
             semanticWrites: SME2Decode.dataMask(rd),
             category: .sve,
-            operands: [
-                gprOperand(rd),
-                .scalablePredicate(ScalablePredicateRef(
-                    registerIndex: pnn, element: sizeElement(e), isCounter: true,
-                )),
-                .vectorLengthMultiplier(e & 0x400 != 0 ? 4 : 2),
-            ],
+            operandCount: sink.emit(gprOperand(rd), .scalablePredicate(ScalablePredicateRef(
+                registerIndex: pnn, element: sizeElement(e), isCounter: true,
+            )), .vectorLengthMultiplier(e & 0x400 != 0 ? 4 : 2)),
             scalableReads: SME2Decode.predMask(pnn),
             scalableEffect: .readsStreamingMode,
         )
@@ -144,7 +130,7 @@ enum SME2PredicateDecode {
 
     /// `FIRSTP|LASTP Xd, Pg, Pn.<T>` — index of the first/last active element.
     @inline(__always)
-    private static func decodeFirstLastP(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic) -> DecodedDraft {
+    private static func decodeFirstLastP(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, _ sink: inout OperandSink) -> DecodedDraft {
         let pg = UInt8((e >> 10) & 0xF)
         let pn = UInt8((e >> 5) & 0xF)
         let rd = UInt8(e & 0x1F)
@@ -152,11 +138,7 @@ enum SME2PredicateDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticWrites: SME2Decode.dataMask(rd),
             category: .sve,
-            operands: [
-                gprOperand(rd),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pg)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: sizeElement(e))),
-            ],
+            operandCount: sink.emit(gprOperand(rd), .scalablePredicate(ScalablePredicateRef(registerIndex: pg)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn, element: sizeElement(e)))),
             scalableReads: SME2Decode.predMask(pg).union(SME2Decode.predMask(pn)),
             scalableEffect: .readsStreamingMode,
         )
@@ -164,7 +146,7 @@ enum SME2PredicateDecode {
 
     /// `PSEL Pd, Pn, Pm.<T>[Wv, i]` — predicate select by indexed element.
     @inline(__always)
-    private static func decodePsel(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    private static func decodePsel(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // tsz trailing-one size/index scheme: tszl bits[20:18], tszh bit22,
         // i1 bit23; tszh:tszl == 0000 is reserved.
         let tszl = UInt8((e >> 18) & 0x7)
@@ -195,14 +177,10 @@ enum SME2PredicateDecode {
             address: a, encoding: e, mnemonic: .psel,
             semanticReads: SME2Decode.selectMask(select),
             category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, role: .result)),
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pn)),
-                .scalablePredicate(ScalablePredicateRef(
-                    registerIndex: pm, element: element, elementIndex: index,
-                    selectRegister: select,
-                )),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, role: .result)), .scalablePredicate(ScalablePredicateRef(registerIndex: pn)), .scalablePredicate(ScalablePredicateRef(
+                registerIndex: pm, element: element, elementIndex: index,
+                selectRegister: select,
+            ))),
             scalableReads: SME2Decode.predMask(pn).union(SME2Decode.predMask(pm)),
             scalableWrites: SME2Decode.predMask(pd),
             scalableEffect: .readsStreamingMode,

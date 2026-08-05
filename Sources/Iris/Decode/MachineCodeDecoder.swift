@@ -26,6 +26,7 @@ enum MachineCodeDecoder {
         address: UInt64,
         families: FamilyDecoderSet,
         features: Features,
+        _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let op0 = UInt8((encoding >> 25) & 0xF)
         // UDF (Permanently Undefined) is the one allocated encoding in the
@@ -34,11 +35,40 @@ enum MachineCodeDecoder {
         // and AMX (also op0=0) never collides because every AMX encoding
         // sets bits in 0x00201000, so its bits[31:16] are never zero.
         if op0 == 0, encoding & 0xFFFF_0000 == 0 {
-            return .udf(at: address, encoding: encoding)
+            return .udf(at: address, encoding: encoding, &sink)
         }
-        guard let family = families.familyForOp0(op0) else {
+        // Dispatch to the family CONCRETELY where the slot holds one of
+        // the shipped types. Going through the `[(any FamilyDecoder)?]`
+        // table instead is a witness-table call in front of the whole
+        // decode tree, once per instruction, that no optimizer can see
+        // through. Every family is a stateless empty struct, so calling a
+        // freshly-constructed one is indistinguishable from calling a
+        // stored instance. The switch has no `default`: a new family
+        // cannot be registered without gaining a branch here.
+        switch families.tag(forOp0: op0) {
+        case .unregistered:
             return .undefined(at: address, encoding: encoding)
+        case .dataProcessingImmediate:
+            return DataProcessingImmediateDecoder()
+                .decode(encoding: encoding, address: address, features: features, &sink)
+        case .branchesExceptionSystem:
+            return BranchesExceptionSystemDecoder()
+                .decode(encoding: encoding, address: address, features: features, &sink)
+        case .loadsAndStores:
+            return LoadsAndStoresDecoder()
+                .decode(encoding: encoding, address: address, features: features, &sink)
+        case .dataProcessingRegister:
+            return DataProcessingRegisterDecoder()
+                .decode(encoding: encoding, address: address, features: features, &sink)
+        case .simdAndFP:
+            return SIMDAndFPDecoder()
+                .decode(encoding: encoding, address: address, features: features, &sink)
+        case .op0Zero:
+            return Op0ZeroDecoder()
+                .decode(encoding: encoding, address: address, features: features, &sink)
+        case .sve:
+            return SVEDecoder()
+                .decode(encoding: encoding, address: address, features: features, &sink)
         }
-        return family.decode(encoding: encoding, address: address, features: features)
     }
 }

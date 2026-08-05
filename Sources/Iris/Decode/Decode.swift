@@ -28,11 +28,20 @@ public func decode(
     at address: UInt64 = 0,
     features: Features = [],
 ) -> Instruction {
+    // The word tier owns a private sink: family decoders emit into it
+    // rather than onto the draft, and the operands it collects are exactly
+    // this word's, so the materializing initializer takes them whole.
+    //
+    // The sink starts empty and sizes its first block on the first operand
+    // emitted: an unallocated encoding emits none and so allocates nothing,
+    // which is the majority of the word space.
+    var sink = OperandSink()
     let draft = MachineCodeDecoder.dispatch(
         encoding: word,
         address: address,
         families: .standard,
         features: features,
+        &sink,
     )
     return Instruction(
         address: draft.address,
@@ -45,7 +54,7 @@ public func decode(
         memoryOrdering: draft.memoryOrdering,
         flagEffect: draft.flagEffect,
         category: draft.category,
-        operands: draft.operands,
+        operands: sink.operands,
         scalableReads: draft.scalableReads,
         scalableWrites: draft.scalableWrites,
         scalableEffect: draft.scalableEffect,

@@ -16,9 +16,9 @@ extension SVEIntegerDecode {
     // MARK: G7 vector / wide compare + unsigned-immediate compare (0x24)
 
     @inline(__always)
-    static func decodeCompare(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCompare(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 21) & 1 == 1 {
-            return decodeCompareUnsignedImmediate(e, a) // sve_int_ucmp_vi
+            return decodeCompareUnsignedImmediate(e, a, &sink) // sve_int_ucmp_vi
         }
         // sve_int_cmp: (mnemonic, wide) from bits[15:13]; b4 picks the second variant.
         let sel = (e >> 13) & 0b111
@@ -31,12 +31,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n).union(vecMask(m)),
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)),
-                govern(g, .zeroing),
-                vec(n, size),
-                vec(m, wide ? .d : size),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)), govern(g, .zeroing), vec(n, size), vec(m, wide ? .d : size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableWrites: ScalableRegisterSet.empty.insertingPredicate(pd),
             scalableEffect: .readsStreamingMode,
@@ -62,7 +57,7 @@ extension SVEIntegerDecode {
     }
 
     @inline(__always)
-    static func decodeCompareUnsignedImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCompareUnsignedImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // sve_int_ucmp_vi: opc = (b13, b4) → hs/hi/lo/ls; imm7 = bits[20:14].
         let pd = zd(e), n = zn(e), g = pg3(e), size = sz(e)
         let second = (e >> 4) & 1 == 1
@@ -74,12 +69,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n),
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)),
-                govern(g, .zeroing),
-                vec(n, size),
-                .unsignedImmediate(value: imm, width: 7),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)), govern(g, .zeroing), vec(n, size), .unsignedImmediate(value: imm, width: 7)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableWrites: ScalableRegisterSet.empty.insertingPredicate(pd),
             scalableEffect: .readsStreamingMode,
@@ -89,7 +79,7 @@ extension SVEIntegerDecode {
     // MARK: G7 signed-immediate compare (0x25, called from decodeImmediate)
 
     @inline(__always)
-    static func decodeCompareSignedImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCompareSignedImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // sve_int_scmp_vi: opc = (b15:13, b4) → ge/gt/lt/le/eq/ne; imm5 signed = bits[20:16].
         let pd = zd(e), n = zn(e), g = pg3(e), size = sz(e)
         let second = (e >> 4) & 1 == 1
@@ -105,12 +95,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n),
             flagEffect: .nzcv, category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)),
-                govern(g, .zeroing),
-                vec(n, size),
-                .immediate(value: imm, width: 5),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)), govern(g, .zeroing), vec(n, size), .immediate(value: imm, width: 5)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableWrites: ScalableRegisterSet.empty.insertingPredicate(pd),
             scalableEffect: .readsStreamingMode,

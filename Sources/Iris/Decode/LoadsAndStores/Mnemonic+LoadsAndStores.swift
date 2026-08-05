@@ -639,7 +639,7 @@ extension Mnemonic {
     /// the family's slice of ``Mnemonic/name``, declared beside the
     /// constants it names so the two cannot drift. Unallocated raw
     /// values in the family's range return `"?<raw>"`.
-    static func loadsAndStoresName(_ m: Mnemonic) -> String {
+    static func loadsAndStoresName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .ldr: "ldr"
         case .str: "str"
@@ -1133,7 +1133,7 @@ extension Mnemonic {
         case .sttclrl: "sttclrl"
         case .sttset: "sttset"
         case .sttsetl: "sttsetl"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

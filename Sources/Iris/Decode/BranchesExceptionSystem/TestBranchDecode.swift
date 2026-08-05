@@ -9,7 +9,7 @@
 
 enum TestBranchDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let b5 = UInt8((encoding >> 31) & 1)
         let op = UInt8((encoding >> 24) & 1)
         let b40 = UInt8((encoding >> 19) & 0x1F)
@@ -27,11 +27,7 @@ enum TestBranchDecode {
             semanticReads: RegisterSet.empty.inserting(reg),
             branchClass: .conditional,
             category: .branchesExceptionSystem,
-            operands: [
-                .register(reg),
-                .unsignedImmediate(value: UInt64(bitPos), width: 6),
-                .label(byteOffset: byteOffset),
-            ],
+            operandCount: sink.emit(.register(reg), .unsignedImmediate(value: UInt64(bitPos), width: 6), .label(byteOffset: byteOffset)),
         )
     }
 }

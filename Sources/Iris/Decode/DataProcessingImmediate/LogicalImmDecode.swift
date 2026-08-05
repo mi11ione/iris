@@ -12,7 +12,7 @@ enum LogicalImmDecode {
     @inline(__always)
     @_optimize(speed)
     @_effects(readonly)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let opc = UInt8((encoding >> 29) & 0x3)
         let n = UInt8((encoding >> 22) & 0x1)
@@ -48,10 +48,7 @@ enum LogicalImmDecode {
                 semanticWrites: .empty,
                 flagEffect: .nzcv,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rnRef),
-                    .unsignedImmediate(value: wmask, width: regSize),
-                ],
+                operandCount: sink.emit(.register(rnRef), .unsignedImmediate(value: wmask, width: regSize)),
             )
         }
 
@@ -80,10 +77,7 @@ enum LogicalImmDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef),
-                    .immediate(value: displayValue, width: regSize),
-                ],
+                operandCount: sink.emit(.register(rdRef), .immediate(value: displayValue, width: regSize)),
             )
         }
 
@@ -106,11 +100,7 @@ enum LogicalImmDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: opc == 0b11 ? .nzcv : .none,
             category: .dataProcessingImmediate,
-            operands: [
-                .register(rdRef),
-                .register(rnRef),
-                .unsignedImmediate(value: wmask, width: regSize),
-            ],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: wmask, width: regSize)),
         )
     }
 }

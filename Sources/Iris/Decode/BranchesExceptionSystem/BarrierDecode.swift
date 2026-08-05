@@ -14,43 +14,43 @@
 
 enum BarrierDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64, CRm: UInt8, op2: UInt8) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, CRm: UInt8, op2: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         switch op2 {
         case 0b010:
-            decodeCLREX(encoding: encoding, address: address, CRm: CRm)
+            decodeCLREX(encoding: encoding, address: address, CRm: CRm, &sink)
         case 0b100:
-            decodeDSB(encoding: encoding, address: address, CRm: CRm)
+            decodeDSB(encoding: encoding, address: address, CRm: CRm, &sink)
         case 0b101:
-            decodeDMB(encoding: encoding, address: address, CRm: CRm)
+            decodeDMB(encoding: encoding, address: address, CRm: CRm, &sink)
         case 0b110:
-            decodeISB(encoding: encoding, address: address, CRm: CRm)
+            decodeISB(encoding: encoding, address: address, CRm: CRm, &sink)
         case 0b111:
             decodeSB(encoding: encoding, address: address, CRm: CRm)
         case 0b001:
-            decodeDSBnXS(encoding: encoding, address: address, CRm: CRm)
+            decodeDSBnXS(encoding: encoding, address: address, CRm: CRm, &sink)
         default:
             .undefined(at: address, encoding: encoding)
         }
     }
 
     @inline(__always)
-    private static func decodeCLREX(encoding: UInt32, address: UInt64, CRm: UInt8) -> DecodedDraft {
+    private static func decodeCLREX(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         // CLREX renders bare when CRm == 0xF; `clrex #N` otherwise.
-        var operands: [Operand] = []
+        let operandMark = sink.mark
         if CRm != 0xF {
-            operands.append(.unsignedImmediate(value: UInt64(CRm), width: 4))
+            sink.append(.unsignedImmediate(value: UInt64(CRm), width: 4))
         }
         return DecodedDraft(
             address: address,
             encoding: encoding,
             mnemonic: .clrex,
             category: .branchesExceptionSystem,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 
     @inline(__always)
-    private static func decodeDSB(encoding: UInt32, address: UInt64, CRm: UInt8) -> DecodedDraft {
+    private static func decodeDSB(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         // SSBB / PSSBB special-cases.
         if CRm == 0 {
             return DecodedDraft(
@@ -68,17 +68,17 @@ enum BarrierDecode {
                 category: .branchesExceptionSystem,
             )
         }
-        return decodeDSBOrDMB(encoding: encoding, address: address, CRm: CRm, mnemonic: .dsb)
+        return decodeDSBOrDMB(encoding: encoding, address: address, CRm: CRm, mnemonic: .dsb, &sink)
     }
 
     @inline(__always)
-    private static func decodeDMB(encoding: UInt32, address: UInt64, CRm: UInt8) -> DecodedDraft {
-        decodeDSBOrDMB(encoding: encoding, address: address, CRm: CRm, mnemonic: .dmb)
+    private static func decodeDMB(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
+        decodeDSBOrDMB(encoding: encoding, address: address, CRm: CRm, mnemonic: .dmb, &sink)
     }
 
     @inline(__always)
     private static func decodeDSBOrDMB(
-        encoding: UInt32, address: UInt64, CRm: UInt8, mnemonic: Mnemonic,
+        encoding: UInt32, address: UInt64, CRm: UInt8, mnemonic: Mnemonic, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // Named option if recognised; otherwise raw `#N`.
         if let option = BarrierOption(rawOptionBits: CRm) {
@@ -87,7 +87,7 @@ enum BarrierDecode {
                 encoding: encoding,
                 mnemonic: mnemonic,
                 category: .branchesExceptionSystem,
-                operands: [.barrierOption(option)],
+                operandCount: sink.emit(.barrierOption(option)),
             )
         }
         return DecodedDraft(
@@ -95,22 +95,22 @@ enum BarrierDecode {
             encoding: encoding,
             mnemonic: mnemonic,
             category: .branchesExceptionSystem,
-            operands: [.unsignedImmediate(value: UInt64(CRm), width: 4)],
+            operandCount: sink.emit(.unsignedImmediate(value: UInt64(CRm), width: 4)),
         )
     }
 
     @inline(__always)
-    private static func decodeISB(encoding: UInt32, address: UInt64, CRm: UInt8) -> DecodedDraft {
-        var operands: [Operand] = []
+    private static func decodeISB(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
+        let operandMark = sink.mark
         if CRm != 0xF {
-            operands.append(.unsignedImmediate(value: UInt64(CRm), width: 4))
+            sink.append(.unsignedImmediate(value: UInt64(CRm), width: 4))
         }
         return DecodedDraft(
             address: address,
             encoding: encoding,
             mnemonic: .isb,
             category: .branchesExceptionSystem,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 
@@ -126,7 +126,7 @@ enum BarrierDecode {
     }
 
     @inline(__always)
-    private static func decodeDSBnXS(encoding: UInt32, address: UInt64, CRm: UInt8) -> DecodedDraft {
+    private static func decodeDSBnXS(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         // FEAT_XS recognises CRm ∈ {2, 6, 10, 14} only — other values are
         // reserved within the op2=001 slot. The decoder still produces a
         // `.dsb` record carrying the raw CRm as an immediate operand so
@@ -147,7 +147,7 @@ enum BarrierDecode {
                 encoding: encoding,
                 mnemonic: .dsb,
                 category: .branchesExceptionSystem,
-                operands: [.unsignedImmediate(value: UInt64(CRm) | 0x10, width: 5)],
+                operandCount: sink.emit(.unsignedImmediate(value: UInt64(CRm) | 0x10, width: 5)),
             )
         default:
             .undefined(at: address, encoding: encoding)

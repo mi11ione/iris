@@ -19,18 +19,18 @@
 enum DataProc2or1SourceDecode {
     @inline(__always)
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let S = UInt8((encoding >> 29) & 0x1)
         if S != 0 { return .undefined(at: address, encoding: encoding) }
         if (encoding >> 30) & 0x1 == 0 {
-            return decode2SourceOrCRC32(encoding: encoding, address: address)
+            return decode2SourceOrCRC32(encoding: encoding, address: address, &sink)
         }
-        return decode1Source(encoding: encoding, address: address)
+        return decode1Source(encoding: encoding, address: address, &sink)
     }
 
     @inline(__always)
     @_optimize(speed)
-    private static func decode2SourceOrCRC32(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decode2SourceOrCRC32(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let Rm = UInt8((encoding >> 16) & 0x1F)
         let opc6 = UInt8((encoding >> 10) & 0x3F)
@@ -44,45 +44,45 @@ enum DataProc2or1SourceDecode {
 
         switch opc6 {
         case 0b000010:
-            return threeRegDraft(.udiv, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.udiv, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b000011:
-            return threeRegDraft(.sdiv, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.sdiv, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b001000:
-            return threeRegDraft(.lsl, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.lsl, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b001001:
-            return threeRegDraft(.lsr, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.lsr, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b001010:
-            return threeRegDraft(.asr, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.asr, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b001011:
-            return threeRegDraft(.ror, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.ror, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b010000:
-            return crcDraft(.crc32b, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32b, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         case 0b010001:
-            return crcDraft(.crc32h, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32h, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         case 0b010010:
-            return crcDraft(.crc32w, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32w, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         case 0b010011:
-            return crcDraft(.crc32x, sf: sf, requireSF: 1, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32x, sf: sf, requireSF: 1, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         case 0b010100:
-            return crcDraft(.crc32cb, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32cb, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         case 0b010101:
-            return crcDraft(.crc32ch, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32ch, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         case 0b010110:
-            return crcDraft(.crc32cw, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32cw, sf: sf, requireSF: 0, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         case 0b010111:
-            return crcDraft(.crc32cx, sf: sf, requireSF: 1, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address)
+            return crcDraft(.crc32cx, sf: sf, requireSF: 1, Rd: Rd, Rn: Rn, Rm: Rm, encoding: encoding, address: address, &sink)
         // FEAT_CSSC signed/unsigned min/max (register form). SMAX/SMIN/UMAX/
         // UMIN share the three-register shape; .smax/.smin/.umax/.umin are
         // SIMD/FP-owned mnemonics, reused here (the GPR vs vector form is
         // disambiguated by category + operand kinds, as with .lsl etc.).
         case 0b011000:
-            return threeRegDraft(.smax, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.smax, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b011001:
-            return threeRegDraft(.umax, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.umax, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b011010:
-            return threeRegDraft(.smin, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.smin, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         case 0b011011:
-            return threeRegDraft(.umin, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address)
+            return threeRegDraft(.umin, rdRef: rdRef, rnRef: rnRef, rmRef: rmRef, encoding: encoding, address: address, &sink)
         default:
             return .undefined(at: address, encoding: encoding)
         }
@@ -93,7 +93,7 @@ enum DataProc2or1SourceDecode {
     @inline(__always)
     private static func threeRegDraft(
         _ mnemonic: Mnemonic, rdRef: RegisterRef, rnRef: RegisterRef, rmRef: RegisterRef,
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         DecodedDraft(
             address: address,
@@ -103,7 +103,7 @@ enum DataProc2or1SourceDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: .none,
             category: .dataProcessingRegister,
-            operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
         )
     }
 
@@ -111,7 +111,7 @@ enum DataProc2or1SourceDecode {
     @inline(__always)
     private static func crcDraft(
         _ mnemonic: Mnemonic, sf: UInt8, requireSF: UInt8, Rd: UInt8, Rn: UInt8, Rm: UInt8,
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         if sf != requireSF { return .undefined(at: address, encoding: encoding) }
         // Rd, Rn are always Wn (32-bit accumulator + source).
@@ -129,13 +129,13 @@ enum DataProc2or1SourceDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: .none,
             category: .dataProcessingRegister,
-            operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
         )
     }
 
     @inline(__always)
     @_optimize(speed)
-    private static func decode1Source(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decode1Source(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let opcode2 = UInt8((encoding >> 16) & 0x1F)
         if opcode2 != 0 { return .undefined(at: address, encoding: encoding) }
@@ -181,7 +181,7 @@ enum DataProc2or1SourceDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: .none,
             category: .dataProcessingRegister,
-            operands: [.register(rdRef), .register(rnRef)],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef)),
         )
     }
 }

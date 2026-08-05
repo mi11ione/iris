@@ -14,7 +14,7 @@ extension SVEFloatingPointDecode {
     // MARK: G13a — FP8 convert single (bits[23:17]=0000100)
 
     @inline(__always)
-    static func decodeFP8ConvertSingle(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFP8ConvertSingle(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let odd = (e >> 16) & 1 == 1
         let mnemonic: Mnemonic = switch (e >> 10) & 0b11 {
         case 0b00: odd ? .f1cvtlt : .f1cvt
@@ -27,7 +27,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, .h), vec(n, .b)],
+            operandCount: sink.emit(vec(d, .h), vec(n, .b)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -35,7 +35,7 @@ extension SVEFloatingPointDecode {
     // MARK: G13b/G13c — pair down-converts to FP8 (bits[23:16]=0x0A)
 
     @inline(__always)
-    static func decodeFP8DownConvertPair(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFP8DownConvertPair(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bit5 is a fixed zero field below the 4-bit pair base.
         if (e >> 5) & 1 != 0 { return undefined(e, a) }
         let mnemonic: Mnemonic
@@ -60,7 +60,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: reads,
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, .b), vecPair(e, src)],
+            operandCount: sink.emit(vec(d, .b), vecPair(e, src)),
             scalableEffect: effect,
         )
     }
@@ -68,7 +68,7 @@ extension SVEFloatingPointDecode {
     // MARK: G13e — FP8 integer up-converts (bits[21:16]=001100)
 
     @inline(__always)
-    static func decodeFP8UpConvert(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFP8UpConvert(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let dest = fpSize(e) else { return undefined(e, a) }
         let src = narrowerElement(dest)
         let mnemonic: Mnemonic = switch (e >> 10) & 0b11 {
@@ -82,7 +82,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, dest), vec(n, src)],
+            operandCount: sink.emit(vec(d, dest), vec(n, src)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -90,7 +90,7 @@ extension SVEFloatingPointDecode {
     // MARK: G13d — pair int down-converts (bits[21:16]=001101, bits[15:11]=00110)
 
     @inline(__always)
-    static func decodeIntConvertPair(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIntConvertPair(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 5) & 1 != 0 { return undefined(e, a) }
         guard let src = fpSize(e) else { return undefined(e, a) }
         let dest = narrowerElement(src)
@@ -100,7 +100,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecPairMask(e),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, dest), vecPair(e, src)],
+            operandCount: sink.emit(vec(d, dest), vecPair(e, src)),
             scalableEffect: .readsStreamingMode,
         )
     }

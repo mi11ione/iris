@@ -16,13 +16,13 @@ enum CryptoExtensionDecode {
     /// encodings; callers fall through to UNDEFINED.
     @_optimize(speed)
     static func decode(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft? {
         let prefix = UInt8((encoding >> 24) & 0xFF)
         switch prefix {
-        case 0x4E: return decodeAES(encoding: encoding, address: address)
-        case 0x5E: return decodeSHA1And256(encoding: encoding, address: address)
-        case 0xCE: return decodeSHA3SHA512SM3SM4(encoding: encoding, address: address)
+        case 0x4E: return decodeAES(encoding: encoding, address: address, &sink)
+        case 0x5E: return decodeSHA1And256(encoding: encoding, address: address, &sink)
+        case 0xCE: return decodeSHA3SHA512SM3SM4(encoding: encoding, address: address, &sink)
         default: return nil
         }
     }
@@ -31,7 +31,7 @@ enum CryptoExtensionDecode {
 
     @inline(__always)
     @_optimize(speed)
-    private static func decodeAES(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeAES(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // 0100 1110 0010 1000 0 opcode4 10 Rn Rd; opcode in bits[15:12].
         // Fixed bits: [31:16] = 0100 1110 0010 1000 (= 0x4E28); [11:10] = 10.
         // (Bit 16 is part of the fixed prefix per LLVM AESBase, not part of
@@ -57,7 +57,7 @@ enum CryptoExtensionDecode {
         return DecodedDraft(
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
-            flagEffect: .none, category: .crypto, operands: [vd, vn],
+            flagEffect: .none, category: .crypto, operandCount: sink.emit(vd, vn),
         )
     }
 
@@ -65,7 +65,7 @@ enum CryptoExtensionDecode {
 
     @inline(__always)
     @_optimize(speed)
-    private static func decodeSHA1And256(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeSHA1And256(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // Three-register form: 0101 1110 000 Rm 0 op3 00 Rn Rd  (op3 = bits[14:12]).
         //   op3 = 000 → SHA1C  (Qd r/w, Sn, Vm.4S)
         //   op3 = 001 → SHA1P
@@ -94,7 +94,7 @@ enum CryptoExtensionDecode {
                     address: address, encoding: encoding, mnemonic: mnemonic,
                     semanticReads: reads, semanticWrites: writes,
                     flagEffect: .none, category: .crypto,
-                    operands: [qd, sn, vmVec],
+                    operandCount: sink.emit(qd, sn, vmVec),
                 )
             case 0b011:
                 let vd = simdfpVectorOperand(Rd, arrangement: .s4)
@@ -107,7 +107,7 @@ enum CryptoExtensionDecode {
                     address: address, encoding: encoding, mnemonic: .sha1su0,
                     semanticReads: reads, semanticWrites: writes,
                     flagEffect: .none, category: .crypto,
-                    operands: [vd, vn, vmVec],
+                    operandCount: sink.emit(vd, vn, vmVec),
                 )
             case 0b100, 0b101:
                 let mnemonic: Mnemonic = (op3 == 0b100) ? .sha256h : .sha256h2
@@ -121,7 +121,7 @@ enum CryptoExtensionDecode {
                     address: address, encoding: encoding, mnemonic: mnemonic,
                     semanticReads: reads, semanticWrites: writes,
                     flagEffect: .none, category: .crypto,
-                    operands: [qd, qn, vmVec],
+                    operandCount: sink.emit(qd, qn, vmVec),
                 )
             case 0b110:
                 let vd = simdfpVectorOperand(Rd, arrangement: .s4)
@@ -134,7 +134,7 @@ enum CryptoExtensionDecode {
                     address: address, encoding: encoding, mnemonic: .sha256su1,
                     semanticReads: reads, semanticWrites: writes,
                     flagEffect: .none, category: .crypto,
-                    operands: [vd, vn, vmVec],
+                    operandCount: sink.emit(vd, vn, vmVec),
                 )
             default: return nil
             }
@@ -157,7 +157,7 @@ enum CryptoExtensionDecode {
                     address: address, encoding: encoding, mnemonic: .sha1h,
                     semanticReads: reads, semanticWrites: writes,
                     flagEffect: .none, category: .crypto,
-                    operands: [sd, sn],
+                    operandCount: sink.emit(sd, sn),
                 )
             case 0b0001, 0b0010:
                 let mnemonic: Mnemonic = (op4 == 0b0001) ? .sha1su1 : .sha256su0
@@ -170,7 +170,7 @@ enum CryptoExtensionDecode {
                     address: address, encoding: encoding, mnemonic: mnemonic,
                     semanticReads: reads, semanticWrites: writes,
                     flagEffect: .none, category: .crypto,
-                    operands: [vd, vn],
+                    operandCount: sink.emit(vd, vn),
                 )
             default: return nil
             }
@@ -182,7 +182,7 @@ enum CryptoExtensionDecode {
 
     @inline(__always)
     @_optimize(speed)
-    private static func decodeSHA3SHA512SM3SM4(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeSHA3SHA512SM3SM4(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // Sub-discriminate by bits[24:21]:
         //   0000 / 0001 → 4-register SHA-3 (EOR3 / BCAX) at bits[15]=0
         //   0010        → SM3SS1 4-reg (bits[15]=0) OR SM3TT 3-reg+imm2 (bits[15]=1)
@@ -192,28 +192,28 @@ enum CryptoExtensionDecode {
         let bits24_21 = UInt8((encoding >> 21) & 0xF)
         switch bits24_21 {
         case 0b0000, 0b0001:
-            return decodeSHA3FourReg(encoding: encoding, address: address)
+            return decodeSHA3FourReg(encoding: encoding, address: address, &sink)
         case 0b0010:
             // SM3SS1 (bits[15]=0) vs SM3TT (bits[15]=1).
             let bit15 = (encoding >> 15) & 1
             if bit15 == 0 {
-                return decodeSM3SS1(encoding: encoding, address: address)
+                return decodeSM3SS1(encoding: encoding, address: address, &sink)
             }
             // bit15 = 1 → SM3TT family below (3-reg + imm2 form).
-            return decodeSM3TT(encoding: encoding, address: address)
+            return decodeSM3TT(encoding: encoding, address: address, &sink)
         case 0b0011:
-            return decodeThreeRegSHA512SM(encoding: encoding, address: address)
+            return decodeThreeRegSHA512SM(encoding: encoding, address: address, &sink)
         case 0b0100:
-            return decodeXAR(encoding: encoding, address: address)
+            return decodeXAR(encoding: encoding, address: address, &sink)
         case 0b0110:
-            return decodeTwoRegSHA512SM4E(encoding: encoding, address: address)
+            return decodeTwoRegSHA512SM4E(encoding: encoding, address: address, &sink)
         default:
             return nil
         }
     }
 
     @inline(__always)
-    private static func decodeSHA3FourReg(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeSHA3FourReg(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // 1100 1110 00 op0_2 Rm 0 Va Rn Rd; op0_2 selects EOR3 (00) / BCAX (01).
         // Fixed: [31:23] = 1100 1110 0; bit[15] = 0.
         if (encoding & 0xFF80_8000) != 0xCE00_0000 { return nil }
@@ -243,12 +243,12 @@ enum CryptoExtensionDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .crypto,
-            operands: [vd, vn, vm, va],
+            operandCount: sink.emit(vd, vn, vm, va),
         )
     }
 
     @inline(__always)
-    private static func decodeSM3SS1(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeSM3SS1(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // 1100 1110 010 Rm 0 Ra Rn Rd; operands Vd.4S, Vn.4S, Vm.4S, Va.4S.
         // Caller (decodeSHA3SHA512SM3SM4) routes via bits[24:21]=0b0010 AND
         // bit 15 = 0, which together fully determine the row prefix —
@@ -269,12 +269,12 @@ enum CryptoExtensionDecode {
             address: address, encoding: encoding, mnemonic: .sm3ss1,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .crypto,
-            operands: [vd, vn, vm, va],
+            operandCount: sink.emit(vd, vn, vm, va),
         )
     }
 
     @inline(__always)
-    private static func decodeSM3TT(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeSM3TT(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // 1100 1110 010 Rm 1 0 imm2 op1 Rn Rd; op1 selects 1A/1B/2A/2B.
         // Fixed: [31:21] = 1100 1110 010; bits[15:14] = 10.
         if (encoding & 0xFFE0_C000) != 0xCE40_8000 { return nil }
@@ -302,12 +302,12 @@ enum CryptoExtensionDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .crypto,
-            operands: [vd, vn, vmElement],
+            operandCount: sink.emit(vd, vn, vmElement),
         )
     }
 
     @inline(__always)
-    private static func decodeThreeRegSHA512SM(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeThreeRegSHA512SM(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // 1100 1110 011 Rm 1 op0 00 op1 Rn Rd; bits[15:10] select.
         // Fixed: [31:21] = 1100 1110 011; bits[15] = 1; bits[13:12] = 00.
         if (encoding & 0xFFE0_B000) != 0xCE60_8000 { return nil }
@@ -348,12 +348,12 @@ enum CryptoExtensionDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .crypto,
-            operands: [vd, vn, vmVec],
+            operandCount: sink.emit(vd, vn, vmVec),
         )
     }
 
     @inline(__always)
-    private static func decodeXAR(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeXAR(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // 1100 1110 100 Rm imm6 Rn Rd; operands Vd.2D, Vn.2D, Vm.2D, #imm6.
         // Caller (decodeSHA3SHA512SM3SM4) routes via bits[24:21]=0b0100,
         // which combined with the caller-guaranteed top byte 0xCE fully
@@ -372,12 +372,12 @@ enum CryptoExtensionDecode {
             address: address, encoding: encoding, mnemonic: .xar,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .crypto,
-            operands: [vd, vn, vm, .unsignedImmediate(value: UInt64(imm6), width: 6)],
+            operandCount: sink.emit(vd, vn, vm, .unsignedImmediate(value: UInt64(imm6), width: 6)),
         )
     }
 
     @inline(__always)
-    private static func decodeTwoRegSHA512SM4E(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    private static func decodeTwoRegSHA512SM4E(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // 1100 1110 110 00000 100 0 op1 Rn Rd; op1 selects SHA512SU0 (00) / SM4E (01).
         // Fixed: [31:21] = 1100 1110 110; [20:14] = 0000 010 0; [12] = 0.
         if (encoding & 0xFFFF_F000) != 0xCEC0_8000 { return nil }
@@ -400,7 +400,7 @@ enum CryptoExtensionDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .crypto,
-            operands: [vd, vn],
+            operandCount: sink.emit(vd, vn),
         )
     }
 }

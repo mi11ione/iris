@@ -14,7 +14,7 @@ extension SVEFloatingPointDecode {
     // MARK: G3 — FMLA family (0x65, bit21=1, bit15=0)
 
     @inline(__always)
-    static func decodeFMLAFamily(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFMLAFamily(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sz = (e >> 22) & 0b11
         let opc = (e >> 13) & 0b11
         let mnemonic: Mnemonic
@@ -39,7 +39,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, size), govern(g, .merging), vec(n, size), vec(m, size)],
+            operandCount: sink.emit(vec(da, size), govern(g, .merging), vec(n, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -48,7 +48,7 @@ extension SVEFloatingPointDecode {
     // MARK: G4 — FMAD family (0x65, bit21=1, bit15=1)
 
     @inline(__always)
-    static func decodeFMADFamily(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFMADFamily(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let size = fpSize(e) else { return undefined(e, a) }
         let mnemonic: Mnemonic = switch (e >> 13) & 0b11 {
         case 0b00: .fmad
@@ -61,7 +61,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn).union(vecMask(m)).union(vecMask(za)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [vec(dn, size), govern(g, .merging), vec(m, size), vec(za, size)],
+            operandCount: sink.emit(vec(dn, size), govern(g, .merging), vec(m, size), vec(za, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -70,7 +70,7 @@ extension SVEFloatingPointDecode {
     // MARK: G12 — FTMAD (0x65, bits[15:13]=100, bits[20:19]=10)
 
     @inline(__always)
-    static func decodeFTMAD(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFTMAD(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[12:10] are a fixed zero field in this class (no predicate).
         if (e >> 10) & 0b111 != 0 { return undefined(e, a) }
         guard let size = fpSize(e) else { return undefined(e, a) }
@@ -80,10 +80,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: .ftmad,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [
-                vec(dn, size), vec(dn, size), vec(m, size),
-                .unsignedImmediate(value: imm3, width: 3),
-            ],
+            operandCount: sink.emit(vec(dn, size), vec(dn, size), vec(m, size), .unsignedImmediate(value: imm3, width: 3)),
             scalableEffect: .readsStreamingMode,
         )
     }

@@ -15,7 +15,7 @@ extension SVEFloatingPointDecode {
     // MARK: G17 — FCADD (0x64, bit21=0, bits[20:16]=0000x, bits[15:13]=100)
 
     @inline(__always)
-    static func decodeFCADD(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFCADD(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[20:17] are a fixed zero field; bit16 is the rotation.
         if (e >> 17) & 0xF != 0 { return undefined(e, a) }
         guard let size = fpSize(e) else { return undefined(e, a) }
@@ -25,10 +25,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: .fcadd,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [
-                vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size),
-                .immediate(value: rotation, width: 16),
-            ],
+            operandCount: sink.emit(vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size), .immediate(value: rotation, width: 16)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -37,7 +34,7 @@ extension SVEFloatingPointDecode {
     // MARK: G17 — FCMLA vector (0x64, bit21=0, bit15=0)
 
     @inline(__always)
-    static func decodeFCMLAVector(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFCMLAVector(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let size = fpSize(e) else { return undefined(e, a) }
         let rotation = Int64((e >> 13) & 0b11) &* 90
         let da = zd(e), n = zn(e), m = zm(e), g = pg3(e)
@@ -45,10 +42,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: .fcmla,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [
-                vec(da, size), govern(g, .merging), vec(n, size), vec(m, size),
-                .immediate(value: rotation, width: 16),
-            ],
+            operandCount: sink.emit(vec(da, size), govern(g, .merging), vec(n, size), vec(m, size), .immediate(value: rotation, width: 16)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -57,7 +51,7 @@ extension SVEFloatingPointDecode {
     // MARK: G17 — FCMLA indexed (0x64, bit21=1, bits[15:12]=0001, bit23=1)
 
     @inline(__always)
-    static func decodeFCMLAIndexed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFCMLAIndexed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let rotation = Int64((e >> 10) & 0b11) &* 90
         let da = zd(e), n = zn(e)
         let size: ScalarSize
@@ -78,10 +72,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: .fcmla,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [
-                vec(da, size), vec(n, size), vecIndexed(m, size, lane: lane),
-                .immediate(value: rotation, width: 16),
-            ],
+            operandCount: sink.emit(vec(da, size), vec(n, size), vecIndexed(m, size, lane: lane), .immediate(value: rotation, width: 16)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -89,23 +80,23 @@ extension SVEFloatingPointDecode {
     // MARK: G18 — indexed FMLA/FMLS (0x64, bit21=1, bits[15:12]=0000)
 
     @inline(__always)
-    static func decodeIndexedFMA(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIndexedFMA(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let bf16 = (e >> 11) & 1 == 1
         if bf16, (e >> 23) & 1 == 1 { return undefined(e, a) } // bf16 lives in the b23=0 space
         let subtract = (e >> 10) & 1 == 1
         let mnemonic: Mnemonic = bf16
             ? (subtract ? .bfmls : .bfmla)
             : (subtract ? .fmls : .fmla)
-        return indexedMultiplyDraft(e, a, mnemonic, accumulate: true)
+        return indexedMultiplyDraft(e, a, mnemonic, accumulate: true, &sink)
     }
 
     // MARK: G18 — indexed FMUL (0x64, bit21=1, bits[15:12]=0010, bit10=0)
 
     @inline(__always)
-    static func decodeIndexedFMUL(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeIndexedFMUL(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let bf16 = (e >> 11) & 1 == 1
         if bf16, (e >> 23) & 1 == 1 { return undefined(e, a) }
-        return indexedMultiplyDraft(e, a, bf16 ? .bfmul : .fmul, accumulate: false)
+        return indexedMultiplyDraft(e, a, bf16 ? .bfmul : .fmul, accumulate: false, &sink)
     }
 
     /// Build the `<Zd>.<T>, <Zn>.<T>, <Zm>.<T>[i]` draft with the per-size
@@ -114,7 +105,7 @@ extension SVEFloatingPointDecode {
     /// bits[20:19], 3-bit Zm), bits[23:22]=11 → `.d` (index bit20, 4-bit Zm).
     @inline(__always)
     static func indexedMultiplyDraft(
-        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, accumulate: Bool,
+        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, accumulate: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let size: ScalarSize
         let m: UInt8
@@ -140,7 +131,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: reads,
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, size), vec(n, size), vecIndexed(m, size, lane: lane)],
+            operandCount: sink.emit(vec(d, size), vec(n, size), vecIndexed(m, size, lane: lane)),
             scalableEffect: .readsStreamingMode,
         )
     }

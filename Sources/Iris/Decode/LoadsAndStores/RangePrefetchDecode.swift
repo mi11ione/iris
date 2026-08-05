@@ -16,7 +16,7 @@
 
 enum RangePrefetchDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let option = UInt8((encoding >> 13) & 0x7)
         // option<1> is a fixed 1 in the RPRFM encoding.
         if (option & 0b010) == 0 {
@@ -51,11 +51,7 @@ enum RangePrefetchDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .immediate(value: Int64(prfop), width: 6),
-                .register(rmRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.immediate(value: Int64(prfop), width: 6), .register(rmRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 }

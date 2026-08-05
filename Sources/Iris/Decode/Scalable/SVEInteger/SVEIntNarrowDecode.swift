@@ -22,7 +22,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_int_addsub_narrow_high_bottom / _top
 
     @inline(__always)
-    static func decodeAddSubNarrowHigh(_ e: UInt32, _ a: UInt64, top: Bool) -> DecodedDraft {
+    static func decodeAddSubNarrowHigh(_ e: UInt32, _ a: UInt64, top: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         // The destination is one size below the source, so the sz=00 (byte
         // source) slot has nothing to narrow into and is reserved — exactly
         // the case `narrower` answers nil for.
@@ -43,7 +43,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: narrowReads(dest: d, top: top).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, dest), vec(n, source), vec(m, source)],
+            operandCount: sink.emit(vec(d, dest), vec(n, source), vec(m, source)),
             scalableEffect: narrowEffect(top: top),
         )
     }
@@ -51,7 +51,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_int_sat_extract_narrow_bottom / _top
 
     @inline(__always)
-    static func decodeSaturatingExtractNarrow(_ e: UInt32, _ a: UInt64, top: Bool) -> DecodedDraft {
+    static func decodeSaturatingExtractNarrow(_ e: UInt32, _ a: UInt64, top: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         // Size is a one-hot tsz spread over b22 (tszh) and b20:19 (tszl): 001 →
         // `.b` destination, 010 → `.h`, 100 → `.s`, each reading one size up.
         // There is no shift immediate to absorb the remaining bits, so every
@@ -79,7 +79,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: narrowReads(dest: d, top: top).union(vecMask(n)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, dest), vec(n, source)],
+            operandCount: sink.emit(vec(d, dest), vec(n, source)),
             scalableEffect: narrowEffect(top: top),
         )
     }
@@ -87,7 +87,7 @@ extension SVEIntegerDecode {
     // MARK: sve2_int_bin_shift_imm_narrow_bottom / _top
 
     @inline(__always)
-    static func decodeShiftNarrow(_ e: UInt32, _ a: UInt64, top: Bool) -> DecodedDraft {
+    static func decodeShiftNarrow(_ e: UInt32, _ a: UInt64, top: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         // tsz = b22 : b20:19 : imm3(b18:16). The highest set bit picks the
         // destination element; the remaining low bits carry the right-shift
         // amount (1…esize). A `.d` destination would need b23, which the class
@@ -119,10 +119,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: narrowReads(dest: d, top: top).union(vecMask(n)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [
-                vec(d, dest), vec(n, source),
-                .immediate(value: 2 * Int64(esize) - Int64(tsz), width: 8),
-            ],
+            operandCount: sink.emit(vec(d, dest), vec(n, source), .immediate(value: 2 * Int64(esize) - Int64(tsz), width: 8)),
             scalableEffect: narrowEffect(top: top),
         )
     }
@@ -133,7 +130,7 @@ extension SVEIntegerDecode {
     /// narrows into one destination. The register pair is consecutive and starts
     /// at an even number, so the encoding carries only its high 4 bits (b9:6).
     @inline(__always)
-    static func decodeMultiVectorExtractNarrow(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMultiVectorExtractNarrow(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic
         switch (e >> 11) & 0b11 {
         case 0b00: mnemonic = .sqcvtn
@@ -142,13 +139,13 @@ extension SVEIntegerDecode {
         default: return undefined(e, a) // 0b11 reserved
         }
         // The sub-dispatch signature pins the size: `.s` pair → `.h` destination.
-        return multiVectorNarrowDraft(e, a, mnemonic: mnemonic, dest: .h, source: .s, shift: nil)
+        return multiVectorNarrowDraft(e, a, mnemonic: mnemonic, dest: .h, source: .s, shift: nil, &sink)
     }
 
     // MARK: sve2p1_multi_vec_shift_narrow — SQSHRN / UQRSHRN / … (pair → one, with shift)
 
     @inline(__always)
-    static func decodeMultiVectorShiftNarrow(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMultiVectorShiftNarrow(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // tsz = b20:19 : imm3 — the five-bit field with no tszHigh caps the
         // destination at `.h`, so only `.b` and `.h` encode.
         guard let (dest, esize, tsz) = decodeTsz(tszHigh: 0, low: (e >> 16) & 0b11111, lowBits: 5)
@@ -166,7 +163,7 @@ extension SVEIntegerDecode {
         }
         return multiVectorNarrowDraft(
             e, a, mnemonic: mnemonic, dest: dest, source: source,
-            shift: 2 * Int64(esize) - Int64(tsz),
+            shift: 2 * Int64(esize) - Int64(tsz), &sink,
         )
     }
 
@@ -176,18 +173,19 @@ extension SVEIntegerDecode {
     @inline(__always)
     static func multiVectorNarrowDraft(
         _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic,
-        dest: ScalarSize, source: ScalarSize, shift: Int64?,
+        dest: ScalarSize, source: ScalarSize, shift: Int64?, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let d = zd(e)
         let first = UInt8((e >> 6) & 0b1111) << 1
         let group = ScalableVectorGroup(firstIndex: first, count: 2, element: source, layout: .consecutive)
-        var operands: [Operand] = [vec(d, dest), .scalableVectorGroup(group)]
-        if let shift { operands.append(.immediate(value: shift, width: 8)) }
+        let operandMark = sink.mark
+        _ = sink.emit(vec(d, dest), .scalableVectorGroup(group))
+        if let shift { sink.append(.immediate(value: shift, width: 8)) }
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(group.memberIndex(0)).union(vecMask(group.memberIndex(1))),
             semanticWrites: vecMask(d), category: .sve,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
             scalableEffect: .readsStreamingMode,
         )
     }

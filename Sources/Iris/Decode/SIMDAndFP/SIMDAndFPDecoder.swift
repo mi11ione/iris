@@ -30,13 +30,17 @@ struct SIMDAndFPDecoder: FamilyDecoder {
 
     init() {}
 
+    var tag: FamilyTag {
+        .simdAndFP
+    }
+
     var op0Values: Set<UInt8> {
         Self.simdfpOp0Values
     }
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features _: Features,
+        encoding: UInt32, address: UInt64, features _: Features, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // The dispatcher's op0-slab routing guarantees op0 ∈ {0x7, 0xF};
         // V=1 loads/stores at op0 ∈ {0x4, 0x6, 0xC, 0xE} arrive through
@@ -46,7 +50,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         // returns nil for non-crypto encodings, letting the SIMD/FP
         // dispatch below run unchanged.
         if let cryptoDraft = CryptoExtensionDecode.decode(
-            encoding: encoding, address: address,
+            encoding: encoding, address: address, &sink,
         ) {
             return cryptoDraft
         }
@@ -63,9 +67,9 @@ struct SIMDAndFPDecoder: FamilyDecoder {
                 return .undefined(at: address, encoding: encoding)
             }
             if (encoding >> 24) & 1 == 0 {
-                return dispatchFPScalar0x1E(encoding: encoding, address: address)
+                return dispatchFPScalar0x1E(encoding: encoding, address: address, &sink)
             }
-            return FPDataProcessing3SourceDecode.decode(encoding: encoding, address: address)
+            return FPDataProcessing3SourceDecode.decode(encoding: encoding, address: address, &sink)
         }
         // AdvSIMD encoding sub-tree. bits[31:24] high nibble selects:
         //   0x0E / 0x2E / 0x4E / 0x6E — vector tier with bit[24]=0
@@ -90,13 +94,13 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         }
         switch bits31_24 & 0b1001_1111 {
         case 0b0000_1110: // 0x0E / 0x2E / 0x4E / 0x6E — vector arithmetic
-            return dispatchAdvSIMDVector0xX_E(encoding: encoding, address: address)
+            return dispatchAdvSIMDVector0xX_E(encoding: encoding, address: address, &sink)
         case 0b0000_1111: // 0x0F / 0x2F / 0x4F / 0x6F — vector immediate/shift/indexed
-            return dispatchAdvSIMDVector0xX_F(encoding: encoding, address: address)
+            return dispatchAdvSIMDVector0xX_F(encoding: encoding, address: address, &sink)
         case 0b0001_1110: // 0x5E / 0x7E — scalar arithmetic
-            return dispatchAdvSIMDScalar0xX_E(encoding: encoding, address: address)
+            return dispatchAdvSIMDScalar0xX_E(encoding: encoding, address: address, &sink)
         default: // 0b0001_1111 — 0x5F / 0x7F — scalar shift/indexed
-            return dispatchAdvSIMDScalar0xX_F(encoding: encoding, address: address)
+            return dispatchAdvSIMDScalar0xX_F(encoding: encoding, address: address, &sink)
         }
     }
 
@@ -106,13 +110,13 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     @inline(__always)
     @_optimize(speed)
     private func dispatchAdvSIMDVector0xX_E(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let bit21 = (encoding >> 21) & 1
         if bit21 == 1 {
-            return dispatchVectorThreeArg(encoding: encoding, address: address)
+            return dispatchVectorThreeArg(encoding: encoding, address: address, &sink)
         }
-        return dispatchVectorNonThreeArg(encoding: encoding, address: address)
+        return dispatchVectorNonThreeArg(encoding: encoding, address: address, &sink)
     }
 
     /// Three-arg vector classes (three-same / three-different / two-reg-misc
@@ -120,18 +124,18 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     @inline(__always)
     @_optimize(speed)
     private func dispatchVectorThreeArg(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let bit10 = (encoding >> 10) & 1
         let bit11 = (encoding >> 11) & 1
         if bit10 == 1 {
             // Three-same (vector).
-            return AdvSIMDThreeSameDecode.decode(encoding: encoding, address: address)
+            return AdvSIMDThreeSameDecode.decode(encoding: encoding, address: address, &sink)
         }
         // bit[10] = 0 — three-different / two-reg-misc / across-lanes.
         if bit11 == 0 {
             // Three-different has bits[11:10] = 00.
-            return AdvSIMDThreeDifferentDecode.decode(encoding: encoding, address: address)
+            return AdvSIMDThreeDifferentDecode.decode(encoding: encoding, address: address, &sink)
         }
         // bits[11:10] = 10 — two-reg-misc or across-lanes; discriminate by
         // bits[20:17] (the next-after-bit[21] discriminator within
@@ -139,14 +143,14 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         // = 0000; across-lanes has bits[21:17] = 11000 ⇒ bits[20:17] = 1000.
         let bits20_17 = UInt8((encoding >> 17) & 0xF)
         if bits20_17 == 0b0000 {
-            return AdvSIMDTwoRegMiscDecode.decode(encoding: encoding, address: address)
+            return AdvSIMDTwoRegMiscDecode.decode(encoding: encoding, address: address, &sink)
         }
         if bits20_17 == 0b1000 {
-            return AdvSIMDAcrossLanesDecode.decode(encoding: encoding, address: address)
+            return AdvSIMDAcrossLanesDecode.decode(encoding: encoding, address: address, &sink)
         }
         // FP16 two-reg-misc has bits[21:17] = 11100 ⇒ bits[20:17] = 1100.
         if bits20_17 == 0b1100 {
-            return AdvSIMDTwoRegMiscDecode.decodeFP16TwoRegMisc(encoding: encoding, address: address)
+            return AdvSIMDTwoRegMiscDecode.decodeFP16TwoRegMisc(encoding: encoding, address: address, &sink)
         }
         return .undefined(at: address, encoding: encoding)
     }
@@ -161,7 +165,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     @inline(__always)
     @_optimize(speed)
     private func dispatchVectorNonThreeArg(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let bit15 = (encoding >> 15) & 1
         let bit10 = (encoding >> 10) & 1
@@ -170,7 +174,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
             // Three-reg-extension (DOT/MMLA family) — bit[21]=0,
             // bit[15]=1, bit[10]=1.
             return AdvSIMDThreeRegExtensionDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         if bit15 == 0, bit10 == 1 {
@@ -179,10 +183,10 @@ struct SIMDAndFPDecoder: FamilyDecoder {
             //   (half-precision arithmetic); 10 → reserved.
             let bit22 = (encoding >> 22) & 1
             if bit22 == 1 {
-                return AdvSIMDThreeSameFP16Decode.decode(encoding: encoding, address: address)
+                return AdvSIMDThreeSameFP16Decode.decode(encoding: encoding, address: address, &sink)
             }
             if (encoding >> 23) & 1 == 0 {
-                return AdvSIMDCopyDecode.decode(encoding: encoding, address: address)
+                return AdvSIMDCopyDecode.decode(encoding: encoding, address: address, &sink)
             }
             return .undefined(at: address, encoding: encoding)
         }
@@ -190,18 +194,18 @@ struct SIMDAndFPDecoder: FamilyDecoder {
             let bit29 = (encoding >> 29) & 1
             if bit29 == 1 {
                 // EXT (bits[29:28] = 10). bit[11] is imm4[0] — variable.
-                return AdvSIMDExtractDecode.decode(encoding: encoding, address: address)
+                return AdvSIMDExtractDecode.decode(encoding: encoding, address: address, &sink)
             }
             // bits[29:28] = 00 (TBL/TBX, LUTI, or permute).
             if bit11 == 0 {
                 // size (bits[23:22]) = 00 is TBL/TBX; non-zero is FEAT_LUT.
                 if (encoding >> 22) & 0x3 == 0 {
-                    return AdvSIMDTableLookupDecode.decode(encoding: encoding, address: address)
+                    return AdvSIMDTableLookupDecode.decode(encoding: encoding, address: address, &sink)
                 }
-                return AdvSIMDLUTDecode.decode(encoding: encoding, address: address)
+                return AdvSIMDLUTDecode.decode(encoding: encoding, address: address, &sink)
             }
             // Permute (bits[11:10] = 10).
-            return AdvSIMDPermuteDecode.decode(encoding: encoding, address: address)
+            return AdvSIMDPermuteDecode.decode(encoding: encoding, address: address, &sink)
         }
         return .undefined(at: address, encoding: encoding)
     }
@@ -212,7 +216,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     @inline(__always)
     @_optimize(speed)
     private func dispatchAdvSIMDVector0xX_F(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // bit[10] is the primary discriminator: x-indexed-element has
         // bit[10]=0; modified-immediate and shift-by-immediate both have
@@ -222,17 +226,17 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         let bit10 = (encoding >> 10) & 1
         if bit10 == 0 {
             return AdvSIMDVectorXIndexedElementDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         // bit[10]=1: modified-immediate has immh (bits[23:19]) == 00000;
         // shift-by-immediate has immh != 0 (size from immh's first-set-bit).
         let bits23_19 = (encoding >> 19) & 0x1F
         if bits23_19 == 0 {
-            return AdvSIMDModifiedImmediateDecode.decode(encoding: encoding, address: address)
+            return AdvSIMDModifiedImmediateDecode.decode(encoding: encoding, address: address, &sink)
         }
         return AdvSIMDShiftByImmediateDecode.decode(
-            encoding: encoding, address: address,
+            encoding: encoding, address: address, &sink,
         )
     }
 
@@ -241,7 +245,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     @inline(__always)
     @_optimize(speed)
     private func dispatchAdvSIMDScalar0xX_E(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let bit21 = (encoding >> 21) & 1
         if bit21 == 0 {
@@ -251,15 +255,15 @@ struct SIMDAndFPDecoder: FamilyDecoder {
             let bit22 = (encoding >> 22) & 1
             // Scalar three-same FP16: bit22=1, bits[15:14]=00, bit10=1.
             if bit10 == 1, bit22 == 1, bit15 == 0, bit14 == 0 {
-                return AdvSIMDScalarThreeSameFP16Decode.decode(encoding: encoding, address: address)
+                return AdvSIMDScalarThreeSameFP16Decode.decode(encoding: encoding, address: address, &sink)
             }
             // Scalar three-same-extra (RDM sqrdmlah/sqrdmlsh): bit15=1, bit10=1.
             if bit10 == 1, bit15 == 1 {
-                return AdvSIMDScalarThreeSameFP16Decode.decodeRDM(encoding: encoding, address: address)
+                return AdvSIMDScalarThreeSameFP16Decode.decodeRDM(encoding: encoding, address: address, &sink)
             }
             // Scalar copy (DUP element): U=0, bits[23:21]=000, bit15=0, bit10=1.
             if (encoding >> 29) & 1 == 0, (encoding >> 21) & 0x7 == 0, bit15 == 0, bit10 == 1 {
-                return AdvSIMDScalarCopyDecode.decode(encoding: encoding, address: address)
+                return AdvSIMDScalarCopyDecode.decode(encoding: encoding, address: address, &sink)
             }
             return .undefined(at: address, encoding: encoding)
         }
@@ -268,12 +272,12 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         let bit11 = (encoding >> 11) & 1
         if bit10 == 1 {
             return AdvSIMDScalarThreeSameDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         if bit11 == 0 {
             return AdvSIMDScalarThreeDifferentDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         // bits[11:10] = 10 — scalar two-reg-misc or pairwise. Same
@@ -282,17 +286,17 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         let bits20_17 = (encoding >> 17) & 0xF
         if bits20_17 == 0b0000 {
             return AdvSIMDScalarTwoRegMiscDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         if bits20_17 == 0b1000 {
             return AdvSIMDScalarPairwiseDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         // Scalar FP16 two-reg-misc has bits[21:17] = 11100 ⇒ bits[20:17] = 1100.
         if bits20_17 == 0b1100 {
-            return AdvSIMDScalarTwoRegMiscDecode.decodeFP16(encoding: encoding, address: address)
+            return AdvSIMDScalarTwoRegMiscDecode.decodeFP16(encoding: encoding, address: address, &sink)
         }
         return .undefined(at: address, encoding: encoding)
     }
@@ -307,16 +311,16 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     @inline(__always)
     @_optimize(speed)
     private func dispatchAdvSIMDScalar0xX_F(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let bit10 = (encoding >> 10) & 1
         if bit10 == 1 {
             return AdvSIMDScalarShiftByImmediateDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         return AdvSIMDScalarXIndexedElementDecode.decode(
-            encoding: encoding, address: address,
+            encoding: encoding, address: address, &sink,
         )
     }
 
@@ -326,14 +330,14 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     @inline(__always)
     @_optimize(speed)
     private func dispatchFPScalar0x1E(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let bit21 = (encoding >> 21) & 1
         if bit21 == 0 {
             // FP fixed-point conversion sub-class (bit[21] = 0 within
             // bits[31:24] = 0x1E).
             return FPFixedPointConversionDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         // bit[21] = 1 — one of: FP DP 1-source / 2-source / compare /
@@ -347,7 +351,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         // the bit[31]=0 guard below. bit15=1 here is reserved (UNDEFINED).
         if (encoding >> 10) & 0x3F == 0b000000 {
             return FPIntegerConversionDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         // Every remaining FP-DP scalar form (1-source / 2-source / compare /
@@ -358,7 +362,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         }
         if bits14_10 == 0b10000 {
             return FPDataProcessing1SourceDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
         let bits11_10 = UInt8(bits14_10 & 0x3)
@@ -368,25 +372,25 @@ struct SIMDAndFPDecoder: FamilyDecoder {
             // bits[12:10] = 100. Discriminate by bit[12].
             let bit12 = (encoding >> 12) & 1
             if bit12 == 1 {
-                return FPImmediateDecode.decode(encoding: encoding, address: address)
+                return FPImmediateDecode.decode(encoding: encoding, address: address, &sink)
             }
             // Otherwise: must match the FP-compare bits[15:10] == 001000.
             if (encoding >> 10) & 0x3F == 0b001000 {
-                return FPCompareDecode.decode(encoding: encoding, address: address)
+                return FPCompareDecode.decode(encoding: encoding, address: address, &sink)
             }
             return .undefined(at: address, encoding: encoding)
         case 0b01:
             return FPConditionalCompareDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case 0b10:
             return FPDataProcessing2SourceDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         default:
             // bits11_10 == 0b11 — only remaining 2-bit pair.
             return FPConditionalSelectDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
     }
@@ -405,7 +409,7 @@ struct SIMDAndFPDecoder: FamilyDecoder {
     /// values at V=1 are architecturally reserved → UNDEFINED.
     @_optimize(speed)
     static func decodeVectorLoadStore(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // Sub-class dispatch mirrors the L/S top-level dispatch from
         // `LoadsAndStoresDecoder` for V=1 encodings only. bits[29:24]
@@ -418,39 +422,39 @@ struct SIMDAndFPDecoder: FamilyDecoder {
         case 0b001100:
             // AdvSIMD multi-structure (no-offset / post-indexed).
             return AdvSIMDLoadStoreMultipleStructuresDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case 0b001101:
             // AdvSIMD single-structure (no-offset / post-indexed).
             return AdvSIMDLoadStoreSingleStructureDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case 0b011100:
             // Scalar SIMD LDR-literal (PC-relative). V=1 sets bit[26].
             return ScalarSIMDLoadLiteralDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case 0b011101:
             // Scalar SIMD LRCPC2 STLUR/LDAPUR (unscaled, acquire/release).
-            return ScalarSIMDLRCPC2Decode.decode(encoding: encoding, address: address)
+            return ScalarSIMDLRCPC2Decode.decode(encoding: encoding, address: address, &sink)
         case 0b101100, 0b101101:
             // Scalar SIMD pair (LDP/STP/LDNP/STNP) — V=1 with the four
             // bits[25:24] indexing variants (no-allocate / post / signed /
             // pre).
             return ScalarSIMDLoadStorePairDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case 0b111100:
             // Scalar SIMD indexed / unscaled / register-offset / pre-/post-.
             return ScalarSIMDLoadStoreIndexedDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         default:
             // 0b111101 (scalar SIMD unsigned-offset) — V=1 means op0 ∈
             // {6, E}, so bits[29:24] ranges over exactly the eight values
             // enumerated in this switch.
             return ScalarSIMDLoadStoreUnsignedOffsetDecode.decode(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
     }

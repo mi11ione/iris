@@ -12,7 +12,7 @@
 
 enum AdvSIMDTableLookupDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let Rm = UInt8((encoding >> 16) & 0x1F)
         let len = UInt8((encoding >> 13) & 0x3)
@@ -26,20 +26,19 @@ enum AdvSIMDTableLookupDecode {
         let dstArrangement: VectorArrangement = Q == 1 ? .b16 : .b8
 
         let tableSize = Int(len) + 1
-        var operands: [Operand] = []
-        operands.reserveCapacity(2 + tableSize)
+        let operandMark = sink.mark
         // Result (operand[0]).
-        operands.append(simdfpVectorOperand(Rd, arrangement: dstArrangement))
+        sink.append(simdfpVectorOperand(Rd, arrangement: dstArrangement))
         // Table list (operands[1..tableSize]); always .b16 arrangement
         // for table lanes regardless of Q (one whole vector each).
         var reads: RegisterSet = .empty
         for i in 0 ..< tableSize {
             let r = (Rn &+ UInt8(i)) & 0x1F
-            operands.append(simdfpVectorOperand(r, arrangement: .b16))
+            sink.append(simdfpVectorOperand(r, arrangement: .b16))
             reads = simdfpInsertingVector(r, into: reads)
         }
         // Index (last operand).
-        operands.append(simdfpVectorOperand(Rm, arrangement: dstArrangement))
+        sink.append(simdfpVectorOperand(Rm, arrangement: dstArrangement))
         reads = simdfpInsertingVector(Rm, into: reads)
 
         // TBX is destructive on Rd (preserves Rd lanes for out-of-range
@@ -55,7 +54,7 @@ enum AdvSIMDTableLookupDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 }

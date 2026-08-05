@@ -19,14 +19,14 @@ enum SVEPermuteMemoryDecode {
     /// Decode an in-scope SVE permute/memory/crypto word. Precondition (by
     /// construction, not asserted): `isSVEPermuteMemoryCryptoEncoding(e)`.
     @_optimize(speed)
-    static func decode(encoding e: UInt32, address a: UInt64) -> DecodedDraft {
+    static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if e & 0x8000_0000 != 0 {
-            return decodeMemory(e, a)
+            return decodeMemory(e, a, &sink)
         }
         switch (e >> 24) & 0xFF {
-        case 0x05: return decodePermute(e, a)
-        case 0x44: return decodeQuadwordPermute(e, a) // TBLQ/UZPQ/ZIPQ
-        default: return decodeCrypto(e, a) // 0x45 crypto / LUT
+        case 0x05: return decodePermute(e, a, &sink)
+        case 0x44: return decodeQuadwordPermute(e, a, &sink) // TBLQ/UZPQ/ZIPQ
+        default: return decodeCrypto(e, a, &sink) // 0x45 crypto / LUT
         }
     }
 

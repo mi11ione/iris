@@ -104,8 +104,26 @@ extension Mnemonic: CustomStringConvertible {
     ///
     /// O(1): a range dispatch (the ``allocations`` table's ranges, made
     /// executable) into a per-family table of static literals declared
-    /// beside each family's constants — no allocation on named paths.
+    /// beside each family's constants.
+    ///
+    /// Derived from ``nameBytes`` so there is one table, not two: the
+    /// spelling lives in exactly one place and a `String` view of it cannot
+    /// drift from the bytes the disassembler emits. Every mnemonic is short
+    /// enough for the storage `String` keeps inline, so this constructs no
+    /// heap object on a named path.
     public var name: String {
+        guard let bytes = nameBytes else { return "?\(rawValue)" }
+        return bytes.withUTF8Buffer { String(decoding: $0, as: UTF8.self) }
+    }
+
+    /// The mnemonic's canonical spelling as a compile-time literal, or
+    /// `nil` for a raw value with no declared constant.
+    ///
+    /// `StaticString` is a pointer and a length, not a heap object, so the
+    /// byte path appends one with no allocation, no reference counting and
+    /// no conversion — where a `String` return had to be walked through
+    /// `withUTF8` on every instruction.
+    var nameBytes: StaticString? {
         switch rawValue {
         case 0 ... 255: Mnemonic.sentinelName(self)
         case 256 ... 1023: Mnemonic.dataProcessingImmediateName(self)
@@ -124,7 +142,7 @@ extension Mnemonic: CustomStringConvertible {
         case 16684 ... 16801: SVEPermuteMemoryCanonicalizer.name(self)
         case 28672 ... 28688: SMECanonicalizer.name(self)
         case 28689 ... 28739: SME2Canonicalizer.name(self)
-        default: "?\(rawValue)"
+        default: nil
         }
     }
 
@@ -136,13 +154,13 @@ extension Mnemonic: CustomStringConvertible {
 
     /// Names for the sentinel range (0...255): the three decoder
     /// sentinels plus UDF, the range's one real mnemonic.
-    static func sentinelName(_ m: Mnemonic) -> String {
+    static func sentinelName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .undefined: "undefined"
         case .dataMarker: "data"
         case .truncatedTail: "truncated"
         case .udf: "udf"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

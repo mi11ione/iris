@@ -9,7 +9,7 @@
 
 enum FPConditionalCompareDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let ftype = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
         let cond = UInt8((encoding >> 12) & 0xF)
@@ -40,12 +40,7 @@ enum FPConditionalCompareDecode {
             memoryOrdering: [],
             flagEffect: [.nzcv, .readsNZCV],
             category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rn, size: size),
-                simdfpScalarOperand(Rm, size: size),
-                .unsignedImmediate(value: nzcv, width: 4),
-                .conditionCode(cc),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rn, size: size), simdfpScalarOperand(Rm, size: size), .unsignedImmediate(value: nzcv, width: 4), .conditionCode(cc)),
         )
     }
 }

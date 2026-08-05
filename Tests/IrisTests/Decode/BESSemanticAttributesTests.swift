@@ -186,17 +186,17 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func firstRegisterMaskFromOperandList() {
-        let ops: [Operand] = [.unsignedImmediate(value: 1, width: 4), .register(.x(5)), .register(.x(7))]
+        let ops: Instruction.Operands = [.unsignedImmediate(value: 1, width: 4), .register(.x(5)), .register(.x(7))]
         #expect(BESSemanticAttributes.firstRegisterMask(ops) == (UInt64(1) << 5))
     }
 
     @Test func firstRegisterMaskAbsent() {
-        let ops: [Operand] = [.unsignedImmediate(value: 1, width: 4)]
+        let ops: Instruction.Operands = [.unsignedImmediate(value: 1, width: 4)]
         #expect(BESSemanticAttributes.firstRegisterMask(ops) == nil)
     }
 
     @Test func lastRegisterMaskFromOperandList() {
-        let ops: [Operand] = [.register(.x(3)), .unsignedImmediate(value: 1, width: 4), .register(.x(9))]
+        let ops: Instruction.Operands = [.register(.x(3)), .unsignedImmediate(value: 1, width: 4), .register(.x(9))]
         #expect(BESSemanticAttributes.lastRegisterMask(ops) == (UInt64(1) << 9))
     }
 
@@ -205,13 +205,13 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func firstTwoRegistersMask() {
-        let ops: [Operand] = [.register(.x(2)), .register(.x(5)), .register(.x(7))]
+        let ops: Instruction.Operands = [.register(.x(2)), .register(.x(5)), .register(.x(7))]
         let mask = BESSemanticAttributes.firstTwoRegistersMask(ops)
         #expect(mask == ((UInt64(1) << 2) | (UInt64(1) << 5)))
     }
 
     @Test func firstTwoRegistersMaskWithOnlyOne() {
-        let ops: [Operand] = [.register(.x(2)), .unsignedImmediate(value: 1, width: 4)]
+        let ops: Instruction.Operands = [.register(.x(2)), .unsignedImmediate(value: 1, width: 4)]
         let mask = BESSemanticAttributes.firstTwoRegistersMask(ops)
         #expect(mask == (UInt64(1) << 2))
     }

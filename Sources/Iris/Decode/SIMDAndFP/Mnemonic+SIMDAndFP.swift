@@ -404,7 +404,7 @@ extension Mnemonic {
     /// the family's slice of ``Mnemonic/name``, declared beside the
     /// constants it names so the two cannot drift. Unallocated raw
     /// values in the family's range return `"?<raw>"`.
-    static func simdAndFPName(_ m: Mnemonic) -> String {
+    static func simdAndFPName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .sqadd: "sqadd"
         case .uqadd: "uqadd"
@@ -719,7 +719,7 @@ extension Mnemonic {
         case .bf2cvtl2: "bf2cvtl2"
         case .ldap1: "ldap1"
         case .stl1: "stl1"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

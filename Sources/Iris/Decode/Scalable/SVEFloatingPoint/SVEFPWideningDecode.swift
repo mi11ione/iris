@@ -16,7 +16,7 @@ extension SVEFloatingPointDecode {
     // MARK: G19a — widening MLA vector (bits[15:14]=10, bits[12:11]=00, bit23=1)
 
     @inline(__always)
-    static func decodeWideningMLA(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeWideningMLA(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let bf16 = (e >> 22) & 1 == 1
         let subtract = (e >> 13) & 1 == 1
         let top = (e >> 10) & 1 == 1
@@ -28,7 +28,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, .s), vec(n, .h), vec(m, .h)],
+            operandCount: sink.emit(vec(da, .s), vec(n, .h), vec(m, .h)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -36,7 +36,7 @@ extension SVEFloatingPointDecode {
     // MARK: G19b — widening MLA indexed (bit23=1, bit15=0, bit14=1, bit12=0)
 
     @inline(__always)
-    static func decodeWideningMLAIndexed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeWideningMLAIndexed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let bf16 = (e >> 22) & 1 == 1
         let subtract = (e >> 13) & 1 == 1
         let top = (e >> 10) & 1 == 1
@@ -51,7 +51,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, .s), vec(n, .h), vecIndexed(m, .h, lane: lane)],
+            operandCount: sink.emit(vec(da, .s), vec(n, .h), vecIndexed(m, .h, lane: lane)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -59,7 +59,7 @@ extension SVEFloatingPointDecode {
     // MARK: G20a — dot products, vector (bit23=0, bits[15:11]=10000)
 
     @inline(__always)
-    static func decodeDot(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeDot(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let bf16Source = (e >> 22) & 1 == 1
         let mnemonic: Mnemonic
         let dest: ScalarSize
@@ -80,7 +80,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, dest), vec(n, src), vec(m, src)],
+            operandCount: sink.emit(vec(da, dest), vec(n, src), vec(m, src)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -88,7 +88,7 @@ extension SVEFloatingPointDecode {
     // MARK: G20b — dot products, indexed (bit23=0, bits[15:10]=010000)
 
     @inline(__always)
-    static func decodeDotIndexed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeDotIndexed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic = (e >> 22) & 1 == 1 ? .bfdot : .fdot
         let lane = UInt8((e >> 19) & 0b11)
         let da = zd(e), n = zn(e)
@@ -97,7 +97,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, .s), vec(n, .h), vecIndexed(m, .h, lane: lane)],
+            operandCount: sink.emit(vec(da, .s), vec(n, .h), vecIndexed(m, .h, lane: lane)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -105,7 +105,7 @@ extension SVEFloatingPointDecode {
     // MARK: G20c — FP8 dot indexed (bit23=0, bits[15:12]=0100, bit10=1)
 
     @inline(__always)
-    static func decodeFP8DotIndexed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFP8DotIndexed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let dest: ScalarSize
         let lane: UInt8
         if (e >> 22) & 1 == 1 {
@@ -125,7 +125,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: .fdot,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, dest), vec(n, .b), vecIndexed(m, .b, lane: lane)],
+            operandCount: sink.emit(vec(da, dest), vec(n, .b), vecIndexed(m, .b, lane: lane)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -133,7 +133,7 @@ extension SVEFloatingPointDecode {
     // MARK: G21a — FP8 MLA vector (bit22=0, bits[15:14]=10, bits[11:10]=10)
 
     @inline(__always)
-    static func decodeFP8MLA(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFP8MLA(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic
         let dest: ScalarSize
         if (e >> 23) & 1 == 1 {
@@ -156,7 +156,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, dest), vec(n, .b), vec(m, .b)],
+            operandCount: sink.emit(vec(da, dest), vec(n, .b), vec(m, .b)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -164,29 +164,29 @@ extension SVEFloatingPointDecode {
     // MARK: G21b — FP8 long MLA indexed (bit22=0, bits[15:12]=0101)
 
     @inline(__always)
-    static func decodeFP8LongIndexed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFP8LongIndexed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic = (e >> 23) & 1 == 0 ? .fmlalb : .fmlalt
-        return fp8IndexedDraft(e, a, mnemonic, dest: .h)
+        return fp8IndexedDraft(e, a, mnemonic, dest: .h, &sink)
     }
 
     // MARK: G21c — FP8 long-long MLA indexed (bits[15:12]=1100)
 
     @inline(__always)
-    static func decodeFP8LongLongIndexed(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFP8LongLongIndexed(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic = switch (e >> 22) & 0b11 {
         case 0b00: .fmlallbb
         case 0b01: .fmlallbt
         case 0b10: .fmlalltb
         default: .fmlalltt
         }
-        return fp8IndexedDraft(e, a, mnemonic, dest: .s)
+        return fp8IndexedDraft(e, a, mnemonic, dest: .s, &sink)
     }
 
     /// The FP8 indexed multiply-add shape: byte sources, a 4-bit element
     /// index packed as bits[20:19]:bits[11:10], and a 3-bit Zm.
     @inline(__always)
     static func fp8IndexedDraft(
-        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, dest: ScalarSize,
+        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, dest: ScalarSize, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let laneBits: UInt32 = ((e >> 17) & 0b1100) | ((e >> 10) & 0b0011)
         let lane = UInt8(laneBits)
@@ -196,7 +196,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, dest), vec(n, .b), vecIndexed(m, .b, lane: lane)],
+            operandCount: sink.emit(vec(da, dest), vec(n, .b), vecIndexed(m, .b, lane: lane)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -204,7 +204,7 @@ extension SVEFloatingPointDecode {
     // MARK: G21d/G22 — matrix MLA (bit21=1, bits[15:11]=11100)
 
     @inline(__always)
-    static func decodeMatrixMLA(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeMatrixMLA(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // One eight-slot table over (bits[23:22], bit10) spanning the FP8,
         // widening, and same-size matrix forms.
         let key = ((e >> 21) & 0b110) | ((e >> 10) & 0b001)
@@ -226,7 +226,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(da).union(vecMask(n)).union(vecMask(m)),
             semanticWrites: vecMask(da), category: .sve,
-            operands: [vec(da, dest), vec(n, src), vec(m, src)],
+            operandCount: sink.emit(vec(da, dest), vec(n, src), vec(m, src)),
             scalableEffect: .readsStreamingMode,
         )
     }

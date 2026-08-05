@@ -91,7 +91,7 @@ public enum SVEIntegerSemanticChecker {
         // its predicate bits — is what makes "no SVE-integer form touches FFR, ZA or
         // ZT0" a checked property rather than a claim: any other bit set
         // in either set makes the comparison fail.
-        let expPredW = SVEIntegerSemanticAttributes.expectedPredicateWrites(Array(Array(draft.operands)))
+        let expPredW = SVEIntegerSemanticAttributes.expectedPredicateWrites(draft.operands)
         if draft.scalableWrites != ScalableRegisterSet(bits: UInt64(expPredW)) {
             return SVEIntSemanticIssue(
                 field: "predicateWrites",
@@ -99,7 +99,7 @@ public enum SVEIntegerSemanticChecker {
                 expected: "0x\(String(expPredW, radix: 16))",
             )
         }
-        let expPredR = SVEIntegerSemanticAttributes.expectedPredicateReads(Array(Array(draft.operands)))
+        let expPredR = SVEIntegerSemanticAttributes.expectedPredicateReads(draft.operands)
         if draft.scalableReads != ScalableRegisterSet(bits: UInt64(expPredR)) {
             return SVEIntSemanticIssue(
                 field: "predicateReads",
@@ -154,7 +154,7 @@ public enum SVEIntegerSemanticAttributes {
     @_effects(readonly)
     public static func expectedScalableEffect(for draft: Instruction) -> ScalableEffect {
         var effect: ScalableEffect = .readsStreamingMode
-        if hasMergingGoverning(Array(Array(draft.operands))) || preservesDestination(draft.mnemonic) {
+        if hasMergingGoverning(draft.operands) || preservesDestination(draft.mnemonic) {
             effect.insert(.partialWrite)
         }
         return effect
@@ -216,7 +216,7 @@ public enum SVEIntegerSemanticAttributes {
     /// The result-role predicate operands — only the compares and MATCH/NMATCH
     /// write a predicate.
     @_effects(readonly)
-    public static func expectedPredicateWrites(_ ops: [Operand]) -> UInt16 {
+    public static func expectedPredicateWrites(_ ops: Instruction.Operands) -> UInt16 {
         var mask: UInt16 = 0
         for op in ops {
             if case let .scalablePredicate(p) = op, p.role == .result {
@@ -234,7 +234,7 @@ public enum SVEIntegerSemanticAttributes {
     /// MATCH/NMATCH — are all `/Z`), but it is the invariant, not an accident of
     /// the current instruction set, so it is checked rather than assumed.
     @_effects(readonly)
-    public static func expectedPredicateReads(_ ops: [Operand]) -> UInt16 {
+    public static func expectedPredicateReads(_ ops: Instruction.Operands) -> UInt16 {
         var reads: UInt16 = 0
         var results: UInt16 = 0
         var merging = false
@@ -254,7 +254,7 @@ public enum SVEIntegerSemanticAttributes {
     /// which therefore write no register at all.
     @_effects(readonly)
     public static func expectedRegisterWrites(for draft: Instruction) -> UInt64 {
-        guard let first = Array(draft.operands).first else { return 0 }
+        guard let first = draft.operands.first else { return 0 }
         return registerMask(first)
     }
 
@@ -262,7 +262,7 @@ public enum SVEIntegerSemanticAttributes {
     /// it (merging predicate, accumulator, clamp, or preserving write).
     @_effects(readonly)
     public static func expectedRegisterReads(for draft: Instruction) -> UInt64 {
-        let ops = Array(draft.operands)
+        let ops = draft.operands
         // A decoder bug that emitted a named mnemonic with no operands must be
         // reported as the mismatch it is, not trap the sweep on an empty range.
         guard let first = ops.first else { return 0 }
@@ -313,7 +313,7 @@ public enum SVEIntegerSemanticAttributes {
 
     /// Whether any governing predicate operand is merging (`/M`).
     @_effects(readonly)
-    public static func hasMergingGoverning(_ ops: [Operand]) -> Bool {
+    public static func hasMergingGoverning(_ ops: Instruction.Operands) -> Bool {
         for op in ops {
             if case let .scalablePredicate(p) = op, p.qualifier == .merging {
                 return true

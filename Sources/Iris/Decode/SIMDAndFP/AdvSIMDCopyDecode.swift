@@ -20,7 +20,7 @@
 
 enum AdvSIMDCopyDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let op = UInt8((encoding >> 29) & 0x1)
         let imm5 = UInt8((encoding >> 16) & 0x1F)
@@ -51,7 +51,7 @@ enum AdvSIMDCopyDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [dstOperand, srcOperand],
+                operandCount: sink.emit(dstOperand, srcOperand),
             )
         }
 
@@ -72,7 +72,7 @@ enum AdvSIMDCopyDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [dst, src],
+                operandCount: sink.emit(dst, src),
             )
         case 0b0001:
             // DUP general: Vd.<arrangement> = <Wn|Xn> (replicated).
@@ -92,7 +92,7 @@ enum AdvSIMDCopyDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [dst, .register(gpr)],
+                operandCount: sink.emit(dst, .register(gpr)),
             )
         case 0b0011:
             // INS general (alias MOV): Vd.<Ts>[idx] = <Wn|Xn>.
@@ -112,7 +112,7 @@ enum AdvSIMDCopyDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [dst, .register(gpr)],
+                operandCount: sink.emit(dst, .register(gpr)),
             )
         case 0b0101:
             // SMOV: Wd or Xd = sign-extend(Vn.<Ts>[idx]). Q selects Wd vs Xd.
@@ -129,7 +129,7 @@ enum AdvSIMDCopyDecode {
                 semanticWrites: simdfpInsertingNonZeroGPR(reg: gpr, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [.register(gpr), src],
+                operandCount: sink.emit(.register(gpr), src),
             )
         case 0b0111:
             // UMOV: Wd or Xd = Vn.<Ts>[idx]. Q selects Wd vs Xd; B/H only
@@ -153,7 +153,7 @@ enum AdvSIMDCopyDecode {
                 semanticWrites: simdfpInsertingNonZeroGPR(reg: gpr, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [.register(gpr), src],
+                operandCount: sink.emit(.register(gpr), src),
             )
         default:
             return .undefined(at: address, encoding: encoding)

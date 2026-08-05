@@ -17,16 +17,16 @@
 
 enum CompareBranchRegDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let bits24 = UInt8((encoding >> 24) & 1) // 0 → register class, 1 → immediate
         return bits24 == 0
-            ? decodeRegisterClass(encoding: encoding, address: address)
-            : decodeImmediate(encoding: encoding, address: address)
+            ? decodeRegisterClass(encoding: encoding, address: address, &sink)
+            : decodeImmediate(encoding: encoding, address: address, &sink)
     }
 
     /// Register / byte / halfword forms (bits 31:24 ∈ {0x74, 0xF4}).
     @inline(__always)
-    private static func decodeRegisterClass(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeRegisterClass(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 1)
         let cc = UInt8((encoding >> 21) & 0x7)
         let Rm = UInt8((encoding >> 16) & 0x1F)
@@ -72,13 +72,13 @@ enum CompareBranchRegDecode {
             semanticReads: RegisterSet.empty.inserting(rtRef).inserting(rmRef),
             branchClass: .conditional,
             category: .branchesExceptionSystem,
-            operands: [.register(rtRef), .register(rmRef), .label(byteOffset: byteOffset)],
+            operandCount: sink.emit(.register(rtRef), .register(rmRef), .label(byteOffset: byteOffset)),
         )
     }
 
     /// Immediate form (bits 31:24 ∈ {0x75, 0xF5}).
     @inline(__always)
-    private static func decodeImmediate(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeImmediate(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Bit 14 is a fixed 0 in the immediate encoding.
         if (encoding >> 14) & 1 != 0 {
             return .undefined(at: address, encoding: encoding)
@@ -99,11 +99,7 @@ enum CompareBranchRegDecode {
             semanticReads: RegisterSet.empty.inserting(rtRef),
             branchClass: .conditional,
             category: .branchesExceptionSystem,
-            operands: [
-                .register(rtRef),
-                .unsignedImmediate(value: imm6, width: 6),
-                .label(byteOffset: byteOffset),
-            ],
+            operandCount: sink.emit(.register(rtRef), .unsignedImmediate(value: imm6, width: 6), .label(byteOffset: byteOffset)),
         )
     }
 
