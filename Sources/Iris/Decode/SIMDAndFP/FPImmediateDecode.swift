@@ -11,7 +11,7 @@
 
 enum FPImmediateDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let ftype = UInt8((encoding >> 22) & 0x3)
         let imm8 = UInt8((encoding >> 13) & 0xFF)
         let imm5 = UInt8((encoding >> 5) & 0x1F)
@@ -44,10 +44,7 @@ enum FPImmediateDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: size),
-                .floatImmediate(bits: bits, kind: kind),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: size), .floatImmediate(bits: bits, kind: kind)),
         )
     }
 }

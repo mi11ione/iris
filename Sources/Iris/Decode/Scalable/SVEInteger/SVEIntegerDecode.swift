@@ -18,16 +18,16 @@ enum SVEIntegerDecode {
     /// Decode an in-scope SVE integer word. Precondition (by construction,
     /// not asserted): `isSVEIntegerEncoding(encoding)`.
     @_optimize(speed)
-    static func decode(encoding e: UInt32, address a: UInt64) -> DecodedDraft {
+    static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch (e >> 24) & 0xFF {
-        case 0x24: decodeCompare(e, a) // G7 vector/wide + ucmp-immediate
-        case 0x04: decodeCompute(e, a) // G1-G6 predicated + G6/G17 unpredicated
-        case 0x05: decodeMove(e, a) // G8 move/copy + G9 logical-immediate
-        case 0x25: decodeImmediate(e, a) // G7 scmp-imm + G10 wide-imm + G8 dup-imm
-        case 0x44: decodeSVE2Low(e, a) // G11/G12/G13/G18/G19/G20
+        case 0x24: decodeCompare(e, a, &sink) // G7 vector/wide + ucmp-immediate
+        case 0x04: decodeCompute(e, a, &sink) // G1-G6 predicated + G6/G17 unpredicated
+        case 0x05: decodeMove(e, a, &sink) // G8 move/copy + G9 logical-immediate
+        case 0x25: decodeImmediate(e, a, &sink) // G7 scmp-imm + G10 wide-imm + G8 dup-imm
+        case 0x44: decodeSVE2Low(e, a, &sink) // G11/G12/G13/G18/G19/G20
         // 0x45 — the sixth and last top byte `isSVEIntegerEncoding` admits, so
         // the dispatch needs no unreachable UNDEFINED arm.
-        default: decodeSVE2High(e, a) // G12/G14/G15/G16/G18
+        default: decodeSVE2High(e, a, &sink) // G12/G14/G15/G16/G18
         }
     }
 
@@ -42,18 +42,18 @@ enum SVEIntegerDecode {
     // 1010 ADR (G6).
 
     @inline(__always)
-    static func decodeCompute(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCompute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 21) & 1 == 0 {
             switch (e >> 13) & 0b111 {
-            case 0b000: return decodePredicatedArithLog(e, a) // G1
-            case 0b001: return decodeReduction(e, a) // G5
-            case 0b010, 0b011: return decodeMultiplyAddMLA(e, a) // G4 MLA/MLS
-            case 0b100: return decodePredicatedShift(e, a) // G2
-            case 0b101: return decodePredicatedUnary(e, a) // G3
-            default: return decodeMultiplyAddMAD(e, a) // 110/111 → G4 MAD/MSB
+            case 0b000: return decodePredicatedArithLog(e, a, &sink) // G1
+            case 0b001: return decodeReduction(e, a, &sink) // G5
+            case 0b010, 0b011: return decodeMultiplyAddMLA(e, a, &sink) // G4 MLA/MLS
+            case 0b100: return decodePredicatedShift(e, a, &sink) // G2
+            case 0b101: return decodePredicatedUnary(e, a, &sink) // G3
+            default: return decodeMultiplyAddMAD(e, a, &sink) // 110/111 → G4 MAD/MSB
             }
         }
-        return decodeUnpredicated(e, a) // G6 + G17
+        return decodeUnpredicated(e, a, &sink) // G6 + G17
     }
 
     // MARK: shared field extraction
@@ -99,17 +99,17 @@ enum SVEIntegerDecode {
     /// hot path, and building `[a, b] + helper()` would allocate three times.
     @inline(__always)
     static func appendShiftedImmediate(
-        raw: UInt32, shift: UInt32, signed: Bool, to operands: inout [Operand],
+        raw: UInt32, shift: UInt32, signed: Bool, to sink: inout OperandSink,
     ) {
         if shift != 0, raw == 0 {
-            operands.append(signed
+            sink.append(signed
                 ? .immediate(value: 0, width: 8)
                 : .unsignedImmediate(value: 0, width: 8))
-            operands.append(.shiftAmount(kind: .lsl, amount: UInt8(shift)))
+            sink.append(.shiftAmount(kind: .lsl, amount: UInt8(shift)))
             return
         }
         let width: UInt8 = shift == 0 ? 8 : 16
-        operands.append(signed
+        sink.append(signed
             ? .immediate(value: signExtend(raw, bits: 8) << Int64(shift), width: width)
             : .unsignedImmediate(value: UInt64(raw) << shift, width: width))
     }

@@ -14,7 +14,7 @@
 
 enum FPCompareDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let ftype = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
         let Rn = UInt8((encoding >> 5) & 0x1F)
@@ -61,7 +61,7 @@ enum FPCompareDecode {
             memoryOrdering: [],
             flagEffect: .nzcv,
             category: .simdAndFP,
-            operands: [vn, second],
+            operandCount: sink.emit(vn, second),
         )
     }
 }

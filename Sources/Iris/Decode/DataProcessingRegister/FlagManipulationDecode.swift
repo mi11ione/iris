@@ -13,7 +13,7 @@ enum FlagManipulationDecode {
     /// handles the rest of the `bits[23:21]=000` tier).
     @inline(__always)
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft? {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         let op = (encoding >> 30) & 1
         let s = (encoding >> 29) & 1
         guard op == 0, s == 1 else { return nil }
@@ -41,11 +41,7 @@ enum FlagManipulationDecode {
                 semanticWrites: .empty,
                 flagEffect: rmifFlags,
                 category: .dataProcessingRegister,
-                operands: [
-                    .register(rn),
-                    .unsignedImmediate(value: imm6, width: 6),
-                    .unsignedImmediate(value: mask, width: 4),
-                ],
+                operandCount: sink.emit(.register(rn), .unsignedImmediate(value: imm6, width: 6), .unsignedImmediate(value: mask, width: 4)),
             )
         }
 
@@ -69,7 +65,7 @@ enum FlagManipulationDecode {
                 // SETF8 / SETF16 set N, Z, V from the operand; C is preserved.
                 flagEffect: [.writesN, .writesZ, .writesV],
                 category: .dataProcessingRegister,
-                operands: [.register(rn)],
+                operandCount: sink.emit(.register(rn)),
             )
         }
 

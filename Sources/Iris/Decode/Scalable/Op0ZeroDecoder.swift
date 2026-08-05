@@ -17,7 +17,7 @@
 /// well-formed UNDEFINED record for the genuine reserved holes. Its
 /// ``identifier`` is ``FamilyIdentifier/sme`` — `op0=0b0000` is the
 /// architectural SME tier; AMX is an implementation-defined squat verified
-/// by-encoding (``MachineCodeDecoder/familyIdentifier(forEncoding:in:context:)``).
+/// by-encoding (``MachineCodeDecoder/familyIdentifier(forEncoding:in:context:, sink)``).
 struct Op0ZeroDecoder: FamilyDecoder, Sendable {
     static let op0ZeroValues: Set<UInt8> = [0b0000]
     static let amx = AMXDecoder()
@@ -25,19 +25,23 @@ struct Op0ZeroDecoder: FamilyDecoder, Sendable {
 
     init() {}
 
+    var tag: FamilyTag {
+        .op0Zero
+    }
+
     var op0Values: Set<UInt8> {
         Self.op0ZeroValues
     }
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features: Features,
+        encoding: UInt32, address: UInt64, features: Features, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         if isAMXEncoding(encoding) {
-            return Self.amx.decode(encoding: encoding, address: address, features: features)
+            return Self.amx.decode(encoding: encoding, address: address, features: features, &sink)
         }
         if isSMEEncoding(encoding) {
-            return Self.sme.decode(encoding: encoding, address: address, features: features)
+            return Self.sme.decode(encoding: encoding, address: address, features: features, &sink)
         }
         // Genuine op0=0 hole (non-UDF, non-AMX, non-SME) — UNDEFINED. UDF is
         // handled by the dispatcher before family lookup.

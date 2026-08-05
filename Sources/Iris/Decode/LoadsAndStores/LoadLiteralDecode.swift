@@ -13,7 +13,7 @@
 
 enum LoadLiteralDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let opc = UInt8((encoding >> 30) & 0x3)
         let imm19 = (encoding >> 5) & 0x7FFFF
         let Rt = UInt8(encoding & 0x1F)
@@ -75,7 +75,7 @@ enum LoadLiteralDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [rtOperand, memOperand],
+            operandCount: sink.emit(rtOperand, memOperand),
         )
     }
 }

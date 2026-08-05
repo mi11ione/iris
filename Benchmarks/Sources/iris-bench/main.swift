@@ -38,12 +38,23 @@ var explicitMiB: Int?
 var explicitRuns: Int?
 var explicitLookups: Int?
 var jobsOption: Int?
+var realBinaries: [String] = []
+var competitorDeadline = CompetitorBench.defaultDeadlineSeconds
+let irisCLIPath = FileManager.default.currentDirectoryPath + "/../.build/release/iris"
 
 var argIterator = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = argIterator.next() {
     switch arg {
     case "--json":
         config.json = true
+    case "--deadline":
+        guard let value = argIterator.next(), let seconds = Double(value), seconds > 0 else {
+            die("--deadline requires a positive number of seconds")
+        }
+        competitorDeadline = seconds
+    case "--binary":
+        guard let value = argIterator.next() else { die("--binary requires a path") }
+        realBinaries.append(value)
     case "--runs", "--mib", "--seed", "--jobs", "--lookups", "--baseline":
         guard let value = argIterator.next() else { die("\(arg) requires a value") }
         switch arg {
@@ -69,10 +80,10 @@ while let arg = argIterator.next() {
             config.baselinePath = value
         }
     case "all", "memory", "bulk", "parallel", "tier0", "lookup", "session", "walk", "text",
-         "view-experiment", "smoke":
+         "real", "compare", "view-experiment", "smoke":
         modes.append(arg)
     default:
-        die("unknown argument '\(arg)' (modes: all memory bulk parallel tier0 lookup session walk text view-experiment smoke; options: --json --runs --mib --seed --jobs --lookups --baseline)")
+        die("unknown argument '\(arg)' (modes: all memory bulk parallel tier0 lookup session walk text real compare view-experiment smoke; options: --json --runs --mib --seed --jobs --lookups --baseline --binary --deadline)")
     }
 }
 
@@ -101,8 +112,13 @@ let jobs = jobsOption ?? machine.logicalCores
 progress("iris-bench: \(machine.cpuBrand), \(machine.physicalCores) cores (\(machine.performanceCores.map(String.init) ?? "?")P+\(machine.efficiencyCores.map(String.init) ?? "?")E), \(machine.memoryBytes / (1024 * 1024 * 1024)) GiB")
 progress("config: buffer \(config.bufferBytes / (1024 * 1024)) MiB, seed 0x\(String(config.seed, radix: 16)), runs \(config.runs), features arm64e")
 
-progress("generating deterministic buffer…")
-let buffer = makeMixedBuffer(byteCount: config.bufferBytes, seed: config.seed)
+/// The synthetic buffer costs 256 MiB and a second to build; the
+/// real-binary and competitor modes never touch it.
+let needsSyntheticBuffer = !(modes.allSatisfy { $0 == "real" || $0 == "compare" })
+if needsSyntheticBuffer { progress("generating deterministic buffer…") }
+let buffer = needsSyntheticBuffer
+    ? makeMixedBuffer(byteCount: config.bufferBytes, seed: config.seed)
+    : UnsafeRawBufferPointer(start: nil, count: 0)
 let wordCount = buffer.count / 4
 
 @MainActor func wants(_ mode: String) -> Bool {
@@ -170,6 +186,7 @@ if let stream = sharedStream {
         progress("text-throughput…")
         results.append(benchText(stream: stream, config: config))
     }
+
     if modes.contains("view-experiment") {
         progress("view-experiment…")
         let addresses = makeLookupAddresses(
@@ -177,6 +194,72 @@ if let stream = sharedStream {
             baseAddress: config.baseAddress, seed: config.seed,
         )
         results.append(contentsOf: runViewExperiment(stream: stream, addresses: addresses, config: config))
+    }
+}
+
+if modes.contains("compare") {
+    let scratch = NSTemporaryDirectory() + "iris-bench-thin"
+    let thin = ThinCorpus.prepare(realBinaries.isEmpty ? RealCorpus.candidates : realBinaries, into: scratch)
+    let irisPath = FileManager.default.isExecutableFile(atPath: irisCLIPath)
+        ? irisCLIPath : ""
+    if thin.isEmpty {
+        progress("compare: no readable arm64 binaries — skipped")
+    } else if irisPath.isEmpty {
+        progress("compare: iris CLI not found at \(irisCLIPath); build it with `swift build -c release` in the repo root")
+    } else {
+        let tools = CompetitorBench.available(irisPath: irisPath)
+        progress("compare: \(tools.count) tools over \(thin.count) thin arm64 binaries, median of \(config.runs)")
+        for tool in tools {
+            progress("  \(tool.name) — \(tool.note)")
+        }
+        print("")
+        print("whole-file disassembly, median of \(config.runs) runs (1 warmup):")
+        for file in thin.sorted(by: { (MachO.text(at: $0)?.wordCount ?? 0) < (MachO.text(at: $1)?.wordCount ?? 0) }) {
+            guard let text = MachO.text(at: file) else { continue }
+            let words = text.wordCount
+            print("  \((file as NSString).lastPathComponent) — \(groupedInt(Double(words))) words\(text.isARM64E ? ", arm64e" : "")")
+            var irisRate: Double?
+            for tool in tools {
+                guard let r = CompetitorBench.measure(tool, file: file, words: words, runs: config.runs, deadline: competitorDeadline) else {
+                    print("      \(tool.name.padding(toLength: 15, withPad: " ", startingAt: 0))  (failed)")
+                    continue
+                }
+                let rate = Double(words) / r.seconds
+                if tool.name == "iris" { irisRate = rate }
+                let relative = irisRate.map { me in
+                    tool.name == "iris" ? "" : String(format: "  %.2fx iris", rate / me)
+                } ?? ""
+                print(String(
+                    format: "      %@  %8.1f ms   %10@ instr/s   %7d lines%@",
+                    tool.name.padding(toLength: 15, withPad: " ", startingAt: 0),
+                    r.seconds * 1000,
+                    groupedInt(rate) as NSString,
+                    r.outputLines,
+                    relative,
+                ))
+            }
+        }
+    }
+}
+
+if wants("real") {
+    let corpus = RealCorpus.load(realBinaries)
+    if corpus.isEmpty {
+        progress("real: no readable arm64 __TEXT,__text among the candidates — skipped")
+    } else {
+        let total = corpus.reduce(0) { $0 + $1.wordCount }
+        progress("real corpus: \(corpus.count) binaries, \(groupedInt(Double(total))) words")
+        for t in corpus.prefix(3) {
+            progress("  \(t.path) — \(groupedInt(Double(t.wordCount))) words\(t.isARM64E ? ", arm64e" : "")")
+        }
+        progress("real-bulk…")
+        results.append(benchRealBulk(corpus, config: config))
+        progress("real-footprint…")
+        results.append(contentsOf: benchRealFootprint(corpus))
+        progress("real-text…")
+        results.append(contentsOf: benchRealText(corpus, config: config))
+        progress("real-semantics…")
+        results.append(benchRealSemantics(corpus, config: config))
     }
 }
 

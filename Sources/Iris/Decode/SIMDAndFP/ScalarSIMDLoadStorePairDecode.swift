@@ -10,7 +10,7 @@
 
 enum ScalarSIMDLoadStorePairDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let opc = UInt8((encoding >> 30) & 0x3)
         let indexing = UInt8((encoding >> 23) & 0x3)
         let L = UInt8((encoding >> 22) & 0x1)
@@ -76,7 +76,7 @@ enum ScalarSIMDLoadStorePairDecode {
             branchClass: .none,
             memoryAccess: isLoad ? .load : .store,
             memoryOrdering: [], flagEffect: .none, category: .simdAndFP,
-            operands: [vt, vt2, .memory(memOperand)],
+            operandCount: sink.emit(vt, vt2, .memory(memOperand)),
         )
     }
 }

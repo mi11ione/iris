@@ -14,27 +14,6 @@
 /// PAC standalone, MTE, AMX). The other per-family canonicalizers
 /// delegate here when they see a mnemonic in this family's range.
 enum CryptoAppleExtensionsCanonicalizer {
-    /// Format `instruction` to canonical llvm-mc-compatible disassembly text.
-    /// Instructions whose mnemonic is outside the family's mnemonic range
-    /// return `"?<rawValue>"` (deterministic non-crashing sentinel — matches
-    /// the convention used elsewhere when a canonicalizer is invoked on a
-    /// record it cannot render).
-    @_effects(readonly)
-    @_optimize(speed)
-    static func format(_ instruction: Instruction) -> String {
-        if instruction.mnemonic == .undefined { return "" }
-        guard instruction.mnemonic.rawValue >= 12288, instruction.mnemonic.rawValue <= 16383
-        else { return "?\(instruction.mnemonic.rawValue)" }
-        // amxUnknownOp renders as its raw-word `.long` operand string
-        // alone — its census name ("amx-unknown") is not assembly.
-        if instruction.mnemonic == .amxUnknownOp {
-            return formatOperands(instruction)
-        }
-        let mn = instruction.mnemonic.name
-        let ops = formatOperands(instruction)
-        return ops.isEmpty ? mn : "\(mn) \(ops)"
-    }
-
     /// True iff the mnemonic is in this family's reserved range. Callers
     /// in other canonicalizers (SIMDFP / DPR / DPI / LS) use this as the
     /// guard before delegating here.
@@ -43,10 +22,38 @@ enum CryptoAppleExtensionsCanonicalizer {
         mnemonic.rawValue >= 12288 && mnemonic.rawValue <= 16383
     }
 
+    /// The byte path — rendered straight into a UTF-8 buffer.
+    ///
+    /// A mnemonic outside the family's range renders `"?<rawValue>"`, the
+    /// deterministic non-crashing sentinel the other canonicalizers use for
+    /// a record they cannot render.
+    @_optimize(speed)
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        if instruction.mnemonic == .undefined { return }
+        guard owns(instruction.mnemonic) else {
+            out.put(UInt8(ascii: "?"))
+            out.putDecimal(UInt64(instruction.mnemonic.rawValue))
+            return
+        }
+        // amxUnknownOp renders as its raw-word `.long` operand string alone
+        // — its census name ("amx-unknown") is not assembly.
+        if instruction.mnemonic == .amxUnknownOp {
+            putOperands(instruction, into: &out)
+            return
+        }
+        // AMX set/clr render no operand text, so the separating space must
+        // not be emitted for them; the mark is rolled back when the operand
+        // list contributes nothing.
+        putMnemonic(instruction.mnemonic, into: &out)
+        let mark = out.count
+        out.put(UInt8(ascii: " "))
+        putOperands(instruction, into: &out)
+        if out.count == mark &+ 1 { out.count = mark }
+    }
+
     // MARK: - Operand list formatting
 
-    @_effects(readonly)
-    private static func formatOperands(_ instruction: Instruction) -> String {
+    private static func putOperands(_ instruction: Instruction, into out: inout TextBytes) {
         // Per-mnemonic operand rendering:
         //   IRG with Rm=XZR aliases to the 2-operand form `irg Xd, Xn`.
         //   STG / STZG / ST2G / STZ2G in signed-offset with displacement
@@ -56,61 +63,61 @@ enum CryptoAppleExtensionsCanonicalizer {
         //   5-bit operand subfield.
         switch instruction.mnemonic {
         case .irg:
-            return formatIRG(instruction.operands)
+            putIRG(instruction.operands, into: &out)
         case .stg, .stzg, .st2g, .stz2g:
-            return formatMTEStore(instruction.operands)
+            putMTEStore(instruction.operands, into: &out)
         case .amxSet, .amxClr:
-            return ""
+            break
         case .amxUnknownOp:
             // Render as `.long 0xXXXXXXXX` matching the convention llvm-mc
             // uses for unknown 4-byte words. (For amxUnknownOp the operand
             // list contains a single `.amxUnknown(rawFields:)` carrying the
             // full 32-bit encoding.)
             if case let .amxUnknown(rawFields) = instruction.operands.first {
-                return formatLongHex(rawFields)
+                putLongHex(rawFields, into: &out)
+            } else {
+                putLongHex(instruction.encoding, into: &out)
             }
-            return formatLongHex(instruction.encoding)
         case .amxLdx, .amxLdy, .amxStx, .amxSty, .amxLdz, .amxStz,
              .amxLdzi, .amxStzi, .amxExtrx, .amxExtry,
              .amxFma64, .amxFms64, .amxFma32, .amxFms32, .amxMac16,
              .amxFma16, .amxFms16, .amxVecint, .amxVecfp, .amxMatint,
              .amxMatfp, .amxGenlut:
             if case let .amxField(f) = instruction.operands.first {
-                return xRegisterName(f.operandField)
+                putXRegisterName(f.operandField, into: &out)
             }
-            return ""
         default:
-            return defaultOperandList(instruction.operands)
+            putDefaultOperandList(instruction.operands, into: &out)
         }
     }
 
-    @_effects(readonly)
-    private static func defaultOperandList(_ operands: Instruction.Operands) -> String {
-        var parts: [String] = []
-        parts.reserveCapacity(operands.count)
-        for op in operands {
-            parts.append(formatGenericOperand(op))
+    private static func putDefaultOperandList(
+        _ operands: Instruction.Operands, into out: inout TextBytes,
+    ) {
+        for i in 0 ..< operands.count {
+            if i > 0 { out.put(", ") }
+            putGenericOperand(operands[i], into: &out)
         }
-        return parts.joined(separator: ", ")
     }
 
-    @_effects(readonly)
-    private static func formatGenericOperand(_ operand: Operand) -> String {
+    private static func putGenericOperand(_ operand: Operand, into out: inout TextBytes) {
         switch operand {
         case let .register(reg):
-            reg.name
+            RegisterNames.put(reg, into: &out)
         case let .vectorRegister(vr):
-            vectorRegisterText(vr)
+            putVectorRegister(vr, into: &out)
         case let .unsignedImmediate(value, _):
-            "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .immediate(value, _):
-            "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .memory(mem):
-            formatMemoryOperand(mem)
+            putMemoryOperand(mem, into: &out)
         case let .amxField(field):
-            xRegisterName(field.operandField)
+            putXRegisterName(field.operandField, into: &out)
         case let .amxUnknown(rawFields):
-            formatLongHex(rawFields)
+            putLongHex(rawFields, into: &out)
         // This family's decoders never emit these — defensive sentinels
         // so the @frozen Operand switch stays exhaustive.
         case .floatImmediate, .label, .shiftedRegister, .extendedRegister,
@@ -120,151 +127,169 @@ enum CryptoAppleExtensionsCanonicalizer {
              .predicateGroup, .zaTile, .zaTileSlice, .zaArrayVector,
              .zt0, .scalableMemory, .svePredicatePattern,
              .vectorLengthMultiplier:
-            "?unsupported-operand"
+            out.put("?unsupported-operand")
         }
     }
 
     /// IRG operand rendering — collapse the 3-operand `Xd, Xn, XZR`
     /// form to the 2-operand alias `Xd, Xn` that llvm-mc emits.
-    @_effects(readonly)
-    private static func formatIRG(_ operands: Instruction.Operands) -> String {
-        guard operands.count == 3 else { return defaultOperandList(operands) }
-        if case let .register(rm) = operands[2], rm.isZeroRegister {
-            return "\(formatGenericOperand(operands[0])), \(formatGenericOperand(operands[1]))"
+    private static func putIRG(_ operands: Instruction.Operands, into out: inout TextBytes) {
+        guard operands.count == 3 else {
+            putDefaultOperandList(operands, into: &out)
+            return
         }
-        return defaultOperandList(operands)
+        if case let .register(rm) = operands[2], rm.isZeroRegister {
+            putGenericOperand(operands[0], into: &out)
+            out.put(", ")
+            putGenericOperand(operands[1], into: &out)
+            return
+        }
+        putDefaultOperandList(operands, into: &out)
     }
 
     /// STG / STZG / ST2G / STZ2G rendering — signed-offset with
     /// displacement 0 aliases to `mn Xt, [Xn]` (omitting `, #0`); pre /
     /// post-index always render the imm. The MemoryOperand carries the
     /// writeback kind.
-    @_effects(readonly)
-    private static func formatMTEStore(_ operands: Instruction.Operands) -> String {
+    private static func putMTEStore(_ operands: Instruction.Operands, into out: inout TextBytes) {
         guard operands.count == 2,
               case let .memory(mem) = operands[1]
         else {
-            return defaultOperandList(operands)
+            putDefaultOperandList(operands, into: &out)
+            return
         }
-        let rt = formatGenericOperand(operands[0])
-        let baseText: String = switch mem.base {
-        case let .register(reg): reg.name
-        case .pc: "pc" // unreachable for MTE stores
+        putGenericOperand(operands[0], into: &out)
+        out.put(", ")
+        putMemoryOperand(mem, into: &out)
+    }
+
+    /// Format a MemoryOperand. LDG / LDGM / STGM / STZGM use this via the
+    /// default operand list; the MTE-store helper shares it.
+    private static func putMemoryOperand(_ mem: MemoryOperand, into out: inout TextBytes) {
+        out.put(UInt8(ascii: "["))
+        switch mem.base {
+        case let .register(reg): RegisterNames.put(reg, into: &out)
+        case .pc: out.put("pc")
         }
         let imm = mem.displacement
         switch mem.writeback {
         case .none:
             // Signed-offset; collapse `, #0` to bare `[Xn]`.
-            return imm == 0
-                ? "\(rt), [\(baseText)]"
-                : "\(rt), [\(baseText), #\(imm)]"
+            if imm != 0 {
+                out.put(", #")
+                out.putDecimal(imm)
+            }
+            out.put(UInt8(ascii: "]"))
         case .preIndex:
-            return "\(rt), [\(baseText), #\(imm)]!"
+            out.put(", #")
+            out.putDecimal(imm)
+            out.put("]!")
         case .postIndex:
-            return "\(rt), [\(baseText)], #\(imm)"
-        }
-    }
-
-    /// Format a MemoryOperand. LDG / LDGM / STGM / STZGM use this via
-    /// `defaultOperandList`; the MTE-store helper handles STG family.
-    @_effects(readonly)
-    private static func formatMemoryOperand(_ mem: MemoryOperand) -> String {
-        let baseText: String = switch mem.base {
-        case let .register(reg): reg.name
-        case .pc: "pc"
-        }
-        let imm = mem.displacement
-        switch mem.writeback {
-        case .none:
-            return imm == 0
-                ? "[\(baseText)]"
-                : "[\(baseText), #\(imm)]"
-        case .preIndex:
-            return "[\(baseText), #\(imm)]!"
-        case .postIndex:
-            return "[\(baseText)], #\(imm)"
+            out.put("], #")
+            out.putDecimal(imm)
         }
     }
 
     // MARK: - Register name rendering
 
-    @_effects(readonly)
-    private static func vectorRegisterText(_ vr: VectorRegisterRef) -> String {
-        let n = vr.registerIndex
+    private static func putVectorRegister(_ vr: VectorRegisterRef, into out: inout TextBytes) {
+        let n = UInt64(vr.registerIndex)
         switch vr.view {
         case let .full(arrangement):
-            return "v\(n).\(arrangementName(arrangement))"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "."))
+            putArrangementName(arrangement, into: &out)
         case let .scalar(size):
-            return "\(scalarPrefix(size))\(n)"
+            putScalarPrefix(size, into: &out)
+            out.putDecimal(n)
         case let .element(arrangement, index):
-            return "v\(n).\(scalarSizeName(arrangement.elementSize))[\(index)]"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "."))
+            putScalarSizeName(arrangement.elementSize, into: &out)
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(index))
+            out.put(UInt8(ascii: "]"))
         case let .elementGroup(elementSize, count, index):
-            return "v\(n).\(count)\(scalarSizeName(elementSize))[\(index)]"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "."))
+            out.putDecimal(UInt64(count))
+            putScalarSizeName(elementSize, into: &out)
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(index))
+            out.put(UInt8(ascii: "]"))
         case let .lane(index):
-            return "v\(n)[\(index)]"
+            out.put(UInt8(ascii: "v"))
+            out.putDecimal(n)
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(index))
+            out.put(UInt8(ascii: "]"))
         }
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func arrangementName(_ a: VectorArrangement) -> String {
+    private static func putArrangementName(_ a: VectorArrangement, into out: inout TextBytes) {
         switch a {
-        case .b8: "8b"
-        case .b16: "16b"
-        case .h4: "4h"
-        case .h8: "8h"
-        case .s2: "2s"
-        case .s4: "4s"
-        case .d1: "1d"
-        case .d2: "2d"
-        case .q1: "1q"
-        case .h2: "2h"
+        case .b8: out.put("8b")
+        case .b16: out.put("16b")
+        case .h4: out.put("4h")
+        case .h8: out.put("8h")
+        case .s2: out.put("2s")
+        case .s4: out.put("4s")
+        case .d1: out.put("1d")
+        case .d2: out.put("2d")
+        case .q1: out.put("1q")
+        case .h2: out.put("2h")
         }
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func scalarPrefix(_ s: ScalarSize) -> String {
+    private static func putScalarPrefix(_ s: ScalarSize, into out: inout TextBytes) {
         switch s {
-        case .b: "b"
-        case .h: "h"
-        case .s: "s"
-        case .d: "d"
-        case .q: "q"
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        case .d: out.put("d")
+        case .q: out.put("q")
         }
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func scalarSizeName(_ s: ScalarSize) -> String {
+    private static func putScalarSizeName(_ s: ScalarSize, into out: inout TextBytes) {
         // Called only from `.element(arrangement, _)` via
         // `arrangement.elementSize`, which never produces `.q` (Q is the
         // 128-bit scalar — no vector arrangement has an element of that
         // size). The `.q` case is folded into the default arm so the
         // switch stays exhaustive without an unreachable arm.
         switch s {
-        case .b: "b"
-        case .h: "h"
-        case .s: "s"
-        default: "d"
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        default: out.put("d")
         }
     }
 
     /// Render an AMX 5-bit operand subfield as an X register (X0…X30, XZR).
     @inline(__always)
-    @_effects(readonly)
-    private static func xRegisterName(_ field: UInt8) -> String {
+    private static func putXRegisterName(_ field: UInt8, into out: inout TextBytes) {
         let n = field & 0x1F
-        return n == 31 ? "xzr" : "x\(n)"
+        if n == 31 {
+            out.put("xzr")
+            return
+        }
+        out.put(UInt8(ascii: "x"))
+        out.putDecimal(UInt64(n))
     }
 
     /// Render a 32-bit encoding as `.long 0xXXXXXXXX` matching llvm-mc's
     /// fallback for unknown words. Used for `amxUnknownOp` and as the
     /// fallback rendering for `.amxUnknown(rawFields:)`.
     @inline(__always)
-    @_effects(readonly)
-    private static func formatLongHex(_ value: UInt32) -> String {
-        ".long 0x" + String(value, radix: 16, uppercase: false)
+    private static func putLongHex(_ value: UInt32, into out: inout TextBytes) {
+        out.put(".long 0x")
+        out.putHex(UInt64(value))
     }
 
     // MARK: - Mnemonic names

@@ -166,62 +166,12 @@ public enum JSONText {
         includeSchemaVersion: Bool = true,
         preceding: Instruction? = nil,
     ) -> String {
-        var fields: [String] = []
-        if includeSchemaVersion {
-            fields.append("\"schemaVersion\":\(schemaVersion)")
-        }
-        fields.append("\"kind\":\"instruction\"")
-        fields.append("\"address\":\(string(InstructionText.hex(instruction.address)))")
-        fields.append("\"encoding\":\(string("0x" + InstructionText.word(instruction.encoding)))")
-        fields.append("\"mnemonic\":\(string(instruction.mnemonic.name))")
-        fields.append("\"text\":\(string(instruction.text))")
-        fields.append("\"category\":\(string(categoryName(instruction.category)))")
-        let operands = isSentinel(instruction.category) ? [] : InstructionText.operandFragments(of: instruction.text)
-        fields.append("\"operands\":\(array(operands))")
-        fields.append("\"reads\":\(array(instruction.semanticReads.map(\.name)))")
-        fields.append("\"writes\":\(array(instruction.semanticWrites.map(\.name)))")
-        fields.append("\"branchClass\":\(string(SemanticsAnnotation.branchName(instruction.branchClass) ?? "none"))")
-        fields.append("\"memoryAccess\":\(string(SemanticsAnnotation.memoryName(instruction.memoryAccess) ?? "none"))")
-        fields.append("\"ordering\":\(array(orderingNames(instruction.memoryOrdering)))")
-        let readLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.readFlags, reading: true)
-        let writeLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.writtenFlags, reading: false)
-        fields.append("\"flagEffect\":{\"reads\":\(string(readLetters)),\"writes\":\(string(writeLetters))}")
-        fields.append(contentsOf: scalableFields(instruction))
-        if let target = instruction.branchTarget {
-            fields.append("\"branchTarget\":\(string(InstructionText.hex(target)))")
-        }
-        if let target = instruction.pcRelativeTarget {
-            fields.append("\"pcRelativeTarget\":\(string(InstructionText.hex(target)))")
-        }
-        if let context, let symbol = context.labels.containing(instruction.address) {
-            fields.append("\"symbol\":\(string(symbol))")
-        }
-        if let context, let target = instruction.branchTarget,
-           let resolution = context.symbolizer.resolve(target: target)
-        {
-            fields.append("\"targetSymbol\":\(string(resolution.name))")
-        }
-        // Referenced-data fields: the section / string / data-symbol an
-        // address-forming instruction points at (the listing's `; "str"`
-        // / `; _sym` / `; __const` comment). Each present only when
-        // resolved, so a consumer of the original schema is unaffected.
-        if let context, let data = context.referencedData.resolve(instruction, preceding: preceding) {
-            fields.append("\"referencedSection\":\(string(data.section))")
-            if let referencedString = data.string {
-                fields.append("\"referencedString\":\(string(referencedString))")
-            }
-            if let referencedSymbol = data.symbol {
-                fields.append("\"referencedSymbol\":\(string(referencedSymbol))")
-            }
-        }
-        // The printable-ASCII character an immediate names (`cmp w0, #65`
-        // → `"A"`), present only when one applies.
-        if let character = CharLiteralHint.character(for: instruction) {
-            fields.append("\"charLiteral\":\(string(String(character)))")
-        }
-        fields.append("\"isData\":\(instruction.category == .dataInCodeMarker)")
-        fields.append("\"isUndefined\":\(instruction.isUndefined)")
-        return "{" + fields.joined(separator: ",") + "}"
+        var out = TextBytes(capacity: 512)
+        putInstructionLine(
+            instruction, context: context,
+            includeSchemaVersion: includeSchemaVersion, preceding: preceding, into: &out,
+        )
+        return out.makeString()
     }
 
     /// One NDJSON `kind:"function"` object for `functions --json`. Field
@@ -282,69 +232,12 @@ public enum JSONText {
         preceding: Instruction? = nil,
         dropSymbol: Bool = false,
     ) -> String {
-        var fields: [String] = []
-        fields.append("\"address\":\(string(InstructionText.hex(instruction.address)))")
-        fields.append("\"encoding\":\(string("0x" + InstructionText.word(instruction.encoding)))")
-        fields.append("\"mnemonic\":\(string(instruction.mnemonic.name))")
-        fields.append("\"text\":\(string(instruction.text))")
-        fields.append("\"category\":\(string(categoryName(instruction.category)))")
-        let operands = isSentinel(instruction.category) ? [] : InstructionText.operandFragments(of: instruction.text)
-        fields.append("\"operands\":\(array(operands))")
-        fields.append("\"reads\":\(array(instruction.semanticReads.map(\.name)))")
-        fields.append("\"writes\":\(array(instruction.semanticWrites.map(\.name)))")
-        // branchClass / memoryAccess only when not "none" (the no-effect
-        // baseline carries no signal).
-        if let branch = SemanticsAnnotation.branchName(instruction.branchClass) {
-            fields.append("\"branchClass\":\(string(branch))")
-        }
-        if let memory = SemanticsAnnotation.memoryName(instruction.memoryAccess) {
-            fields.append("\"memoryAccess\":\(string(memory))")
-        }
-        let orderingList = orderingNames(instruction.memoryOrdering)
-        if !orderingList.isEmpty {
-            fields.append("\"ordering\":\(array(orderingList))")
-        }
-        let readLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.readFlags, reading: true)
-        let writeLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.writtenFlags, reading: false)
-        if !readLetters.isEmpty || !writeLetters.isEmpty {
-            fields.append("\"flagEffect\":{\"reads\":\(string(readLetters)),\"writes\":\(string(writeLetters))}")
-        }
-        fields.append(contentsOf: scalableFields(instruction))
-        if let target = instruction.branchTarget {
-            fields.append("\"branchTarget\":\(string(InstructionText.hex(target)))")
-        }
-        if let target = instruction.pcRelativeTarget {
-            fields.append("\"pcRelativeTarget\":\(string(InstructionText.hex(target)))")
-        }
-        if !dropSymbol, let context, let symbol = context.labels.containing(instruction.address) {
-            fields.append("\"symbol\":\(string(symbol))")
-        }
-        if let context, let target = instruction.branchTarget,
-           let resolution = context.symbolizer.resolve(target: target)
-        {
-            fields.append("\"targetSymbol\":\(string(resolution.name))")
-        }
-        if let context, let data = context.referencedData.resolve(instruction, preceding: preceding) {
-            fields.append("\"referencedSection\":\(string(data.section))")
-            if let referencedString = data.string {
-                fields.append("\"referencedString\":\(string(referencedString))")
-            }
-            if let referencedSymbol = data.symbol {
-                fields.append("\"referencedSymbol\":\(string(referencedSymbol))")
-            }
-        }
-        if let character = CharLiteralHint.character(for: instruction) {
-            fields.append("\"charLiteral\":\(string(String(character)))")
-        }
-        // isData / isUndefined only when true (the witness is the presence
-        // of the field; false is the silent default).
-        if instruction.category == .dataInCodeMarker {
-            fields.append("\"isData\":true")
-        }
-        if instruction.isUndefined {
-            fields.append("\"isUndefined\":true")
-        }
-        return "{" + fields.joined(separator: ",") + "}"
+        var out = TextBytes(capacity: 512)
+        putSlimInstructionLine(
+            instruction, context: context, preceding: preceding,
+            dropSymbol: dropSymbol, into: &out,
+        )
+        return out.makeString()
     }
 
     /// One `--slim` NDJSON function object for
@@ -416,5 +309,254 @@ public enum JSONText {
         case .sve: "sve"
         case .sme: "sme"
         }
+    }
+}
+
+// MARK: - Byte-path JSON
+
+// The builders above assemble a `[String]` of fields and join it: roughly
+// twenty allocations per instruction, plus the array, plus the join, plus
+// the line. Over a large binary that is millions of short-lived `String`s,
+// and it made `--json` the slowest thing the CLI does — over three times
+// the cost of the human listing it derives from.
+//
+// These append the same bytes into a caller-owned buffer. The
+// `String`-returning entry points remain, implemented on top, so the
+// published surface and every existing caller are unchanged.
+
+public extension JSONText {
+    /// A JSON string literal with the mandatory escapes, appended.
+    static func putString(_ value: String, into out: inout TextBytes) {
+        out.put(UInt8(ascii: "\""))
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\"": out.put("\\\"")
+            case "\\": out.put("\\\\")
+            case "\n": out.put("\\n")
+            case "\r": out.put("\\r")
+            case "\t": out.put("\\t")
+            case let s where s.value < 0x20:
+                out.put("\\u")
+                let hex = String(s.value, radix: 16)
+                for _ in 0 ..< (4 - hex.count) {
+                    out.put(UInt8(ascii: "0"))
+                }
+                out.putString(hex)
+            case let s where s.isASCII:
+                out.put(UInt8(s.value))
+            default:
+                out.putString(String(scalar))
+            }
+        }
+        out.put(UInt8(ascii: "\""))
+    }
+
+    /// A JSON array of strings, appended.
+    static func putArray(_ values: [String], into out: inout TextBytes) {
+        out.put(UInt8(ascii: "["))
+        for (i, v) in values.enumerated() {
+            if i > 0 { out.put(UInt8(ascii: ",")) }
+            putString(v, into: &out)
+        }
+        out.put(UInt8(ascii: "]"))
+    }
+
+    /// `"0x<hex>"` — the form every address-valued field uses.
+    @inline(__always)
+    static func putHexString(_ value: UInt64, into out: inout TextBytes) {
+        out.put("\"0x")
+        out.putHex(value)
+        out.put(UInt8(ascii: "\""))
+    }
+
+    /// The per-instruction record, appended. Field order is the schema's.
+    static func putInstructionLine(
+        _ instruction: Instruction,
+        context: SymbolContext? = nil,
+        includeSchemaVersion: Bool = true,
+        preceding: Instruction? = nil,
+        into out: inout TextBytes,
+    ) {
+        out.put(UInt8(ascii: "{"))
+        if includeSchemaVersion {
+            out.put("\"schemaVersion\":")
+            out.putDecimal(UInt64(schemaVersion))
+            out.put(UInt8(ascii: ","))
+        }
+        out.put("\"kind\":\"instruction\",\"address\":")
+        putHexString(instruction.address, into: &out)
+        out.put(",\"encoding\":\"0x")
+        InstructionText.putWord(instruction.encoding, into: &out)
+        out.put("\",\"mnemonic\":")
+        putString(instruction.mnemonic.name, into: &out)
+        out.put(",\"text\":")
+        putString(instruction.text, into: &out)
+        out.put(",\"category\":")
+        putString(categoryName(instruction.category), into: &out)
+        out.put(",\"operands\":")
+        putArray(isSentinel(instruction.category)
+            ? [] : InstructionText.operandFragments(of: instruction.text), into: &out)
+        out.put(",\"reads\":")
+        putArray(instruction.semanticReads.map(\.name), into: &out)
+        out.put(",\"writes\":")
+        putArray(instruction.semanticWrites.map(\.name), into: &out)
+        out.put(",\"branchClass\":")
+        putString(SemanticsAnnotation.branchName(instruction.branchClass) ?? "none", into: &out)
+        out.put(",\"memoryAccess\":")
+        putString(SemanticsAnnotation.memoryName(instruction.memoryAccess) ?? "none", into: &out)
+        out.put(",\"ordering\":")
+        putArray(orderingNames(instruction.memoryOrdering), into: &out)
+        out.put(",\"flagEffect\":{\"reads\":")
+        putString(
+            SemanticsAnnotation.flagLetters(instruction.flagEffect.readFlags, reading: true),
+            into: &out,
+        )
+        out.put(",\"writes\":")
+        putString(
+            SemanticsAnnotation.flagLetters(instruction.flagEffect.writtenFlags, reading: false),
+            into: &out,
+        )
+        out.put(UInt8(ascii: "}"))
+        for field in scalableFields(instruction) {
+            out.put(UInt8(ascii: ","))
+            out.putString(field)
+        }
+        if let target = instruction.branchTarget {
+            out.put(",\"branchTarget\":")
+            putHexString(target, into: &out)
+        }
+        if let target = instruction.pcRelativeTarget {
+            out.put(",\"pcRelativeTarget\":")
+            putHexString(target, into: &out)
+        }
+        if let context, let symbol = context.labels.containing(instruction.address) {
+            out.put(",\"symbol\":")
+            putString(symbol, into: &out)
+        }
+        if let context, let target = instruction.branchTarget,
+           let resolution = context.symbolizer.resolve(target: target)
+        {
+            out.put(",\"targetSymbol\":")
+            putString(resolution.name, into: &out)
+        }
+        if let context, let data = context.referencedData.resolve(instruction, preceding: preceding) {
+            out.put(",\"referencedSection\":")
+            putString(data.section, into: &out)
+            if let referencedString = data.string {
+                out.put(",\"referencedString\":")
+                putString(referencedString, into: &out)
+            }
+            if let referencedSymbol = data.symbol {
+                out.put(",\"referencedSymbol\":")
+                putString(referencedSymbol, into: &out)
+            }
+        }
+        if let character = CharLiteralHint.character(for: instruction) {
+            out.put(",\"charLiteral\":")
+            putString(String(character), into: &out)
+        }
+        out.put(",\"isData\":")
+        out.put(instruction.category == .dataInCodeMarker ? "true" : "false")
+        out.put(",\"isUndefined\":")
+        out.put(instruction.isUndefined ? "true" : "false")
+        out.put(UInt8(ascii: "}"))
+    }
+}
+
+public extension JSONText {
+    /// The slim per-instruction record, appended. Optional fields appear
+    /// only when they carry signal, so the separator is tracked rather
+    /// than assumed.
+    static func putSlimInstructionLine(
+        _ instruction: Instruction,
+        context: SymbolContext? = nil,
+        preceding: Instruction? = nil,
+        dropSymbol: Bool = false,
+        into out: inout TextBytes,
+    ) {
+        out.put("{\"address\":")
+        putHexString(instruction.address, into: &out)
+        out.put(",\"encoding\":\"0x")
+        InstructionText.putWord(instruction.encoding, into: &out)
+        out.put("\",\"mnemonic\":")
+        putString(instruction.mnemonic.name, into: &out)
+        out.put(",\"text\":")
+        putString(instruction.text, into: &out)
+        out.put(",\"category\":")
+        putString(categoryName(instruction.category), into: &out)
+        out.put(",\"operands\":")
+        putArray(isSentinel(instruction.category)
+            ? [] : InstructionText.operandFragments(of: instruction.text), into: &out)
+        out.put(",\"reads\":")
+        putArray(instruction.semanticReads.map(\.name), into: &out)
+        out.put(",\"writes\":")
+        putArray(instruction.semanticWrites.map(\.name), into: &out)
+        // branchClass / memoryAccess only when not "none" (the no-effect
+        // baseline carries no signal).
+        if let branch = SemanticsAnnotation.branchName(instruction.branchClass) {
+            out.put(",\"branchClass\":")
+            putString(branch, into: &out)
+        }
+        if let memory = SemanticsAnnotation.memoryName(instruction.memoryAccess) {
+            out.put(",\"memoryAccess\":")
+            putString(memory, into: &out)
+        }
+        let orderingList = orderingNames(instruction.memoryOrdering)
+        if !orderingList.isEmpty {
+            out.put(",\"ordering\":")
+            putArray(orderingList, into: &out)
+        }
+        let readLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.readFlags, reading: true)
+        let writeLetters = SemanticsAnnotation.flagLetters(instruction.flagEffect.writtenFlags, reading: false)
+        if !readLetters.isEmpty || !writeLetters.isEmpty {
+            out.put(",\"flagEffect\":{\"reads\":")
+            putString(readLetters, into: &out)
+            out.put(",\"writes\":")
+            putString(writeLetters, into: &out)
+            out.put(UInt8(ascii: "}"))
+        }
+        for field in scalableFields(instruction) {
+            out.put(UInt8(ascii: ","))
+            out.putString(field)
+        }
+        if let target = instruction.branchTarget {
+            out.put(",\"branchTarget\":")
+            putHexString(target, into: &out)
+        }
+        if let target = instruction.pcRelativeTarget {
+            out.put(",\"pcRelativeTarget\":")
+            putHexString(target, into: &out)
+        }
+        if !dropSymbol, let context, let symbol = context.labels.containing(instruction.address) {
+            out.put(",\"symbol\":")
+            putString(symbol, into: &out)
+        }
+        if let context, let target = instruction.branchTarget,
+           let resolution = context.symbolizer.resolve(target: target)
+        {
+            out.put(",\"targetSymbol\":")
+            putString(resolution.name, into: &out)
+        }
+        if let context, let data = context.referencedData.resolve(instruction, preceding: preceding) {
+            out.put(",\"referencedSection\":")
+            putString(data.section, into: &out)
+            if let referencedString = data.string {
+                out.put(",\"referencedString\":")
+                putString(referencedString, into: &out)
+            }
+            if let referencedSymbol = data.symbol {
+                out.put(",\"referencedSymbol\":")
+                putString(referencedSymbol, into: &out)
+            }
+        }
+        if let character = CharLiteralHint.character(for: instruction) {
+            out.put(",\"charLiteral\":")
+            putString(String(character), into: &out)
+        }
+        // isData / isUndefined only when true (the witness is the presence
+        // of the field; false is the silent default).
+        if instruction.category == .dataInCodeMarker { out.put(",\"isData\":true") }
+        if instruction.isUndefined { out.put(",\"isUndefined\":true") }
+        out.put(UInt8(ascii: "}"))
     }
 }

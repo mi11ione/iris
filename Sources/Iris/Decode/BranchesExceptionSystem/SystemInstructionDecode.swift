@@ -17,7 +17,7 @@
 enum SystemInstructionDecode {
     @inline(__always)
     static func decode(
-        encoding: UInt32, address: UInt64, L: UInt8, Rt: UInt8,
+        encoding: UInt32, address: UInt64, L: UInt8, Rt: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let rtRef: RegisterRef = (Rt == 31) ? .xzr() : .x(Rt)
         let mnemonic: Mnemonic = (L == 0) ? .sys : .sysl
@@ -53,7 +53,7 @@ enum SystemInstructionDecode {
             semanticReads: reads,
             semanticWrites: writes,
             category: .branchesExceptionSystem,
-            operands: [.systemOp(SystemOp(rawEncoding: encoding))],
+            operandCount: sink.emit(.systemOp(SystemOp(rawEncoding: encoding))),
         )
     }
 
@@ -62,7 +62,7 @@ enum SystemInstructionDecode {
     /// a TLBIP alias matches (always rendered) or when Rt != 31 (generic
     /// form renders the pair); a generic SYSP with Rt == 31 reads nothing.
     @inline(__always)
-    static func decodeSysp(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeSysp(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Rt = UInt8(encoding & 0x1F)
         if Rt & 1 != 0, Rt != 31 {
             return .undefined(at: address, encoding: encoding)
@@ -83,7 +83,7 @@ enum SystemInstructionDecode {
             mnemonic: .sysp,
             semanticReads: reads,
             category: .branchesExceptionSystem,
-            operands: [.systemOp(SystemOp(rawEncoding: encoding))],
+            operandCount: sink.emit(.systemOp(SystemOp(rawEncoding: encoding))),
         )
     }
 }

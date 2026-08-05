@@ -325,7 +325,7 @@ struct SVEPredicateControlSemanticAttributeTests {
     }
 
     @Test func thePredicateWriteMaskIsTheResultOperands() {
-        let ops: [Operand] = [
+        let ops: Instruction.Operands = [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 4, element: .b, role: .result)),
             .scalablePredicate(ScalablePredicateRef(registerIndex: 1, qualifier: .zeroing, role: .governing)),
             .scalablePredicate(ScalablePredicateRef(registerIndex: 2, element: .b)),
@@ -335,7 +335,7 @@ struct SVEPredicateControlSemanticAttributeTests {
     }
 
     @Test func aMergingGoverningPredicateAddsTheDestinationToTheReads() {
-        let ops: [Operand] = [
+        let ops: Instruction.Operands = [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 4, element: .b, role: .result)),
             .scalablePredicate(ScalablePredicateRef(registerIndex: 1, qualifier: .merging, role: .governing)),
             .scalablePredicate(ScalablePredicateRef(registerIndex: 2, element: .b)),
@@ -347,13 +347,13 @@ struct SVEPredicateControlSemanticAttributeTests {
     }
 
     @Test func operandsThatAreNotPredicatesContributeNothing() {
-        let ops: [Operand] = [.register(.x(3)), .immediate(value: 1, width: 5)]
+        let ops: Instruction.Operands = [.register(.x(3)), .immediate(value: 1, width: 5)]
         #expect(SVEPredicateControlSemanticAttributes.expectedPredicateWrites(ops) == 0)
         #expect(SVEPredicateControlSemanticAttributes.expectedPredicateReads(ops) == 0)
     }
 
     @Test func theOperandRegisterMaskReadsTheCanonicalIndex() {
-        let ops: [Operand] = [
+        let ops: Instruction.Operands = [
             .register(.x(3)),
             .register(.sp()),
             .register(.xzr()),
@@ -376,7 +376,7 @@ struct SVEPredicateControlSemanticAttributeTests {
     @Test func theOperandRegisterMaskIsBoundsChecked() {
         // Public entry point, so it must answer for an index that is not there
         // rather than trap.
-        let ops: [Operand] = [.register(.x(1))]
+        let ops: Instruction.Operands = [.register(.x(1))]
         #expect(SVEPredicateControlSemanticAttributes.operandRegisterMask(ops, -1) == 0)
         #expect(SVEPredicateControlSemanticAttributes.operandRegisterMask(ops, 1) == 0)
         #expect(SVEPredicateControlSemanticAttributes.operandRegisterMask([], 0) == 0)

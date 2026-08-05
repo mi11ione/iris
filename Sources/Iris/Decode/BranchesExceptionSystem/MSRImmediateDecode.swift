@@ -17,7 +17,7 @@
 enum MSRImmediateDecode {
     @inline(__always)
     static func decode(
-        encoding: UInt32, address: UInt64, op1: UInt8, CRm: UInt8, op2: UInt8,
+        encoding: UInt32, address: UInt64, op1: UInt8, CRm: UInt8, op2: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // CFINV / XAFLAG / AXFLAG — standalone, CRm (the imm field) is
         // ignored by the architecture for these.
@@ -72,7 +72,9 @@ enum MSRImmediateDecode {
                 encoding: encoding,
                 mnemonic: mnemonic,
                 category: .branchesExceptionSystem,
-                operands: [.unsignedImmediate(value: UInt64(target), width: 2)],
+                operandCount: sink.emit(
+                    .unsignedImmediate(value: UInt64(target), width: 2),
+                ),
                 scalableEffect: effect,
             )
         }
@@ -85,10 +87,7 @@ enum MSRImmediateDecode {
                 encoding: encoding,
                 mnemonic: .msrImm,
                 category: .branchesExceptionSystem,
-                operands: [
-                    .pstateField(field),
-                    .unsignedImmediate(value: UInt64(CRm & 1), width: 4),
-                ],
+                operandCount: sink.emit(.pstateField(field), .unsignedImmediate(value: UInt64(CRm & 1), width: 4)),
             )
         }
         // Named PSTATE fields selected by (op1, op2). The imm4 is CRm.
@@ -109,10 +108,7 @@ enum MSRImmediateDecode {
                 encoding: encoding,
                 mnemonic: .msrImm,
                 category: .branchesExceptionSystem,
-                operands: [
-                    .pstateField(field),
-                    .unsignedImmediate(value: UInt64(CRm), width: 4),
-                ],
+                operandCount: sink.emit(.pstateField(field), .unsignedImmediate(value: UInt64(CRm), width: 4)),
             )
         }
         // Unknown field — fall back to MSR-register form with synthesised
@@ -127,7 +123,7 @@ enum MSRImmediateDecode {
             mnemonic: .msr,
             semanticReads: RegisterSet.empty.inserting(.xzr()),
             category: .branchesExceptionSystem,
-            operands: [.systemRegister(sysreg), .register(.xzr())],
+            operandCount: sink.emit(.systemRegister(sysreg), .register(.xzr())),
         )
     }
 }

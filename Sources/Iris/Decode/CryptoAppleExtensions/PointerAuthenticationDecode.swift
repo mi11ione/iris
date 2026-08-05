@@ -20,7 +20,7 @@ enum PointerAuthenticationDecode {
     /// outside the PAC subspace [0b000000, 0b010001].
     @_optimize(speed)
     static func decodeOneSource(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft? {
         // Self-validate the DPR 1-source PAC row prefix:
         //   bits[31:15] = 11011010110000010 (sf=1, bit 30=1, S=0,
@@ -38,7 +38,7 @@ enum PointerAuthenticationDecode {
             //   K (bit 10) = 0 A-key / 1 B-key
             return registerSourceDraft(
                 opcLow3: opc6 & 0b111, Rn: Rn, Rd: Rd,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
 
         case 0b001000 ... 0b001111:
@@ -47,16 +47,16 @@ enum PointerAuthenticationDecode {
             if Rn != 0b11111 { return nil }
             return zeroSourceDraft(
                 opcLow3: opc6 & 0b111, Rd: Rd,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
 
         case 0b010000:
             if Rn != 0b11111 { return nil }
-            return xpacDraft(.xpaci, Rd: Rd, encoding: encoding, address: address)
+            return xpacDraft(.xpaci, Rd: Rd, encoding: encoding, address: address, &sink)
 
         case 0b010001:
             if Rn != 0b11111 { return nil }
-            return xpacDraft(.xpacd, Rd: Rd, encoding: encoding, address: address)
+            return xpacDraft(.xpacd, Rd: Rd, encoding: encoding, address: address, &sink)
 
         default:
             return nil
@@ -66,7 +66,7 @@ enum PointerAuthenticationDecode {
     /// PACGA in the DPR 2-source slab. Returns nil otherwise.
     @_optimize(speed)
     static func decodeTwoSource(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft? {
         // Self-validate the DPR 2-source PACGA row prefix:
         //   bits[31:21] = 10011010110 (sf=1, S=0, bit 30=0, bits[28:21]=
@@ -87,7 +87,7 @@ enum PointerAuthenticationDecode {
             address: address, encoding: encoding, mnemonic: .pacga,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .pointerAuthentication,
-            operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
         )
     }
 
@@ -96,7 +96,7 @@ enum PointerAuthenticationDecode {
     @inline(__always)
     private static func registerSourceDraft(
         opcLow3: UInt8, Rn: UInt8, Rd: UInt8,
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let mnemonic: Mnemonic = switch opcLow3 {
         case 0b000: .pacia
@@ -125,14 +125,14 @@ enum PointerAuthenticationDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .pointerAuthentication,
-            operands: [.register(rdRef), .register(rnRef)],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef)),
         )
     }
 
     @inline(__always)
     private static func zeroSourceDraft(
         opcLow3: UInt8, Rd: UInt8,
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let mnemonic: Mnemonic = switch opcLow3 {
         case 0b000: .paciza
@@ -156,14 +156,14 @@ enum PointerAuthenticationDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .pointerAuthentication,
-            operands: [.register(rdRef)],
+            operandCount: sink.emit(.register(rdRef)),
         )
     }
 
     @inline(__always)
     private static func xpacDraft(
         _ mnemonic: Mnemonic, Rd: UInt8,
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // XPACI/XPACD: Rd is read (the signed pointer) and written (the
         // stripped pointer).
@@ -174,7 +174,7 @@ enum PointerAuthenticationDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .pointerAuthentication,
-            operands: [.register(rdRef)],
+            operandCount: sink.emit(.register(rdRef)),
         )
     }
 }

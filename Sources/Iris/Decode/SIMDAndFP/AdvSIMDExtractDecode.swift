@@ -9,7 +9,7 @@
 
 enum AdvSIMDExtractDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let op2 = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
@@ -35,12 +35,7 @@ enum AdvSIMDExtractDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: arrangement),
-                simdfpVectorOperand(Rn, arrangement: arrangement),
-                simdfpVectorOperand(Rm, arrangement: arrangement),
-                .unsignedImmediate(value: UInt64(imm4), width: 4),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement), simdfpVectorOperand(Rm, arrangement: arrangement), .unsignedImmediate(value: UInt64(imm4), width: 4)),
         )
     }
 }

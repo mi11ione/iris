@@ -19,7 +19,7 @@ enum MemoryTaggingDecode {
     /// encoding's sf or row prefix doesn't match.
     @_optimize(speed)
     static func decodeDPI(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft? {
         // Row: 1 op 0 10001 10 uimm6 (0)(0) uimm4 Rn Rd; bit 30 = op (0=ADDG, 1=SUBG).
         // Fixed opcode bits: bit[31]=1, bit[29]=0 (S), bits[28:24]=10001,
@@ -45,11 +45,7 @@ enum MemoryTaggingDecode {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .memoryTagging,
-            operands: [
-                .register(rdRef), .register(rnRef),
-                .unsignedImmediate(value: UInt64(uimm6) * 16, width: 10),
-                .unsignedImmediate(value: UInt64(uimm4), width: 4),
-            ],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(uimm6) * 16, width: 10), .unsignedImmediate(value: UInt64(uimm4), width: 4)),
         )
     }
 
@@ -59,7 +55,7 @@ enum MemoryTaggingDecode {
     /// the opc6 is outside MTE's DPR subspace.
     @_optimize(speed)
     static func decodeDPR(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft? {
         // Self-validate the DPR 2-source MTE row prefix:
         //   bit 31=1 (sf), bit 30=0, bits[28:21]=11010110.
@@ -88,7 +84,7 @@ enum MemoryTaggingDecode {
                 semanticReads: reads, semanticWrites: writes,
                 flagEffect: (S == 1) ? .nzcv : .none,
                 category: .memoryTagging,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
             )
 
         case 0b000100:
@@ -105,7 +101,7 @@ enum MemoryTaggingDecode {
                 address: address, encoding: encoding, mnemonic: .irg,
                 semanticReads: reads, semanticWrites: writes,
                 flagEffect: .none, category: .memoryTagging,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
             )
 
         case 0b000101:
@@ -121,7 +117,7 @@ enum MemoryTaggingDecode {
                 address: address, encoding: encoding, mnemonic: .gmi,
                 semanticReads: reads, semanticWrites: writes,
                 flagEffect: .none, category: .memoryTagging,
-                operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
             )
 
         default:
@@ -135,7 +131,7 @@ enum MemoryTaggingDecode {
     /// Returns nil if (opc1, op2) is reserved.
     @_optimize(speed)
     static func decodeLS(
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft? {
         // Self-validate the L/S MTE row prefix: bits[31:24] = 0xD9
         // (bits[29:24] = 0b011001 with bits[31:30] = 11) AND bit 21 = 1.
@@ -160,43 +156,43 @@ enum MemoryTaggingDecode {
         switch (opc1, op2) {
         case (0b00, 0b00):
             if imm9 != 0 { return nil }
-            return bulkLSDraft(.stzgm, isLoad: false, Rn: Rn, Rt: Rt, encoding: encoding, address: address)
+            return bulkLSDraft(.stzgm, isLoad: false, Rn: Rn, Rt: Rt, encoding: encoding, address: address, &sink)
         case (0b10, 0b00):
             if imm9 != 0 { return nil }
-            return bulkLSDraft(.stgm, isLoad: false, Rn: Rn, Rt: Rt, encoding: encoding, address: address)
+            return bulkLSDraft(.stgm, isLoad: false, Rn: Rn, Rt: Rt, encoding: encoding, address: address, &sink)
         case (0b11, 0b00):
             if imm9 != 0 { return nil }
-            return bulkLSDraft(.ldgm, isLoad: true, Rn: Rn, Rt: Rt, encoding: encoding, address: address)
+            return bulkLSDraft(.ldgm, isLoad: true, Rn: Rn, Rt: Rt, encoding: encoding, address: address, &sink)
         case (0b01, 0b00):
             // LDG signed-offset (any simm9).
             return addressFormDraft(
                 mnemonic: .ldg, op2: op2, imm9: imm9, Rn: Rn, Rt: Rt,
                 isLoad: true, rtIsSPAllowed: false,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case (0b00, 0b01), (0b00, 0b10), (0b00, 0b11):
             return addressFormDraft(
                 mnemonic: .stg, op2: op2, imm9: imm9, Rn: Rn, Rt: Rt,
                 isLoad: false, rtIsSPAllowed: true,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case (0b01, 0b01), (0b01, 0b10), (0b01, 0b11):
             return addressFormDraft(
                 mnemonic: .stzg, op2: op2, imm9: imm9, Rn: Rn, Rt: Rt,
                 isLoad: false, rtIsSPAllowed: true,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case (0b10, 0b01), (0b10, 0b10), (0b10, 0b11):
             return addressFormDraft(
                 mnemonic: .st2g, op2: op2, imm9: imm9, Rn: Rn, Rt: Rt,
                 isLoad: false, rtIsSPAllowed: true,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         case (0b11, 0b01), (0b11, 0b10):
             return addressFormDraft(
                 mnemonic: .stz2g, op2: op2, imm9: imm9, Rn: Rn, Rt: Rt,
                 isLoad: false, rtIsSPAllowed: true,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         default:
             // The 16 (opc1, op2) tuples are exhaustively enumerated by
@@ -207,7 +203,7 @@ enum MemoryTaggingDecode {
             return addressFormDraft(
                 mnemonic: .stz2g, op2: op2, imm9: imm9, Rn: Rn, Rt: Rt,
                 isLoad: false, rtIsSPAllowed: true,
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
     }
@@ -217,7 +213,7 @@ enum MemoryTaggingDecode {
     @inline(__always)
     private static func bulkLSDraft(
         _ mnemonic: Mnemonic, isLoad: Bool, Rn: UInt8, Rt: UInt8,
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // LDGM/STGM/STZGM: Rt is GPR, Rn is GPR-or-SP. No offset, no
         // writeback. Memory operand is bare `[Xn|SP]`.
@@ -236,7 +232,7 @@ enum MemoryTaggingDecode {
             semanticReads: reads, semanticWrites: writes,
             memoryAccess: isLoad ? .load : .store,
             flagEffect: .none, category: .memoryTagging,
-            operands: [.register(rtRef), .memory(mem)],
+            operandCount: sink.emit(.register(rtRef), .memory(mem)),
         )
     }
 
@@ -244,7 +240,7 @@ enum MemoryTaggingDecode {
     private static func addressFormDraft(
         mnemonic: Mnemonic, op2: UInt8, imm9: UInt32, Rn: UInt8, Rt: UInt8,
         isLoad: Bool, rtIsSPAllowed: Bool,
-        encoding: UInt32, address: UInt64,
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // op2 → addressing mode: 01=post, 10=signed-offset, 11=pre.
         let writebackKind: Writeback = switch op2 {
@@ -285,7 +281,7 @@ enum MemoryTaggingDecode {
             semanticReads: reads, semanticWrites: writes,
             memoryAccess: isLoad ? .load : .store,
             flagEffect: .none, category: .memoryTagging,
-            operands: [.register(rtRef), .memory(mem)],
+            operandCount: sink.emit(.register(rtRef), .memory(mem)),
         )
     }
 }

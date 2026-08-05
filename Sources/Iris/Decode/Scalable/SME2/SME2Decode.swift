@@ -21,20 +21,20 @@ enum SME2Decode {
     /// Decode an in-scope SME-region SME2 word. Precondition (by
     /// construction, not asserted): `isSMEEncoding(e) && !isSMECoreEncoding(e)`.
     @_optimize(speed)
-    static func decode(encoding e: UInt32, address a: UInt64) -> DecodedDraft {
+    static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch e & 0xE000_0000 {
         case 0x8000_0000: // 100 — outer products (MOP4 all tiles, TMOP, F8 residue)
-            SME2OuterProductDecode.decode(e, a)
+            SME2OuterProductDecode.decode(e, a, &sink)
         case 0xA000_0000: // 101 — outer-product residues (bit23=1) or multi-vector memory
             e & 0x0080_0000 != 0
-                ? SME2OuterProductDecode.decode(e, a)
-                : decodeMultiVector(e, a)
+                ? SME2OuterProductDecode.decode(e, a, &sink)
+                : decodeMultiVector(e, a, &sink)
         case 0xC000_0000: // 110 — arithmetic (bit24=1) or move/lookup
             e & 0x0100_0000 != 0
-                ? SME2ArithmeticDecode.decode(e, a)
-                : SME2MoveLookupDecode.decode(e, a)
+                ? SME2ArithmeticDecode.decode(e, a, &sink)
+                : SME2MoveLookupDecode.decode(e, a, &sink)
         default: // 111 — only the LDR/STR ZT0 patterns are in SME2's claim
-            decodeZT0FillSpill(e, a)
+            decodeZT0FillSpill(e, a, &sink)
         }
     }
 
@@ -177,12 +177,12 @@ enum SME2Decode {
     @inline(__always)
     static func zaAccumulate(
         _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic,
-        operands: [Operand], sourceReads: RegisterSet,
+        operandCount: UInt8, sourceReads: RegisterSet,
     ) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: sourceReads.union(selectMask(selectW8(e))),
-            category: .sme, operands: operands,
+            category: .sme, operandCount: operandCount,
             scalableReads: zaWholeMask(), scalableWrites: zaWholeMask(),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )

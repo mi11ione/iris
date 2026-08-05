@@ -148,7 +148,11 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
 
         var records: [InstructionRecord] = []
         records.reserveCapacity(totalRecords)
-        var operandBuffer: [Operand] = []
+        // 9/4 operands per word, not 2: the real instruction mix averages
+        // just over two, so a 2x reserve is SHORT for a typical buffer and
+        // the operand array doubles once — copying itself whole, which on
+        // a large code section is a reallocation of the entire buffer.
+        var sink = OperandSink(reservingCapacity: totalRecords * 9 / 4)
         var diagnostics: [Diagnostic] = []
         // The span kind is preserved on the stream's diagnostics. Emit
         // one informational diagnostic per intersecting span (not per
@@ -186,7 +190,7 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
             intersectingSpans: intersectingSpans,
             features: features,
             into: &records,
-            operands: &operandBuffer,
+            sink: &sink,
         )
 
         if residual > 0 {
@@ -195,7 +199,7 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
                 tailOffset: wordCount &* 4,
                 tailAddress: baseAddress &+ UInt64(wordCount &* 4),
                 bytes: bytes,
-                operandsCount: operandBuffer.count,
+                operandsCount: sink.mark,
                 into: &records,
             )
         }
@@ -205,7 +209,7 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
             byteCount: byteCount,
             features: features,
             records: records,
-            operands: operandBuffer,
+            operands: sink.operands,
             diagnostics: diagnostics,
         )
     }
@@ -329,7 +333,7 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
         intersectingSpans: [(start: UInt64, end: UInt64, length: UInt64, kind: DataInCodeSpan.Kind)],
         features: Features,
         into records: inout [InstructionRecord],
-        operands: inout [Operand],
+        sink: inout OperandSink,
     ) {
         var spanCursor = 0
         for wordIndex in 0 ..< wordCount {
@@ -358,6 +362,10 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
                 | (UInt32(bytes[byteOffset &+ 1]) << 8)
                 | (UInt32(bytes[byteOffset &+ 2]) << 16)
                 | (UInt32(bytes[byteOffset &+ 3]) << 24)
+            // The sink's length before dispatch IS this word's operand
+            // start: the family decoders emit straight into it, so the
+            // range must be marked before they run, not after.
+            let operandStart = UInt32(truncatingIfNeeded: sink.mark)
             let draft: DecodedDraft = intersects
                 ? .dataMarker(at: address, encoding: encoding)
                 : MachineCodeDecoder.dispatch(
@@ -365,10 +373,9 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
                     address: address,
                     families: .standard,
                     features: features,
+                    &sink,
                 )
 
-            let operandStart = UInt32(operands.count)
-            operands.append(contentsOf: draft.operands)
             records.append(InstructionRecord(
                 address: draft.address,
                 semanticReads: draft.semanticReads,
@@ -381,7 +388,7 @@ public struct InstructionStream: Sendable, RandomAccessCollection {
                 memoryOrdering: draft.memoryOrdering,
                 flagEffect: draft.flagEffect,
                 category: draft.category,
-                operandCount: UInt8(truncatingIfNeeded: draft.operands.count),
+                operandCount: draft.operandCount,
                 scalableReads: draft.scalableReads,
                 scalableWrites: draft.scalableWrites,
                 scalableEffect: draft.scalableEffect,

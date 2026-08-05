@@ -15,181 +15,281 @@
 
 /// Formats SME2 records exactly as llvm-mc renders them.
 enum SME2Canonicalizer {
-    @_effects(readonly)
-    static func format(_ instruction: Instruction) -> String {
+    /// The byte path — rendered straight into a UTF-8 buffer.
+    ///
+    /// The two special cases below sit ABOVE the generic operand loop and
+    /// have to be carried into any re-implementation: dropping them renders
+    /// `zero { zt0 }` as `zero zt0` and the LUTv2 `movt` without its
+    /// `, mul vl`.
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        let ops = instruction.operands
         // ZERO of the ZT0 register renders a braced list; the ZA-array ZERO
         // forms render their operand normally.
-        if instruction.mnemonic == .zero, Array(instruction.operands).count == 1,
-           case .zt0 = Array(instruction.operands)[0] { return "zero { zt0 }" }
+        if instruction.mnemonic == .zero, ops.count == 1, case .zt0 = ops[0] {
+            out.put("zero { zt0 }")
+            return
+        }
         // The LUTv2 vector MOVT renders its ZT0 index with `, mul vl`
         // (distinct from the scalar MOVT's `zt0[off]`); it is the movt form
         // with a Z source.
-        if instruction.mnemonic == .movt, Array(instruction.operands).count == 2,
-           case let .zt0(index) = Array(instruction.operands)[0],
-           case let .scalableVector(v) = Array(instruction.operands)[1]
+        if instruction.mnemonic == .movt, ops.count == 2,
+           case let .zt0(index) = ops[0],
+           case let .scalableVector(v) = ops[1]
         {
-            let zt0Text = index.map { "zt0[\($0), mul vl]" } ?? "zt0"
-            return "movt \(zt0Text), z\(v.registerIndex)"
+            out.put("movt ")
+            if let index {
+                out.put("zt0[")
+                out.putDecimal(UInt64(index))
+                out.put(", mul vl]")
+            } else {
+                out.put("zt0")
+            }
+            out.put(", z")
+            out.putDecimal(UInt64(v.registerIndex))
+            return
         }
-        let mnemonic = name(instruction.mnemonic)
-        if Array(instruction.operands).isEmpty { return mnemonic }
-        var parts: [String] = []
-        parts.reserveCapacity(Array(instruction.operands).count)
-        for op in Array(instruction.operands) {
-            parts.append(render(op))
+        // This family's own table: a mnemonic from outside the group
+        // renders nothing rather than the spelling another family owns.
+        if let spelling = name(instruction.mnemonic) { out.put(spelling) }
+        if ops.isEmpty { return }
+        out.put(UInt8(ascii: " "))
+        for i in 0 ..< ops.count {
+            if i > 0 { out.put(", ") }
+            put(ops[i], into: &out)
         }
-        return mnemonic + " " + parts.joined(separator: ", ")
     }
 
     // MARK: per-operand rendering
 
-    @_effects(readonly)
-    private static func render(_ op: Operand) -> String {
+    private static func put(_ op: Operand, into out: inout TextBytes) {
         switch op {
-        case let .scalableVectorGroup(g): groupText(g)
-        case let .predicateGroup(first, count, element): predicateGroupText(first, count, element)
-        case let .zaArrayVector(v): zaArrayText(v)
-        case let .zaTile(index, element): zaTileText(index, element)
-        case let .zaTileSlice(s): tileSliceText(s)
-        case let .zt0(index): index.map { "zt0[\($0)]" } ?? "zt0"
-        case let .vectorLengthMultiplier(n): "vlx\(n)"
-        case let .scalablePredicate(p): predicateText(p)
-        case let .scalableVector(v): vectorText(v)
-        case let .scalableMemory(m): memoryText(m)
-        case let .register(r): gpr64(r)
-        case let .immediate(value, _): "#\(value)"
-        case let .unsignedImmediate(value, _): "#\(value)"
-        default: "?"
+        case let .scalableVectorGroup(g): putGroup(g, into: &out)
+        case let .predicateGroup(first, count, element):
+            putPredicateGroup(first, count, element, into: &out)
+        case let .zaArrayVector(v): putZAArray(v, into: &out)
+        case let .zaTile(index, element): putZATile(index, element, into: &out)
+        case let .zaTileSlice(s): putTileSlice(s, into: &out)
+        case let .zt0(index):
+            out.put("zt0")
+            if let index {
+                out.put(UInt8(ascii: "["))
+                out.putDecimal(UInt64(index))
+                out.put(UInt8(ascii: "]"))
+            }
+        case let .vectorLengthMultiplier(n):
+            out.put("vlx")
+            out.putDecimal(UInt64(n))
+        case let .scalablePredicate(p): putPredicate(p, into: &out)
+        case let .scalableVector(v): putVector(v, into: &out)
+        case let .scalableMemory(m): putMemory(m, into: &out)
+        case let .register(r): putGPR64(r, into: &out)
+        case let .immediate(value, _):
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
+        case let .unsignedImmediate(value, _):
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
+        default: out.put("?")
         }
     }
 
     // MARK: groups
 
-    @_effects(readonly)
-    private static func groupText(_ g: ScalableVectorGroup) -> String {
-        let dot = g.element.map { ".\(suffix($0))" } ?? ""
-        let idx = g.elementIndex.map { "[\($0)]" } ?? ""
+    private static func putGroup(_ g: ScalableVectorGroup, into out: inout TextBytes) {
         if g.count >= 3, g.layout == .consecutive, Int(g.firstIndex) + Int(g.count) - 1 <= 31 {
             let last = g.firstIndex &+ g.count &- 1
-            return "{ z\(g.firstIndex)\(dot) - z\(last)\(dot) }\(idx)"
+            out.put("{ z")
+            out.putDecimal(UInt64(g.firstIndex))
+            putDot(g.element, into: &out)
+            out.put(" - z")
+            out.putDecimal(UInt64(last))
+            putDot(g.element, into: &out)
+            out.put(" }")
+        } else {
+            out.put("{ ")
+            for j in 0 ..< g.count {
+                if j > 0 { out.put(", ") }
+                out.put(UInt8(ascii: "z"))
+                out.putDecimal(UInt64(g.memberIndex(j)))
+                putDot(g.element, into: &out)
+            }
+            out.put(" }")
         }
-        var members: [String] = []
-        members.reserveCapacity(Int(g.count))
-        for j in 0 ..< g.count {
-            members.append("z\(g.memberIndex(j))\(dot)")
+        if let idx = g.elementIndex {
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(idx))
+            out.put(UInt8(ascii: "]"))
         }
-        return "{ " + members.joined(separator: ", ") + " }\(idx)"
     }
 
-    @_effects(readonly)
-    private static func predicateGroupText(_ first: UInt8, _ count: UInt8, _ element: ScalarSize) -> String {
-        var members: [String] = []
-        members.reserveCapacity(Int(count))
+    private static func putPredicateGroup(
+        _ first: UInt8, _ count: UInt8, _ element: ScalarSize, into out: inout TextBytes,
+    ) {
+        out.put("{ ")
         for j in 0 ..< count {
-            members.append("p\((first &+ j) & 0xF).\(suffix(element))")
+            if j > 0 { out.put(", ") }
+            out.put(UInt8(ascii: "p"))
+            out.putDecimal(UInt64((first &+ j) & 0xF))
+            out.put(UInt8(ascii: "."))
+            putSuffix(element, into: &out)
         }
-        return "{ " + members.joined(separator: ", ") + " }"
+        out.put(" }")
     }
 
     // MARK: ZA operands
 
-    @_effects(readonly)
-    private static func zaArrayText(_ v: ZAArrayVectorOperand) -> String {
-        let suffixText = v.element.map { ".\(suffix($0))" } ?? ""
-        var index = "\(v.offset)"
-        if let hi = v.offsetHigh { index += ":\(hi)" }
-        let vg = switch v.group {
-        case .vgx2: ", vgx2"
-        case .vgx4: ", vgx4"
-        case .none: ""
+    private static func putZAArray(_ v: ZAArrayVectorOperand, into out: inout TextBytes) {
+        out.put("za")
+        putDot(v.element, into: &out)
+        out.put(UInt8(ascii: "["))
+        putSelect(v.selectRegister, into: &out)
+        out.put(", ")
+        out.putDecimal(UInt64(v.offset))
+        if let hi = v.offsetHigh {
+            out.put(UInt8(ascii: ":"))
+            out.putDecimal(UInt64(hi))
         }
-        return "za\(suffixText)[\(selectText(v.selectRegister)), \(index)\(vg)]"
+        switch v.group {
+        case .vgx2: out.put(", vgx2")
+        case .vgx4: out.put(", vgx4")
+        case .none: break
+        }
+        out.put(UInt8(ascii: "]"))
     }
 
-    @_effects(readonly)
-    private static func zaTileText(_ index: UInt8, _ element: ScalarSize?) -> String {
-        guard let element else { return "za" }
-        return "za\(index).\(suffix(element))"
+    private static func putZATile(_ index: UInt8, _ element: ScalarSize?, into out: inout TextBytes) {
+        guard let element else {
+            out.put("za")
+            return
+        }
+        out.put("za")
+        out.putDecimal(UInt64(index))
+        out.put(UInt8(ascii: "."))
+        putSuffix(element, into: &out)
     }
 
-    @_effects(readonly)
-    private static func tileSliceText(_ s: ZATileSliceOperand) -> String {
-        let dir = s.direction == .vertical ? "v" : "h"
-        var index = "\(s.offset)"
-        if let hi = s.offsetHigh { index += ":\(hi)" }
-        return "za\(s.tileIndex)\(dir).\(suffix(s.element))[\(selectText(s.selectRegister)), \(index)]"
+    private static func putTileSlice(_ s: ZATileSliceOperand, into out: inout TextBytes) {
+        out.put("za")
+        out.putDecimal(UInt64(s.tileIndex))
+        out.put(s.direction == .vertical ? "v" : "h")
+        out.put(UInt8(ascii: "."))
+        putSuffix(s.element, into: &out)
+        out.put(UInt8(ascii: "["))
+        putSelect(s.selectRegister, into: &out)
+        out.put(", ")
+        out.putDecimal(UInt64(s.offset))
+        if let hi = s.offsetHigh {
+            out.put(UInt8(ascii: ":"))
+            out.putDecimal(UInt64(hi))
+        }
+        out.put(UInt8(ascii: "]"))
     }
 
     // MARK: predicates / vectors
 
-    @_effects(readonly)
-    private static func predicateText(_ p: ScalablePredicateRef) -> String {
-        var s = (p.isCounter ? "pn" : "p") + "\(p.registerIndex)"
-        if let el = p.element { s += ".\(suffix(el))" }
+    private static func putPredicate(_ p: ScalablePredicateRef, into out: inout TextBytes) {
+        out.put(p.isCounter ? "pn" : "p")
+        out.putDecimal(UInt64(p.registerIndex))
+        putDot(p.element, into: &out)
         if let sel = p.selectRegister {
-            s += "[\(selectText(sel)), \(p.elementIndex ?? 0)]"
+            out.put(UInt8(ascii: "["))
+            putSelect(sel, into: &out)
+            out.put(", ")
+            out.putDecimal(UInt64(p.elementIndex ?? 0))
+            out.put(UInt8(ascii: "]"))
         } else if let idx = p.elementIndex {
-            s += "[\(idx)]"
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(idx))
+            out.put(UInt8(ascii: "]"))
         }
         switch p.qualifier {
-        case .zeroing: s += "/z"
-        case .merging: s += "/m"
+        case .zeroing: out.put("/z")
+        case .merging: out.put("/m")
         case .none: break
         }
-        return s
     }
 
-    @_effects(readonly)
-    private static func vectorText(_ v: ScalableVectorRef) -> String {
-        var s = "z\(v.registerIndex)"
-        if let el = v.element { s += ".\(suffix(el))" }
-        if let idx = v.elementIndex { s += "[\(idx)]" }
-        return s
+    private static func putVector(_ v: ScalableVectorRef, into out: inout TextBytes) {
+        out.put(UInt8(ascii: "z"))
+        out.putDecimal(UInt64(v.registerIndex))
+        putDot(v.element, into: &out)
+        if let idx = v.elementIndex {
+            out.put(UInt8(ascii: "["))
+            out.putDecimal(UInt64(idx))
+            out.put(UInt8(ascii: "]"))
+        }
     }
 
-    @_effects(readonly)
-    private static func memoryText(_ m: ScalableMemoryOperand) -> String {
-        var s = "["
+    private static func putMemory(_ m: ScalableMemoryOperand, into out: inout TextBytes) {
+        out.put(UInt8(ascii: "["))
         switch m.base {
-        case let .gpr(r): s += gpr64(r)
-        case let .vector(v): s += "z\(v.registerIndex)" + (v.element.map { ".\(suffix($0))" } ?? "")
+        case let .gpr(r):
+            putGPR64(r, into: &out)
+        case let .vector(v):
+            out.put(UInt8(ascii: "z"))
+            out.putDecimal(UInt64(v.registerIndex))
+            putDot(v.element, into: &out)
         }
         if let si = m.scalarIndex {
-            s += ", " + gpr64(si)
-            if m.scaleShift > 0 { s += ", lsl #\(m.scaleShift)" }
+            out.put(", ")
+            putGPR64(si, into: &out)
+            if m.scaleShift > 0 {
+                out.put(", lsl #")
+                out.putDecimal(UInt64(m.scaleShift))
+            }
         }
         if m.displacement != 0 {
-            s += ", #\(m.displacement)"
-            if m.mulVL { s += ", mul vl" }
+            out.put(", #")
+            out.putDecimal(Int64(m.displacement))
+            if m.mulVL { out.put(", mul vl") }
         }
-        s += "]"
-        return s
+        out.put(UInt8(ascii: "]"))
     }
 
     // MARK: register text
 
-    @_effects(readonly)
-    private static func selectText(_ r: RegisterRef) -> String {
-        "w\(r.canonicalIndex)"
+    @inline(__always)
+    private static func putSelect(_ r: RegisterRef, into out: inout TextBytes) {
+        out.put(UInt8(ascii: "w"))
+        out.putDecimal(UInt64(r.canonicalIndex))
     }
 
     /// A 64-bit GPR renders `x<n>` / `sp` / `xzr` by role.
-    @_effects(readonly)
-    private static func gpr64(_ r: RegisterRef) -> String {
-        if r.isStackPointer { return "sp" }
-        if r.isZeroRegister { return "xzr" }
-        return "x\(r.canonicalIndex)"
+    private static func putGPR64(_ r: RegisterRef, into out: inout TextBytes) {
+        if r.isStackPointer {
+            out.put("sp")
+            return
+        }
+        if r.isZeroRegister {
+            out.put("xzr")
+            return
+        }
+        out.put(UInt8(ascii: "x"))
+        out.putDecimal(UInt64(r.canonicalIndex))
     }
 
-    @inline(__always) @_effects(readonly)
-    private static func suffix(_ s: ScalarSize) -> String {
-        switch s { case .b: "b"; case .h: "h"; case .s: "s"; case .d: "d"; case .q: "q" }
+    @inline(__always)
+    private static func putDot(_ element: ScalarSize?, into out: inout TextBytes) {
+        guard let element else { return }
+        out.put(UInt8(ascii: "."))
+        putSuffix(element, into: &out)
+    }
+
+    @inline(__always)
+    private static func putSuffix(_ s: ScalarSize, into out: inout TextBytes) {
+        switch s {
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        case .d: out.put("d")
+        case .q: out.put("q")
+        }
     }
 
     /// The rendered spelling of a SME2 mnemonic (MOVA already resolved to
     /// `.mov`).
     @_effects(readonly)
-    static func name(_ m: Mnemonic) -> String {
+    static func name(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .mov: "mov"; case .movaz: "movaz"; case .movt: "movt"; case .zero: "zero"
         case .luti2: "luti2"; case .luti4: "luti4"; case .luti6: "luti6"

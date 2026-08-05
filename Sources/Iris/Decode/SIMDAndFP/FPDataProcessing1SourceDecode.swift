@@ -12,7 +12,7 @@
 
 enum FPDataProcessing1SourceDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let ftype = UInt8((encoding >> 22) & 0x3)
         // The 6-bit opcode is at bits[20:15]; bits[14:10] are fixed at 10000
         // by the caller's discriminator. bits[20:16] are 5 bits of opcode-
@@ -34,7 +34,7 @@ enum FPDataProcessing1SourceDecode {
             let vn = simdfpScalarOperand(Rn, size: .s)
             return draft(
                 address: address, encoding: encoding,
-                mnemonic: .bfcvt, Rd: Rd, Rn: Rn, vd: vd, vn: vn,
+                mnemonic: .bfcvt, Rd: Rd, Rn: Rn, vd: vd, vn: vn, &sink,
             )
         }
 
@@ -43,7 +43,7 @@ enum FPDataProcessing1SourceDecode {
         if (opcode & 0b111100) == 0b000100 {
             return decodeFCVTPrecision(
                 encoding: encoding, address: address,
-                ftype: ftype, opc: opcode & 0b11, Rn: Rn, Rd: Rd,
+                ftype: ftype, opc: opcode & 0b11, Rn: Rn, Rd: Rd, &sink,
             )
         }
 
@@ -106,7 +106,7 @@ enum FPDataProcessing1SourceDecode {
         let vn = simdfpScalarOperand(Rn, size: dstSize)
         return draft(
             address: address, encoding: encoding,
-            mnemonic: mnemonic, Rd: Rd, Rn: Rn, vd: vd, vn: vn,
+            mnemonic: mnemonic, Rd: Rd, Rn: Rn, vd: vd, vn: vn, &sink,
         )
     }
 
@@ -114,7 +114,7 @@ enum FPDataProcessing1SourceDecode {
     @_effects(readonly)
     private static func draft(
         address: UInt64, encoding: UInt32, mnemonic: Mnemonic,
-        Rd: UInt8, Rn: UInt8, vd: Operand, vn: Operand,
+        Rd: UInt8, Rn: UInt8, vd: Operand, vn: Operand, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         DecodedDraft(
             address: address,
@@ -127,7 +127,7 @@ enum FPDataProcessing1SourceDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .simdAndFP,
-            operands: [vd, vn],
+            operandCount: sink.emit(vd, vn),
         )
     }
 
@@ -143,7 +143,7 @@ enum FPDataProcessing1SourceDecode {
     @_optimize(speed)
     private static func decodeFCVTPrecision(
         encoding: UInt32, address: UInt64,
-        ftype: UInt8, opc: UInt8, Rn: UInt8, Rd: UInt8,
+        ftype: UInt8, opc: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         if ftype == opc { return .undefined(at: address, encoding: encoding) }
         if ftype == 0b10 || opc == 0b10 { return .undefined(at: address, encoding: encoding) }
@@ -154,7 +154,7 @@ enum FPDataProcessing1SourceDecode {
         let vn = simdfpScalarOperand(Rn, size: srcSize)
         return draft(
             address: address, encoding: encoding,
-            mnemonic: .fcvt, Rd: Rd, Rn: Rn, vd: vd, vn: vn,
+            mnemonic: .fcvt, Rd: Rd, Rn: Rn, vd: vd, vn: vn, &sink,
         )
     }
 }

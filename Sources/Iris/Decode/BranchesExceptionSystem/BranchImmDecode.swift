@@ -9,19 +9,19 @@
 
 enum BranchImmDecode {
     @inline(__always)
-    static func decodeB(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeB(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         DecodedDraft(
             address: address,
             encoding: encoding,
             mnemonic: .b,
             branchClass: .direct,
             category: .branchesExceptionSystem,
-            operands: [.label(byteOffset: BranchImmDecode.signedOffset(encoding))],
+            operandCount: sink.emit(.label(byteOffset: BranchImmDecode.signedOffset(encoding))),
         )
     }
 
     @inline(__always)
-    static func decodeBL(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeBL(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         DecodedDraft(
             address: address,
             encoding: encoding,
@@ -29,7 +29,7 @@ enum BranchImmDecode {
             semanticWrites: RegisterSet.empty.inserting(.x(30)),
             branchClass: .call,
             category: .branchesExceptionSystem,
-            operands: [.label(byteOffset: BranchImmDecode.signedOffset(encoding))],
+            operandCount: sink.emit(.label(byteOffset: BranchImmDecode.signedOffset(encoding))),
         )
     }
 

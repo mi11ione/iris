@@ -13,167 +13,235 @@
 /// control record. A scalable-tier hole never reaches here: the text router
 /// renders it as `.long` before dispatching.
 enum SVEPredicateControlCanonicalizer {
-    /// Format `draft` to canonical disassembly text.
-    @_effects(readonly)
-    static func format(_ instruction: Instruction) -> String {
-        let ops = Array(instruction.operands)
-        switch instruction.mnemonic {
+    /// The byte path — rendered straight into a UTF-8 buffer. Operands are
+    /// addressed positionally through the `put*` helpers, which take the
+    /// zero-based operand view directly rather than a materialized `Array`.
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        let ops = instruction.operands
+        let m = instruction.mnemonic
+        switch m {
         // G1 — initialise / test.
         case .ptrue, .ptrues:
-            return formatPtrue(instruction.mnemonic, ops)
+            putPtrue(m, ops, into: &out)
         case .pfalse:
-            return "\(name(instruction.mnemonic)) \(pred(ops, 0))"
+            putHead(m, into: &out)
+            putPred(ops, 0, into: &out)
         case .ptest:
-            return "\(name(instruction.mnemonic)) \(pred(ops, 0)), \(pred(ops, 1))"
+            putHead(m, into: &out)
+            putPred(ops, 0, into: &out)
+            out.put(", ")
+            putPred(ops, 1, into: &out)
         // G2 — predicate logical (4-op /z, or SEL bare Pg).
         case .and, .ands, .bic, .bics, .eor, .eors, .orr, .orrs, .orn, .orns,
              .nand, .nands, .nor, .nors, .sel:
-            return formatFour(instruction.mnemonic, ops)
+            putFour(m, ops, into: &out)
         // G2 aliases.
         case .mov, .movs, .not, .nots:
-            return formatMovNot(instruction.mnemonic, ops)
+            // MOV/MOVS have a 2-operand form (from ORR/ORRS) and a 3-operand
+            // form (from AND/ANDS or SEL); NOT/NOTS are always 3-operand.
+            if ops.count == 2 {
+                putHead(m, into: &out)
+                putPred(ops, 0, into: &out)
+                out.put(", ")
+                putPred(ops, 1, into: &out)
+            } else {
+                putThree(m, ops, into: &out)
+            }
         // G3 — break (3-op), break-pair (4-op), pfirst/pnext (3-op).
         case .brka, .brkas, .brkb, .brkbs:
-            return formatThree(instruction.mnemonic, ops)
+            putThree(m, ops, into: &out)
         case .brkn, .brkns, .brkpa, .brkpas, .brkpb, .brkpbs:
-            return formatFour(instruction.mnemonic, ops)
+            putFour(m, ops, into: &out)
         case .pfirst, .pnext:
-            return formatThree(instruction.mnemonic, ops)
+            putThree(m, ops, into: &out)
         // G4 — first-fault.
         case .rdffr, .rdffrs:
-            return formatRdffr(instruction.mnemonic, ops)
+            // Unpredicated form has one operand; predicated has two (Pd, Pg/z).
+            putHead(m, into: &out)
+            putPred(ops, 0, into: &out)
+            if ops.count != 1 {
+                out.put(", ")
+                putPred(ops, 1, into: &out)
+            }
         case .wrffr:
-            return "\(name(instruction.mnemonic)) \(pred(ops, 0))"
+            putHead(m, into: &out)
+            putPred(ops, 0, into: &out)
         case .setffr:
-            return name(instruction.mnemonic)
+            putGroupName(m, into: &out)
         // G5 — predicate count.
         case .cntp:
-            return "\(name(instruction.mnemonic)) \(reg(ops, 0)), \(pred(ops, 1)), \(pred(ops, 2))"
+            putHead(m, into: &out)
+            putReg(ops, 0, into: &out)
+            out.put(", ")
+            putPred(ops, 1, into: &out)
+            out.put(", ")
+            putPred(ops, 2, into: &out)
         case .incp, .decp, .sqincp, .uqincp, .sqdecp, .uqdecp:
-            return formatCountPredicate(instruction.mnemonic, ops)
+            putCountPredicate(m, ops, into: &out)
         // G6 — loop predicates.
         case .whilege, .whilegt, .whilelt, .whilele, .whilehs, .whilehi,
              .whilelo, .whilels, .whilerw, .whilewr:
-            return "\(name(instruction.mnemonic)) \(pred(ops, 0)), \(reg(ops, 1)), \(reg(ops, 2))"
+            putHead(m, into: &out)
+            putPred(ops, 0, into: &out)
+            out.put(", ")
+            putReg(ops, 1, into: &out)
+            out.put(", ")
+            putReg(ops, 2, into: &out)
         case .ctermeq, .ctermne:
-            return "\(name(instruction.mnemonic)) \(reg(ops, 0)), \(reg(ops, 1))"
+            putHead(m, into: &out)
+            putReg(ops, 0, into: &out)
+            out.put(", ")
+            putReg(ops, 1, into: &out)
         // G7 — element count + adjust.
         case .rdvl, .rdsvl:
-            return "\(name(instruction.mnemonic)) \(reg(ops, 0)), \(imm(ops, 1))"
+            putHead(m, into: &out)
+            putReg(ops, 0, into: &out)
+            out.put(", ")
+            putImm(ops, 1, into: &out)
         case .addvl, .addsvl, .addpl, .addspl:
-            return "\(name(instruction.mnemonic)) \(reg(ops, 0)), \(reg(ops, 1)), \(imm(ops, 2))"
+            putHead(m, into: &out)
+            putReg(ops, 0, into: &out)
+            out.put(", ")
+            putReg(ops, 1, into: &out)
+            out.put(", ")
+            putImm(ops, 2, into: &out)
         case .cntb, .cnth, .cntw, .cntd:
-            return formatElementCount(instruction.mnemonic, ops, destCount: 1)
+            putElementCount(m, ops, destCount: 1, into: &out)
         case .incb, .inch, .incw, .incd, .decb, .dech, .decw, .decd,
              .sqincb, .sqinch, .sqincw, .sqincd, .uqincb, .uqinch, .uqincw, .uqincd,
              .sqdecb, .sqdech, .sqdecw, .sqdecd, .uqdecb, .uqdech, .uqdecw, .uqdecd:
-            return formatElementCount(instruction.mnemonic, ops, destCount: elementCountDestCount(ops))
+            putElementCount(m, ops, destCount: elementCountDestCount(ops), into: &out)
         // G8 — index.
         case .index:
-            return "\(name(instruction.mnemonic)) \(scalableVectorText(ops, 0)), \(indexOperand(ops, 1)), \(indexOperand(ops, 2))"
+            putHead(m, into: &out)
+            putScalableVector(ops, 0, into: &out)
+            out.put(", ")
+            putIndexOperand(ops, 1, into: &out)
+            out.put(", ")
+            putIndexOperand(ops, 2, into: &out)
         // G9 — movprfx.
         case .movprfx:
-            return formatMovprfx(instruction.mnemonic, ops)
+            // Unpredicated: [Zd, Zn]. Predicated: [Zd.T, Pg/{z,m}, Zn.T].
+            putHead(m, into: &out)
+            putScalableVector(ops, 0, into: &out)
+            out.put(", ")
+            if ops.count == 2 {
+                putScalableVector(ops, 1, into: &out)
+            } else {
+                putPred(ops, 1, into: &out)
+                out.put(", ")
+                putScalableVector(ops, 2, into: &out)
+            }
         default:
-            return name(instruction.mnemonic) // sentinel for a mnemonic outside the group
+            // sentinel for a mnemonic outside the group
+            putGroupName(m, into: &out)
         }
     }
 
     // MARK: per-shape formatters
 
-    @_effects(readonly)
-    private static func formatPtrue(_ m: Mnemonic, _ ops: [Operand]) -> String {
+    @inline(__always)
+    private static func putHead(_ m: Mnemonic, into out: inout TextBytes) {
+        putGroupName(m, into: &out)
+        out.put(UInt8(ascii: " "))
+    }
+
+    /// This group's own spelling table. A mnemonic from outside the group
+    /// renders the `?<raw>` sentinel rather than the spelling another
+    /// family owns.
+    @inline(__always)
+    private static func putGroupName(_ m: Mnemonic, into out: inout TextBytes) {
+        if let spelling = name(m) {
+            out.put(spelling)
+        } else {
+            out.put(UInt8(ascii: "?"))
+            out.putDecimal(UInt64(m.rawValue))
+        }
+    }
+
+    private static func putPtrue(
+        _ m: Mnemonic, _ ops: Instruction.Operands, into out: inout TextBytes,
+    ) {
+        putHead(m, into: &out)
+        putPred(ops, 0, into: &out)
         // PTRUE always elides the `all` (31) pattern (no mul field).
-        guard case let .svePredicatePattern(pat) = operand(ops, ops.count - 1) else {
-            return "\(name(m)) \(pred(ops, 0))"
+        guard case let .svePredicatePattern(pat) = operand(ops, ops.count - 1) else { return }
+        if SVEPatternName.isAll(pat.raw) { return }
+        out.put(", ")
+        out.putString(SVEPatternName.text(pat.raw))
+    }
+
+    private static func putFour(
+        _ m: Mnemonic, _ ops: Instruction.Operands, into out: inout TextBytes,
+    ) {
+        putHead(m, into: &out)
+        for i in 0 ..< 4 {
+            if i > 0 { out.put(", ") }
+            putPred(ops, i, into: &out)
         }
-        if SVEPatternName.isAll(pat.raw) {
-            return "\(name(m)) \(pred(ops, 0))"
+    }
+
+    private static func putThree(
+        _ m: Mnemonic, _ ops: Instruction.Operands, into out: inout TextBytes,
+    ) {
+        putHead(m, into: &out)
+        for i in 0 ..< 3 {
+            if i > 0 { out.put(", ") }
+            putPred(ops, i, into: &out)
         }
-        return "\(name(m)) \(pred(ops, 0)), \(SVEPatternName.text(pat.raw))"
     }
 
-    @_effects(readonly)
-    private static func formatFour(_ m: Mnemonic, _ ops: [Operand]) -> String {
-        "\(name(m)) \(pred(ops, 0)), \(pred(ops, 1)), \(pred(ops, 2)), \(pred(ops, 3))"
-    }
-
-    @_effects(readonly)
-    private static func formatThree(_ m: Mnemonic, _ ops: [Operand]) -> String {
-        "\(name(m)) \(pred(ops, 0)), \(pred(ops, 1)), \(pred(ops, 2))"
-    }
-
-    @_effects(readonly)
-    private static func formatMovNot(_ m: Mnemonic, _ ops: [Operand]) -> String {
-        // MOV/MOVS have a 2-operand form (from ORR/ORRS) and a 3-operand form
-        // (from AND/ANDS or SEL); NOT/NOTS are always 3-operand.
-        if ops.count == 2 {
-            return "\(name(m)) \(pred(ops, 0)), \(pred(ops, 1))"
-        }
-        return formatThree(m, ops)
-    }
-
-    @_effects(readonly)
-    private static func formatRdffr(_ m: Mnemonic, _ ops: [Operand]) -> String {
-        // Unpredicated form has one operand; predicated has two (Pd, Pg/z).
-        if ops.count == 1 {
-            return "\(name(m)) \(pred(ops, 0))"
-        }
-        return "\(name(m)) \(pred(ops, 0)), \(pred(ops, 1))"
-    }
-
-    @_effects(readonly)
-    private static func formatCountPredicate(_ m: Mnemonic, _ ops: [Operand]) -> String {
+    private static func putCountPredicate(
+        _ m: Mnemonic, _ ops: Instruction.Operands, into out: inout TextBytes,
+    ) {
         // Vector: [Zdn.T, Pm.T]. Scalar: [Rdn, Pm.T] or signed-32 [Xdn, Pm.T, Wdn].
+        putHead(m, into: &out)
         if case .scalableVector = operand(ops, 0) {
-            return "\(name(m)) \(scalableVectorText(ops, 0)), \(pred(ops, 1))"
+            putScalableVector(ops, 0, into: &out)
+            out.put(", ")
+            putPred(ops, 1, into: &out)
+            return
         }
+        putReg(ops, 0, into: &out)
+        out.put(", ")
+        putPred(ops, 1, into: &out)
         if ops.count >= 3 {
-            return "\(name(m)) \(reg(ops, 0)), \(pred(ops, 1)), \(reg(ops, 2))"
+            out.put(", ")
+            putReg(ops, 2, into: &out)
         }
-        return "\(name(m)) \(reg(ops, 0)), \(pred(ops, 1))"
     }
 
-    @_effects(readonly)
-    private static func formatElementCount(_ m: Mnemonic, _ ops: [Operand], destCount: Int) -> String {
+    private static func putElementCount(
+        _ m: Mnemonic, _ ops: Instruction.Operands, destCount: Int, into out: inout TextBytes,
+    ) {
         // dest operands (1 scalar, or 1 scalar + 1 W-source-view for signed-32,
         // or 1 vector) then the pattern/mul with the 3-tier elision ladder.
-        var head = ""
+        putHead(m, into: &out)
         if destCount == 2 {
-            head = "\(reg(ops, 0)), \(reg(ops, 1))"
+            putReg(ops, 0, into: &out)
+            out.put(", ")
+            putReg(ops, 1, into: &out)
         } else if case .scalableVector = operand(ops, 0) {
-            head = scalableVectorText(ops, 0)
+            putScalableVector(ops, 0, into: &out)
         } else {
-            head = reg(ops, 0)
+            putReg(ops, 0, into: &out)
         }
-        let patIndex = destCount
-        guard case let .svePredicatePattern(pat) = operand(ops, patIndex) else {
-            return "\(name(m)) \(head)"
-        }
+        guard case let .svePredicatePattern(pat) = operand(ops, destCount) else { return }
         let mulPresent = pat.multiplier != 1
-        if SVEPatternName.isAll(pat.raw), !mulPresent {
-            return "\(name(m)) \(head)" // drop `all` when it would be trailing
+        // drop `all` when it would be trailing
+        if SVEPatternName.isAll(pat.raw), !mulPresent { return }
+        out.put(", ")
+        out.putString(SVEPatternName.text(pat.raw))
+        if mulPresent {
+            out.put(", mul #")
+            out.putDecimal(UInt64(pat.multiplier))
         }
-        if !mulPresent {
-            return "\(name(m)) \(head), \(SVEPatternName.text(pat.raw))"
-        }
-        return "\(name(m)) \(head), \(SVEPatternName.text(pat.raw)), mul #\(pat.multiplier)"
-    }
-
-    @_effects(readonly)
-    private static func formatMovprfx(_ m: Mnemonic, _ ops: [Operand]) -> String {
-        // Unpredicated: [Zd, Zn]. Predicated: [Zd.T, Pg/{z,m}, Zn.T].
-        if ops.count == 2 {
-            return "\(name(m)) \(scalableVectorText(ops, 0)), \(scalableVectorText(ops, 1))"
-        }
-        return "\(name(m)) \(scalableVectorText(ops, 0)), \(pred(ops, 1)), \(scalableVectorText(ops, 2))"
     }
 
     /// The number of leading register operands before the pattern for an
     /// element-count form: 2 for a signed-32 saturating scalar (X dest + W
     /// source-view), 1 otherwise.
-    @_effects(readonly)
-    private static func elementCountDestCount(_ ops: [Operand]) -> Int {
+    private static func elementCountDestCount(_ ops: Instruction.Operands) -> Int {
         if ops.count >= 2, case .register = ops[0], case .register = ops[1] {
             return 2
         }
@@ -183,87 +251,118 @@ enum SVEPredicateControlCanonicalizer {
     // MARK: operand renderers
 
     /// A predicate operand: `p<n>` + `.<T>` if sized + `/z`|`/m`.
-    @_effects(readonly)
-    private static func pred(_ ops: [Operand], _ i: Int) -> String {
-        guard case let .scalablePredicate(p) = operand(ops, i) else { return "?p" }
-        var s = "p\(p.registerIndex)"
-        if let el = p.element { s += ".\(elementSuffix(el))" }
+    private static func putPred(
+        _ ops: Instruction.Operands, _ i: Int, into out: inout TextBytes,
+    ) {
+        guard case let .scalablePredicate(p) = operand(ops, i) else {
+            out.put("?p")
+            return
+        }
+        out.put(UInt8(ascii: "p"))
+        out.putDecimal(UInt64(p.registerIndex))
+        if let el = p.element {
+            out.put(UInt8(ascii: "."))
+            putElementSuffix(el, into: &out)
+        }
         switch p.qualifier {
-        case .zeroing: s += "/z"
-        case .merging: s += "/m"
+        case .zeroing: out.put("/z")
+        case .merging: out.put("/m")
         case .none: break
         }
-        return s
     }
 
-    @_effects(readonly)
-    private static func scalableVectorText(_ ops: [Operand], _ i: Int) -> String {
-        guard case let .scalableVector(v) = operand(ops, i) else { return "?z" }
-        if let el = v.element { return "z\(v.registerIndex).\(elementSuffix(el))" }
-        return "z\(v.registerIndex)"
+    private static func putScalableVector(
+        _ ops: Instruction.Operands, _ i: Int, into out: inout TextBytes,
+    ) {
+        guard case let .scalableVector(v) = operand(ops, i) else {
+            out.put("?z")
+            return
+        }
+        out.put(UInt8(ascii: "z"))
+        out.putDecimal(UInt64(v.registerIndex))
+        if let el = v.element {
+            out.put(UInt8(ascii: "."))
+            putElementSuffix(el, into: &out)
+        }
     }
 
-    @_effects(readonly)
-    private static func reg(_ ops: [Operand], _ i: Int) -> String {
-        guard case let .register(r) = operand(ops, i) else { return "?r" }
-        return registerText(r)
+    private static func putReg(
+        _ ops: Instruction.Operands, _ i: Int, into out: inout TextBytes,
+    ) {
+        guard case let .register(r) = operand(ops, i) else {
+            out.put("?r")
+            return
+        }
+        putRegister(r, into: &out)
     }
 
-    @_effects(readonly)
-    private static func imm(_ ops: [Operand], _ i: Int) -> String {
+    private static func putImm(
+        _ ops: Instruction.Operands, _ i: Int, into out: inout TextBytes,
+    ) {
         switch operand(ops, i) {
-        case let .immediate(value, _): "#\(value)"
-        case let .unsignedImmediate(value, _): "#\(value)"
-        default: "?#"
+        case let .immediate(value, _):
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
+        case let .unsignedImmediate(value, _):
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
+        default:
+            out.put("?#")
         }
     }
 
     /// An INDEX start/step operand — either a register or a signed immediate.
-    @_effects(readonly)
-    private static func indexOperand(_ ops: [Operand], _ i: Int) -> String {
+    private static func putIndexOperand(
+        _ ops: Instruction.Operands, _ i: Int, into out: inout TextBytes,
+    ) {
         switch operand(ops, i) {
-        case let .register(r): registerText(r)
-        case let .immediate(value, _): "#\(value)"
-        default: "?idx"
+        case let .register(r): putRegister(r, into: &out)
+        case let .immediate(value, _):
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
+        default: out.put("?idx")
         }
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func operand(_ ops: [Operand], _ i: Int) -> Operand {
+    private static func operand(_ ops: Instruction.Operands, _ i: Int) -> Operand {
         (i >= 0 && i < ops.count) ? ops[i] : .immediate(value: 0, width: 0)
     }
 
-    @_effects(readonly)
-    private static func elementSuffix(_ s: ScalarSize) -> String {
+    @inline(__always)
+    private static func putElementSuffix(_ s: ScalarSize, into out: inout TextBytes) {
         switch s {
-        case .b: "b"
-        case .h: "h"
-        case .s: "s"
-        case .d: "d"
-        case .q: "q"
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        case .d: out.put("d")
+        case .q: out.put("q")
         }
     }
 
-    @_effects(readonly)
-    private static func registerText(_ r: RegisterRef) -> String {
+    private static func putRegister(_ r: RegisterRef, into out: inout TextBytes) {
         switch (r.canonicalIndex, r.role, r.width) {
-        case (31, .stackPointer, .x64): return "sp"
-        case (31, .stackPointer, .w32): return "wsp"
-        case (31, .zeroRegister, .x64): return "xzr"
-        case (31, .zeroRegister, .w32): return "wzr"
-        case (31, .general, _): return r.width == .x64 ? "xzr" : "wzr"
+        case (31, .stackPointer, .x64): out.put("sp")
+        case (31, .stackPointer, .w32): out.put("wsp")
+        case (31, .zeroRegister, .x64): out.put("xzr")
+        case (31, .zeroRegister, .w32): out.put("wzr")
+        case (31, .general, _): out.put(r.width == .x64 ? "xzr" : "wzr")
         default:
             let n = r.canonicalIndex
-            if n < 31 { return r.width == .x64 ? "x\(n)" : "w\(n)" }
-            return "?\(n)"
+            if n < 31 {
+                out.put(r.width == .x64 ? "x" : "w")
+                out.putDecimal(UInt64(n))
+            } else {
+                out.put(UInt8(ascii: "?"))
+                out.putDecimal(UInt64(n))
+            }
         }
     }
 
     // MARK: name table
 
     @_effects(readonly)
-    static func name(_ m: Mnemonic) -> String {
+    static func name(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .ptrue: "ptrue"
         case .ptrues: "ptrues"
@@ -359,7 +458,7 @@ enum SVEPredicateControlCanonicalizer {
         case .uqdecd: "uqdecd"
         case .index: "index"
         case .movprfx: "movprfx"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

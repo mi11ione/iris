@@ -84,7 +84,7 @@ public enum SMECoreSemanticChecker {
         }
 
         // ZA overlap read/write masks (acceptance).
-        let (expectedRead, expectedWrite) = expectedZAMasks(family, Array(draft.operands))
+        let (expectedRead, expectedWrite) = expectedZAMasks(family, draft.operands)
         if draft.scalableReads.zaMask.bits != expectedRead {
             return maskIssue("scalableReads.za", draft.scalableReads.zaMask.bits, expectedRead)
         }
@@ -95,7 +95,7 @@ public enum SMECoreSemanticChecker {
         // The slice-select GPR Wv is a semantic read on every tile-slice /
         // array-vector access — a classification the text renders
         // but the read-set could still drop.
-        if familyTouchesSelect(family), let sel = selectRegisterIndex(Array(Array(draft.operands))) {
+        if familyTouchesSelect(family), let sel = selectRegisterIndex(draft.operands) {
             if !draft.semanticReads.contains(RegisterRef.x(sel)) {
                 return SMECoreSemanticIssue(field: "semanticReads.selectRegister", actual: "missing w\(sel)", expected: "w\(sel) read")
             }
@@ -125,7 +125,7 @@ public enum SMECoreSemanticChecker {
             return .strZA
         case .mov:
             // Insert writes a tile slice (operand 0); extract writes a Z vector.
-            if case .zaTileSlice = Array(draft.operands).first { return .movaInsert }
+            if case .zaTileSlice = draft.operands.first { return .movaInsert }
             return .movaExtract
         default:
             return nil
@@ -174,7 +174,7 @@ public enum SMECoreSemanticChecker {
     /// The expected `(ZA read, ZA write)` residue masks, recomputed from the
     /// ZA operand — the exact overlap model of
     @_effects(readonly)
-    public static func expectedZAMasks(_ family: Family, _ operands: [Operand]) -> (read: UInt16, write: UInt16) {
+    public static func expectedZAMasks(_ family: Family, _ operands: Instruction.Operands) -> (read: UInt16, write: UInt16) {
         switch family {
         case .outerProduct, .addHV:
             let m = firstZAMask(operands) // accumulate: read + write the tile
@@ -202,7 +202,7 @@ public enum SMECoreSemanticChecker {
     /// The ZA residue mask of the first ZA operand (`zaTile` / `zaTileSlice` /
     /// `zaArrayVector`), or 0 if none.
     @_effects(readonly)
-    public static func firstZAMask(_ operands: [Operand]) -> UInt16 {
+    public static func firstZAMask(_ operands: Instruction.Operands) -> UInt16 {
         for op in operands {
             if let m = zaMask(op) { return m }
         }
@@ -212,7 +212,7 @@ public enum SMECoreSemanticChecker {
     /// The ZA residue mask of the `zaTileSlice` operand specifically (MOVA
     /// extract, where the tile is not the first operand).
     @_effects(readonly)
-    public static func tileSliceMask(_ operands: [Operand]) -> UInt16 {
+    public static func tileSliceMask(_ operands: Instruction.Operands) -> UInt16 {
         for op in operands {
             if case let .zaTileSlice(s) = op { return s.zaMask.bits }
         }
@@ -221,7 +221,7 @@ public enum SMECoreSemanticChecker {
 
     /// The union of every `zaTile` operand's mask — the ZERO write set.
     @_effects(readonly)
-    public static func zeroMask(_ operands: [Operand]) -> UInt16 {
+    public static func zeroMask(_ operands: Instruction.Operands) -> UInt16 {
         var bits: UInt16 = 0
         for op in operands {
             if case let .zaTile(index, element) = op {
@@ -247,7 +247,7 @@ public enum SMECoreSemanticChecker {
 
     /// The GPR index of the slice-select `Wv` carried by the ZA operand.
     @_effects(readonly)
-    public static func selectRegisterIndex(_ operands: [Operand]) -> UInt8? {
+    public static func selectRegisterIndex(_ operands: Instruction.Operands) -> UInt8? {
         for op in operands {
             switch op {
             case let .zaTileSlice(s): return s.selectRegister.canonicalIndex

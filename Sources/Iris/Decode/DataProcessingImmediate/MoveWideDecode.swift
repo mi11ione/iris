@@ -10,7 +10,7 @@ enum MoveWideDecode {
     @inline(__always)
     @_optimize(speed)
     @_effects(readonly)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let opc = UInt8((encoding >> 29) & 0x3)
         let hw = UInt8((encoding >> 21) & 0x3)
@@ -40,10 +40,7 @@ enum MoveWideDecode {
                     semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                     flagEffect: .none,
                     category: .dataProcessingImmediate,
-                    operands: [
-                        .register(rdRef),
-                        .immediate(value: displayValue, width: regSize),
-                    ],
+                    operandCount: sink.emit(.register(rdRef), .immediate(value: displayValue, width: regSize)),
                 )
             }
             // Fall through to base MOVZ.
@@ -74,10 +71,7 @@ enum MoveWideDecode {
                     semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                     flagEffect: .none,
                     category: .dataProcessingImmediate,
-                    operands: [
-                        .register(rdRef),
-                        .immediate(value: displayValue, width: regSize),
-                    ],
+                    operandCount: sink.emit(.register(rdRef), .immediate(value: displayValue, width: regSize)),
                 )
             }
         }
@@ -91,12 +85,11 @@ enum MoveWideDecode {
             // opc == 01 returned above as reserved; remaining base form is MOVK.
             .movk
         }
-        var operands: [Operand] = []
-        operands.reserveCapacity(hw != 0 ? 3 : 2)
-        operands.append(.register(rdRef))
-        operands.append(.unsignedImmediate(value: UInt64(imm16), width: 16))
+        let operandMark = sink.mark
+        sink.append(.register(rdRef))
+        sink.append(.unsignedImmediate(value: UInt64(imm16), width: 16))
         if hw != 0 {
-            operands.append(.shiftAmount(kind: .lsl, amount: shiftAmount))
+            sink.append(.shiftAmount(kind: .lsl, amount: shiftAmount))
         }
         // MOVK preserves the un-replaced bits of Rd; Rd is BOTH read and
         // written. MOVN/MOVZ fully overwrite — write-only.
@@ -111,7 +104,7 @@ enum MoveWideDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: .none,
             category: .dataProcessingImmediate,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 

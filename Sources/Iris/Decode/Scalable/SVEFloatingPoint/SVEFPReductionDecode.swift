@@ -14,7 +14,7 @@ extension SVEFloatingPointDecode {
     // MARK: G7 — fast reductions (0x65, bits[20:19]=00, bits[15:12]=0010)
 
     @inline(__always)
-    static func decodeFastReduction(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFastReduction(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bit19 is a fixed zero field; the reduction-column dispatch only routes
         // here when bits[20:19]==00, so it is always zero and needs no re-check.
         guard let size = fpSize(e) else { return undefined(e, a) }
@@ -32,11 +32,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [
-                .vectorRegister(VectorRegisterRef(registerIndex: d, view: .scalar(size: size))),
-                govern(g, .none),
-                vec(n, size),
-            ],
+            operandCount: sink.emit(.vectorRegister(VectorRegisterRef(registerIndex: d, view: .scalar(size: size))), govern(g, .none), vec(n, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: .readsStreamingMode,
         )
@@ -45,7 +41,7 @@ extension SVEFloatingPointDecode {
     // MARK: G8 — FADDA (0x65, bits[20:19]=11, bits[15:12]=0010)
 
     @inline(__always)
-    static func decodeFADDA(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeFADDA(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[18:16] are a fixed zero field (FADDA is the region's only form).
         if (e >> 16) & 0b111 != 0 { return undefined(e, a) }
         guard let size = fpSize(e) else { return undefined(e, a) }
@@ -57,7 +53,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: .fadda,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [scalar, govern(g, .none), scalar, vec(m, size)],
+            operandCount: sink.emit(scalar, govern(g, .none), scalar, vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: .readsStreamingMode,
         )
@@ -66,7 +62,7 @@ extension SVEFloatingPointDecode {
     // MARK: G24 — quadword reductions (0x64, bits[20:19]=10, bits[15:13]=101)
 
     @inline(__always)
-    static func decodeQuadReduction(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeQuadReduction(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The class pins bits[15:13]=101; the dispatcher's else-branch also
         // carries the 110/111 holes here, so bits[14:13] must be re-checked.
         if (e >> 13) & 0b11 != 0b01 { return undefined(e, a) }
@@ -90,11 +86,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [
-                .vectorRegister(VectorRegisterRef(registerIndex: d, view: .full(arrangement: arrangement))),
-                govern(g, .none),
-                vec(n, size),
-            ],
+            operandCount: sink.emit(.vectorRegister(VectorRegisterRef(registerIndex: d, view: .full(arrangement: arrangement))), govern(g, .none), vec(n, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: .readsStreamingMode,
         )

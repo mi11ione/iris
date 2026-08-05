@@ -15,7 +15,7 @@ extension SVEFloatingPointDecode {
     // MARK: G1 — predicated binary register (0x65, bits[15:13]=100, bits[20:19]=0x)
 
     @inline(__always)
-    static func decodePredicatedBinary(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePredicatedBinary(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sz = (e >> 22) & 0b11
         let opc = (e >> 16) & 0xF
         let mnemonic: Mnemonic
@@ -60,7 +60,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size)],
+            operandCount: sink.emit(vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -69,7 +69,7 @@ extension SVEFloatingPointDecode {
     // MARK: G2 — arith immediate (0x65, bits[15:13]=100, bits[20:19]=11)
 
     @inline(__always)
-    static func decodeArithImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeArithImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[9:6] are a fixed zero field in this class.
         if (e >> 6) & 0xF != 0 { return undefined(e, a) }
         guard let size = fpSize(e) else { return undefined(e, a) }
@@ -91,10 +91,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [
-                vec(dn, size), govern(g, .merging), vec(dn, size),
-                exactImmediate(value, size),
-            ],
+            operandCount: sink.emit(vec(dn, size), govern(g, .merging), vec(dn, size), exactImmediate(value, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
@@ -135,7 +132,7 @@ extension SVEFloatingPointDecode {
     // MARK: G16 — pairwise (0x64, bits[15:13]=100, bits[20:19]=10)
 
     @inline(__always)
-    static func decodePairwise(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePairwise(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let size = fpSize(e) else { return undefined(e, a) }
         let mnemonic: Mnemonic
         switch (e >> 16) & 0b111 {
@@ -151,7 +148,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size)],
+            operandCount: sink.emit(vec(dn, size), govern(g, .merging), vec(dn, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )

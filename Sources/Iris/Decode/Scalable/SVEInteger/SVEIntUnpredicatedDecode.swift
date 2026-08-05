@@ -17,27 +17,27 @@
 
 extension SVEIntegerDecode {
     @inline(__always)
-    static func decodeUnpredicated(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnpredicated(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch (e >> 12) & 0b1111 {
-        case 0b0000, 0b0001: decodeUnpredicatedArith(e, a) // sve_int_bin_cons_arit_0
-        case 0b0110, 0b0111: decodeUnpredicatedMul(e, a) // sve2_int_mul
-        case 0b1000: decodeUnpredicatedShiftWide(e, a) // sve_int_bin_cons_shift_wide
-        case 0b0011: decodeUnpredicatedLogicalOrTernary(e, a) // logical (b11:10=00) or G17
-        case 0b1001: decodeUnpredicatedShiftImm(e, a) // sve_int_bin_cons_shift_imm (tsz)
-        case 0b1010: decodeAddressGeneration(e, a) // ADR
+        case 0b0000, 0b0001: decodeUnpredicatedArith(e, a, &sink) // sve_int_bin_cons_arit_0
+        case 0b0110, 0b0111: decodeUnpredicatedMul(e, a, &sink) // sve2_int_mul
+        case 0b1000: decodeUnpredicatedShiftWide(e, a, &sink) // sve_int_bin_cons_shift_wide
+        case 0b0011: decodeUnpredicatedLogicalOrTernary(e, a, &sink) // logical (b11:10=00) or G17
+        case 0b1001: decodeUnpredicatedShiftImm(e, a, &sink) // sve_int_bin_cons_shift_imm (tsz)
+        case 0b1010: decodeAddressGeneration(e, a, &sink) // ADR
         default: undefined(e, a)
         }
     }
 
     /// A plain unpredicated three-register form `<mn> Zd.T, Zn.T, Zm.T`.
     @inline(__always)
-    static func unpredicatedZZZ(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, size: ScalarSize) -> DecodedDraft {
+    static func unpredicatedZZZ(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, size: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let d = zd(e), n = zn(e), m = zm(e)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, size), vec(n, size), vec(m, size)],
+            operandCount: sink.emit(vec(d, size), vec(n, size), vec(m, size)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -45,7 +45,7 @@ extension SVEIntegerDecode {
     // MARK: G6 unpredicated arith (add/sub + saturating), opc = bits[12:10]
 
     @inline(__always)
-    static func decodeUnpredicatedArith(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnpredicatedArith(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic
         switch (e >> 10) & 0b111 {
         case 0b000: mnemonic = .add
@@ -58,13 +58,13 @@ extension SVEIntegerDecode {
         case 0b110: mnemonic = .sqsub
         default: mnemonic = .uqsub // 0b111
         }
-        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: sz(e))
+        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: sz(e), &sink)
     }
 
     // MARK: G6 unpredicated multiply (mul/pmul/smulh/umulh/sqdmulh/sqrdmulh/addqp/addsubp)
 
     @inline(__always)
-    static func decodeUnpredicatedMul(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnpredicatedMul(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 10) & 0b111 == 0b001, sz(e) != .b { return undefined(e, a) } // PMUL is .b only
         let mnemonic: Mnemonic = switch (e >> 10) & 0b111 {
         case 0b000: .mul
@@ -76,13 +76,13 @@ extension SVEIntegerDecode {
         case 0b110: .addqp
         default: .addsubp // 0b111
         }
-        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: sz(e))
+        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: sz(e), &sink)
     }
 
     // MARK: G6 unpredicated shift by wide elements (`<mn> Zd.T, Zn.T, Zm.D`)
 
     @inline(__always)
-    static func decodeUnpredicatedShiftWide(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnpredicatedShiftWide(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = sz(e)
         if size == .d { return undefined(e, a) } // wide shift needs source < .d
         let mnemonic: Mnemonic
@@ -97,7 +97,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, size), vec(n, size), vec(m, .d)], // shift amount is a .D vector
+            operandCount: sink.emit(vec(d, size), vec(n, size), vec(m, .d)), // shift amount is a .D vector
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -105,9 +105,9 @@ extension SVEIntegerDecode {
     // MARK: G6 unpredicated logical (AND/ORR/EOR/BIC, always .D; ORR Zn==Zm → mov)
 
     @inline(__always)
-    static func decodeUnpredicatedLogicalOrTernary(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnpredicatedLogicalOrTernary(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // b11:10 == 00 → logical; otherwise G17 ternary (b11=1) or XAR (b11=0).
-        guard (e >> 10) & 0b11 == 0 else { return decodeTernary(e, a) }
+        guard (e >> 10) & 0b11 == 0 else { return decodeTernary(e, a, &sink) }
         let d = zd(e), n = zn(e), m = zm(e)
         let mnemonic: Mnemonic
         switch (e >> 22) & 0b11 { // AND/ORR/EOR/BIC selected by the size field
@@ -117,20 +117,20 @@ extension SVEIntegerDecode {
                 return DecodedDraft(
                     address: a, encoding: e, mnemonic: .mov,
                     semanticReads: vecMask(n), semanticWrites: vecMask(d), category: .sve,
-                    operands: [vec(d, .d), vec(n, .d)], scalableEffect: .readsStreamingMode,
+                    operandCount: sink.emit(vec(d, .d), vec(n, .d)), scalableEffect: .readsStreamingMode,
                 )
             }
             mnemonic = .orr
         case 0b10: mnemonic = .eor
         default: mnemonic = .bic
         }
-        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: .d)
+        return unpredicatedZZZ(e, a, mnemonic: mnemonic, size: .d, &sink)
     }
 
     // MARK: G6 unpredicated shift by immediate (`Zd.T, Zn.T, #imm`, tsz)
 
     @inline(__always)
-    static func decodeUnpredicatedShiftImm(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnpredicatedShiftImm(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic
         let isLeft: Bool
         switch (e >> 10) & 0b11 {
@@ -148,7 +148,7 @@ extension SVEIntegerDecode {
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n), semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, element), vec(n, element), .immediate(value: amount, width: 8)],
+            operandCount: sink.emit(vec(d, element), vec(n, element), .immediate(value: amount, width: 8)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -156,7 +156,7 @@ extension SVEIntegerDecode {
     // MARK: G6 ADR — vector address generation `Zd.T, [Zn.T, Zm.T{, <extend>{ #amount}}]`
 
     @inline(__always)
-    static func decodeAddressGeneration(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeAddressGeneration(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // [23:22]: 00 unpacked .d sxtw, 01 unpacked .d uxtw, 10 packed .s lsl, 11 packed .d lsl.
         let element: ScalarSize
         let extend: ExtendKind
@@ -177,7 +177,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: .adr,
             semanticReads: vecMask(n).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, element), .scalableMemory(mem)],
+            operandCount: sink.emit(vec(d, element), .scalableMemory(mem)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -185,8 +185,8 @@ extension SVEIntegerDecode {
     // MARK: G17 bitwise ternary (EOR3/BCAX/BSL/BSL1N/BSL2N/NBSL) + XAR
 
     @inline(__always)
-    static func decodeTernary(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if (e >> 11) & 1 == 0 { return decodeRotateXor(e, a) } // XAR
+    static func decodeTernary(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if (e >> 11) & 1 == 0 { return decodeRotateXor(e, a, &sink) } // XAR
         // opc3 = (sz[23:22] << 1) | bit10; all forms are `.d`, 4-operand destructive.
         let mnemonic: Mnemonic
         switch (((e >> 22) & 0b11) << 1) | ((e >> 10) & 1) {
@@ -204,7 +204,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn).union(vecMask(m)).union(vecMask(k)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [vec(dn, .d), vec(dn, .d), vec(m, .d), vec(k, .d)],
+            operandCount: sink.emit(vec(dn, .d), vec(dn, .d), vec(m, .d), vec(k, .d)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -212,7 +212,7 @@ extension SVEIntegerDecode {
     // MARK: G17 XAR — `xar <Zdn>.<T>, <Zdn>.<T>, <Zm>.<T>, #<rot>` (rotate-right after xor)
 
     @inline(__always)
-    static func decodeRotateXor(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeRotateXor(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Element and rotation ride the standard four-size tsz (tszh at [23:22],
         // tszl:imm3 at [20:16]); the rotation is a right shift of 1…esize.
         guard let (element, esize, tsz) = decodeTsz(tszHigh: (e >> 22) & 0b11, low: (e >> 16) & 0b11111, lowBits: 5)
@@ -222,10 +222,7 @@ extension SVEIntegerDecode {
             address: a, encoding: e, mnemonic: .xar,
             semanticReads: vecMask(dn).union(vecMask(m)),
             semanticWrites: vecMask(dn), category: .sve,
-            operands: [
-                vec(dn, element), vec(dn, element), vec(m, element),
-                .immediate(value: 2 * Int64(esize) - Int64(tsz), width: 8),
-            ],
+            operandCount: sink.emit(vec(dn, element), vec(dn, element), vec(m, element), .immediate(value: 2 * Int64(esize) - Int64(tsz), width: 8)),
             scalableEffect: .readsStreamingMode,
         )
     }

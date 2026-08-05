@@ -10,7 +10,7 @@
 
 enum AdvSIMDModifiedImmediateDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let op = UInt8((encoding >> 29) & 0x1)
         let abc = UInt8((encoding >> 16) & 0x7)
@@ -43,7 +43,7 @@ enum AdvSIMDModifiedImmediateDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [dst, .unsignedImmediate(value: immValue, width: 64)],
+                operandCount: sink.emit(dst, .unsignedImmediate(value: immValue, width: 64)),
             )
         }
         // Mnemonic + destination arrangement + optional shift operand
@@ -52,27 +52,26 @@ enum AdvSIMDModifiedImmediateDecode {
         guard let info = kindInfo else {
             return .undefined(at: address, encoding: encoding)
         }
-        var operands: [Operand] = []
-        operands.reserveCapacity(3)
-        operands.append(simdfpVectorOperand(Rd, arrangement: info.arrangement))
+        let operandMark = sink.mark
+        sink.append(simdfpVectorOperand(Rd, arrangement: info.arrangement))
         switch immKind {
         case .integer:
             // Integer forms render the raw 8-bit seed (`#abcdefgh`), with
             // the LSL/MSL shift as a separate operand — matching llvm-mc.
             // (The 64-bit replicated-byte MOVI, cmode=1110/op=1, renders
             // its full expanded value via the early return above.)
-            operands.append(.unsignedImmediate(value: UInt64(abcdefgh), width: 8))
+            sink.append(.unsignedImmediate(value: UInt64(abcdefgh), width: 8))
         case .floatDouble:
-            operands.append(.floatImmediate(bits: immValue, kind: .double))
+            sink.append(.floatImmediate(bits: immValue, kind: .double))
         default:
             // .floatSingle — .floatHalf is structurally unreachable here
             // (decodeAdvSIMDModifiedImmediate never emits half today; FP16
             // vector immediates land in this branch if a future caller
             // changes that, with kind .single as a non-trapping fallback).
-            operands.append(.floatImmediate(bits: immValue, kind: .single))
+            sink.append(.floatImmediate(bits: immValue, kind: .single))
         }
         if let shift = info.shiftOperand {
-            operands.append(shift)
+            sink.append(shift)
         }
         // BIC/ORR vector immediate are destructive on Rd (preserve other
         // bits per imm; semantically Vd is both read and written).
@@ -88,7 +87,7 @@ enum AdvSIMDModifiedImmediateDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 

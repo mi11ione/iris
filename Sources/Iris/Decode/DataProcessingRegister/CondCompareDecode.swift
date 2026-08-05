@@ -9,7 +9,7 @@
 enum CondCompareDecode {
     @inline(__always)
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let op = UInt8((encoding >> 30) & 0x1)
         let S = UInt8((encoding >> 29) & 0x1)
@@ -42,12 +42,7 @@ enum CondCompareDecode {
                 semanticWrites: .empty,
                 flagEffect: [.nzcv, .readsNZCV],
                 category: .dataProcessingRegister,
-                operands: [
-                    .register(rnRef),
-                    .register(rmRef),
-                    .unsignedImmediate(value: nzcv, width: 4),
-                    .conditionCode(cond),
-                ],
+                operandCount: sink.emit(.register(rnRef), .register(rmRef), .unsignedImmediate(value: nzcv, width: 4), .conditionCode(cond)),
             )
         }
         // Immediate form (o2 == 0b10): operand[1] is imm5.
@@ -60,12 +55,7 @@ enum CondCompareDecode {
             semanticWrites: .empty,
             flagEffect: [.nzcv, .readsNZCV],
             category: .dataProcessingRegister,
-            operands: [
-                .register(rnRef),
-                .unsignedImmediate(value: imm5, width: 5),
-                .unsignedImmediate(value: nzcv, width: 4),
-                .conditionCode(cond),
-            ],
+            operandCount: sink.emit(.register(rnRef), .unsignedImmediate(value: imm5, width: 5), .unsignedImmediate(value: nzcv, width: 4), .conditionCode(cond)),
         )
     }
 }

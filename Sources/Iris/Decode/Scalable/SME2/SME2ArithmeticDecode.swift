@@ -23,9 +23,9 @@ enum SME2ArithmeticDecode {
     /// bits[15:13] (100 SEL, 101 destructive, 110 clamp/narrow/permute, 111
     /// convert/fmul/frint/unpk).
     @_optimize(speed)
-    static func decode(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if let spec = accumulateSpec(e) {
-            return buildAccumulate(e, a, spec)
+            return buildAccumulate(e, a, spec, &sink)
         }
         // The accumulate table above already claimed every ZA-targeting form
         // (including the indexed ones); the remainder is {Zd}-targeting, routed
@@ -33,11 +33,11 @@ enum SME2ArithmeticDecode {
         return switch (e >> 13) & 0x7 {
         case 0b100:
             e & 0xFF21_E021 == 0xC120_8000 || e & 0xFF23_E063 == 0xC121_8000
-                ? SME2VectorOpsDecode.decodeSel(e, a)
+                ? SME2VectorOpsDecode.decodeSel(e, a, &sink)
                 : SME2Decode.undefined(e, a) // 100-group hole
-        case 0b101: SME2VectorOpsDecode.decodeDestructive(e, a)
-        case 0b110: SME2VectorOpsDecode.decodeClampNarrowPermute(e, a)
-        case 0b111: SME2VectorOpsDecode.decodeConvertMisc(e, a)
+        case 0b101: SME2VectorOpsDecode.decodeDestructive(e, a, &sink)
+        case 0b110: SME2VectorOpsDecode.decodeClampNarrowPermute(e, a, &sink)
+        case 0b111: SME2VectorOpsDecode.decodeConvertMisc(e, a, &sink)
         default: SME2Decode.undefined(e, a) // 000-group hole (accumulates matched above)
         }
     }
@@ -75,56 +75,57 @@ enum SME2ArithmeticDecode {
 
     /// Build the record for a matched non-indexed ZA-accumulate spec.
     @inline(__always)
-    private static func buildAccumulate(_ e: UInt32, _ a: UInt64, _ spec: AccumSpec) -> DecodedDraft {
+    private static func buildAccumulate(_ e: UInt32, _ a: UInt64, _ spec: AccumSpec, _ sink: inout OperandSink) -> DecodedDraft {
         let (offset, offsetHigh) = accumOffset(e, spec)
         let vgGroup: ZAArrayVectorOperand.VectorGroup = spec.vg == 1 ? .none : (spec.vg == 4 ? .vgx4 : .vgx2)
         let dest = SME2Decode.zaVector(e, spec.tile, offset: offset, offsetHigh: offsetHigh, group: vgGroup)
 
-        var operands: [Operand] = [dest]
+        let operandMark = sink.mark
+        _ = sink.emit(dest)
         var sourceReads = RegisterSet.empty
 
         switch spec.shape {
         case .accum:
             let zn = znGroupFirst(e, spec.vg)
-            operands.append(SME2Decode.group(zn, spec.vg, spec.src))
+            sink.append(SME2Decode.group(zn, spec.vg, spec.src))
             sourceReads = SME2Decode.groupMask(zn, spec.vg)
         case .single where spec.vg == 1:
             // Single-vector widening form: `za.<T>[Wv, lo:hi], Zn.<Ts>, Zm.<Ts>`.
             let zn = UInt8((e >> 5) & 0x1F)
             let zm = SME2Decode.zm4(e)
-            operands.append(SME2Decode.vec(zn, spec.src))
-            operands.append(SME2Decode.vec(zm, spec.src))
+            sink.append(SME2Decode.vec(zn, spec.src))
+            sink.append(SME2Decode.vec(zm, spec.src))
             sourceReads = SME2Decode.vecMask(zn).union(SME2Decode.vecMask(zm))
         case .single:
             // {Zn} (5-bit wrapping group) then a single broadcast Zm (z0-z15).
             let zn = UInt8((e >> 5) & 0x1F)
             let zm = SME2Decode.zm4(e)
-            operands.append(SME2Decode.group(zn, spec.vg, spec.src))
-            operands.append(SME2Decode.vec(zm, spec.src))
+            sink.append(SME2Decode.group(zn, spec.vg, spec.src))
+            sink.append(SME2Decode.vec(zm, spec.src))
             sourceReads = SME2Decode.groupMask(zn, spec.vg).union(SME2Decode.vecMask(zm))
         case .multi:
             let zn = znGroupFirst(e, spec.vg)
             let zm = zmGroupFirst(e, spec.vg)
-            operands.append(SME2Decode.group(zn, spec.vg, spec.src))
-            operands.append(SME2Decode.group(zm, spec.vg, spec.src))
+            sink.append(SME2Decode.group(zn, spec.vg, spec.src))
+            sink.append(SME2Decode.group(zm, spec.vg, spec.src))
             sourceReads = SME2Decode.groupMask(zn, spec.vg).union(SME2Decode.groupMask(zm, spec.vg))
         case .idx where spec.vg == 1:
             // Single-vector indexed widening: `za[...], Zn.<Ts>, Zm.<Ts>[i]`.
             let zn = UInt8((e >> 5) & 0x1F)
             let zm = SME2Decode.zm4(e)
-            operands.append(SME2Decode.vec(zn, spec.src))
-            operands.append(SME2Decode.vec(zm, spec.src, index: accumIndex(e, spec.index)))
+            sink.append(SME2Decode.vec(zn, spec.src))
+            sink.append(SME2Decode.vec(zm, spec.src, index: accumIndex(e, spec.index)))
             sourceReads = SME2Decode.vecMask(zn).union(SME2Decode.vecMask(zm))
         case .idx:
             // FVDOTB/FVDOTT have vgx4 ZA semantics but a 2-register Zn list.
             let znCount: UInt8 = spec.index == .i2vt ? 2 : spec.vg
             let zn = znGroupFirst(e, znCount)
             let zm = SME2Decode.zm4(e)
-            operands.append(SME2Decode.group(zn, znCount, spec.src))
-            operands.append(SME2Decode.vec(zm, spec.src, index: accumIndex(e, spec.index)))
+            sink.append(SME2Decode.group(zn, znCount, spec.src))
+            sink.append(SME2Decode.vec(zm, spec.src, index: accumIndex(e, spec.index)))
             sourceReads = SME2Decode.groupMask(zn, znCount).union(SME2Decode.vecMask(zm))
         }
-        return SME2Decode.zaAccumulate(e, a, spec.mnemonic, operands: operands, sourceReads: sourceReads)
+        return SME2Decode.zaAccumulate(e, a, spec.mnemonic, operandCount: sink.count(since: operandMark), sourceReads: sourceReads)
     }
 
     /// The ZA slice offset (and range high end) for an accumulate record. The

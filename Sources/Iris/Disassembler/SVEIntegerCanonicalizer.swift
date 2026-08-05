@@ -14,159 +14,268 @@
 /// A scalable-tier hole never reaches here: the text router renders it as
 /// `.long` before dispatching.
 enum SVEIntegerCanonicalizer {
-    @_effects(readonly)
-    static func format(_ instruction: Instruction) -> String {
-        let mnemonic = name(instruction.mnemonic)
-        if Array(instruction.operands).isEmpty { return mnemonic }
-        var parts: [String] = []
-        parts.reserveCapacity(Array(instruction.operands).count)
-        for op in Array(instruction.operands) {
-            parts.append(render(op, instruction.mnemonic))
+    /// The byte path. Every SVE-integer decoder emits a fully-structured
+    /// operand list, so rendering stays generic: mnemonic, then the
+    /// comma-separated operand renderings, written straight into the
+    /// buffer. The `String` path built a `[String]` of parts, joined it,
+    /// and materialized the operand view into an `Array` three times per
+    /// instruction; none of that exists here.
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        // This family's own table, not the global one: a mnemonic from
+        // outside the group renders the `?<raw>` sentinel rather than the
+        // spelling another family owns.
+        if let spelling = name(instruction.mnemonic) {
+            out.put(spelling)
+        } else {
+            out.put(UInt8(ascii: "?"))
+            out.putDecimal(UInt64(instruction.mnemonic.rawValue))
         }
-        return mnemonic + " " + parts.joined(separator: ", ")
+        let ops = instruction.operands
+        if ops.isEmpty { return }
+        out.put(UInt8(ascii: " "))
+        for i in 0 ..< ops.count {
+            if i > 0 { out.put(", ") }
+            put(ops[i], instruction.mnemonic, into: &out)
+        }
     }
 
     // MARK: per-operand rendering
 
-    @_effects(readonly)
-    private static func render(_ op: Operand, _ mnemonic: Mnemonic) -> String {
+    private static func put(_ op: Operand, _ mnemonic: Mnemonic, into out: inout TextBytes) {
         switch op {
         case let .scalableVector(v):
-            var s = "z\(v.registerIndex)"
-            if let el = v.element { s += ".\(suffix(el))" }
-            if let idx = v.elementIndex { s += "[\(idx)]" }
-            return s
+            out.put(UInt8(ascii: "z"))
+            out.putDecimal(UInt64(v.registerIndex))
+            if let el = v.element {
+                out.put(UInt8(ascii: "."))
+                putSuffix(el, into: &out)
+            }
+            if let idx = v.elementIndex {
+                out.put(UInt8(ascii: "["))
+                out.putDecimal(UInt64(idx))
+                out.put(UInt8(ascii: "]"))
+            }
         case let .scalablePredicate(p):
-            // A governing predicate renders bare (`p0/m`); only a result predicate
-            // carries an element suffix (`p0.s`) rule 2.
-            var s = "p\(p.registerIndex)"
-            if p.role == .result, let el = p.element { s += ".\(suffix(el))" }
+            // A governing predicate renders bare (`p0/m`); only a result
+            // predicate carries an element suffix (`p0.s`).
+            out.put(UInt8(ascii: "p"))
+            out.putDecimal(UInt64(p.registerIndex))
+            if p.role == .result, let el = p.element {
+                out.put(UInt8(ascii: "."))
+                putSuffix(el, into: &out)
+            }
             switch p.qualifier {
-            case .zeroing: s += "/z"
-            case .merging: s += "/m"
+            case .zeroing: out.put("/z")
+            case .merging: out.put("/m")
             case .none: break
             }
-            return s
         case let .scalableVectorGroup(g):
             // llvm-mc pads the braces (`{ z2.s, z3.s }`); normalizeDisassembly
-            // collapses runs of whitespace but does not remove it, so the spaces
-            // are part of the canonical text.
-            var members: [String] = []
-            members.reserveCapacity(Int(g.count))
-            let dot = g.element.map { ".\(suffix($0))" } ?? ""
+            // collapses runs of whitespace but does not remove it, so the
+            // spaces are part of the canonical text.
+            out.put("{ ")
             for j in 0 ..< g.count {
-                members.append("z\(g.memberIndex(j))\(dot)")
+                if j > 0 { out.put(", ") }
+                out.put(UInt8(ascii: "z"))
+                out.putDecimal(UInt64(g.memberIndex(j)))
+                if let el = g.element {
+                    out.put(UInt8(ascii: "."))
+                    putSuffix(el, into: &out)
+                }
             }
-            return "{ " + members.joined(separator: ", ") + " }"
-        case let .register(r): return registerText(r)
+            out.put(" }")
+        case let .register(r):
+            putRegister(r, into: &out)
         case let .vectorRegister(v):
-            // Reductions write either a scalar of the element width (`smaxv b0`) or,
-            // for the quadword forms, a whole NEON vector (`addqv v0.16b`).
+            // Reductions write either a scalar of the element width
+            // (`smaxv b0`) or, for the quadword forms, a whole NEON vector
+            // (`addqv v0.16b`).
             switch v.view {
-            case let .scalar(size): return "\(scalarPrefix(size))\(v.registerIndex)"
-            case let .full(arrangement): return "v\(v.registerIndex).\(arrangementText(arrangement))"
-            default: return "?v\(v.registerIndex)"
+            case let .scalar(size):
+                putSuffix(size, into: &out)
+                out.putDecimal(UInt64(v.registerIndex))
+            case let .full(arrangement):
+                out.put(UInt8(ascii: "v"))
+                out.putDecimal(UInt64(v.registerIndex))
+                out.put(UInt8(ascii: "."))
+                putArrangement(arrangement, into: &out)
+            default:
+                out.put("?v")
+                out.putDecimal(UInt64(v.registerIndex))
             }
-        // Signed immediates (compares, DUP/CPY moves, rotations, shift amounts)
-        // always print decimal. The logical-immediate family never reaches here —
-        // it carries its value as `.unsignedImmediate`.
-        case let .immediate(value, _): return "#\(value)"
-        case let .unsignedImmediate(value, width): return unsignedImmediateText(value, width: width, mnemonic: mnemonic)
-        case let .shiftAmount(kind, amount): return "\(shiftKind(kind)) #\(amount)"
-        case let .scalableMemory(mem): return renderMemory(mem)
-        default: return "?op"
+        // Signed immediates (compares, DUP/CPY moves, rotations, shift
+        // amounts) always print decimal. The logical-immediate family never
+        // reaches here — it carries its value as `.unsignedImmediate`.
+        case let .immediate(value, _):
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
+        case let .unsignedImmediate(value, width):
+            putUnsignedImmediate(value, width: width, mnemonic: mnemonic, into: &out)
+        case let .shiftAmount(kind, amount):
+            putShiftKind(kind, into: &out)
+            out.put(" #")
+            out.putDecimal(UInt64(amount))
+        case let .scalableMemory(mem):
+            putMemory(mem, into: &out)
+        default:
+            out.put("?op")
         }
     }
 
-    @_effects(readonly)
-    private static func renderMemory(_ mem: ScalableMemoryOperand) -> String {
-        guard case let .vector(base) = mem.base, let index = mem.index else { return "?mem" }
-        let baseT = base.element.map { ".\(suffix($0))" } ?? ""
-        let idxT = index.element.map { ".\(suffix($0))" } ?? ""
-        var extend = ""
+    private static func putMemory(_ mem: ScalableMemoryOperand, into out: inout TextBytes) {
+        guard case let .vector(base) = mem.base, let index = mem.index else {
+            out.put("?mem")
+            return
+        }
+        out.put("[z")
+        out.putDecimal(UInt64(base.registerIndex))
+        if let el = base.element {
+            out.put(UInt8(ascii: "."))
+            putSuffix(el, into: &out)
+        }
+        out.put(", z")
+        out.putDecimal(UInt64(index.registerIndex))
+        if let el = index.element {
+            out.put(UInt8(ascii: "."))
+            putSuffix(el, into: &out)
+        }
         switch mem.indexExtend {
-        case .uxtw: extend = ", uxtw" + (mem.scaleShift > 0 ? " #\(mem.scaleShift)" : "")
-        case .sxtw: extend = ", sxtw" + (mem.scaleShift > 0 ? " #\(mem.scaleShift)" : "")
-        case .lsl: extend = mem.scaleShift > 0 ? ", lsl #\(mem.scaleShift)" : "" // packed lsl #0 is elided
-        default: break
+        case .uxtw:
+            out.put(", uxtw")
+            if mem.scaleShift > 0 {
+                out.put(" #")
+                out.putDecimal(UInt64(mem.scaleShift))
+            }
+        case .sxtw:
+            out.put(", sxtw")
+            if mem.scaleShift > 0 {
+                out.put(" #")
+                out.putDecimal(UInt64(mem.scaleShift))
+            }
+        case .lsl:
+            // packed lsl #0 is elided
+            if mem.scaleShift > 0 {
+                out.put(", lsl #")
+                out.putDecimal(UInt64(mem.scaleShift))
+            }
+        default:
+            break
         }
-        return "[z\(base.registerIndex)\(baseT), z\(index.registerIndex)\(idxT)\(extend)]"
+        out.put(UInt8(ascii: "]"))
     }
 
-    @_effects(readonly)
-    private static func registerText(_ r: RegisterRef) -> String {
+    private static func putRegister(_ r: RegisterRef, into out: inout TextBytes) {
         if r.canonicalIndex == 31 {
-            if r.isStackPointer { return r.width == .x64 ? "sp" : "wsp" }
-            if r.isZeroRegister { return r.width == .x64 ? "xzr" : "wzr" }
+            if r.isStackPointer {
+                out.put(r.width == .x64 ? "sp" : "wsp")
+                return
+            }
+            if r.isZeroRegister {
+                out.put(r.width == .x64 ? "xzr" : "wzr")
+                return
+            }
         }
-        if r.isSIMD { return "?s\(r.canonicalIndex)" }
-        return (r.width == .x64 ? "x" : "w") + "\(r.canonicalIndex)"
+        if r.isSIMD {
+            out.put("?s")
+            out.putDecimal(UInt64(r.canonicalIndex))
+            return
+        }
+        out.put(r.width == .x64 ? "x" : "w")
+        out.putDecimal(UInt64(r.canonicalIndex))
     }
 
-    @inline(__always) @_effects(readonly)
+    @inline(__always)
     private static func isLogicalImmediate(_ m: Mnemonic) -> Bool {
         m == .and || m == .eor || m == .orr || m == .dupm
     }
 
     /// Unsigned-immediate text. AND/EOR/ORR/DUPM print the per-element
-    /// value in hex. A DUPM→`mov` follows llvm's `printSVELogicalImm`: the value
-    /// sign-extended from its element width prints as signed decimal when it fits
-    /// int16, else the raw value prints as unsigned decimal when it fits uint16,
-    /// else hex. Every other mnemonic prints plain unsigned decimal (compare imm7).
-    @inline(__always) @_effects(readonly)
-    private static func unsignedImmediateText(_ value: UInt64, width: UInt8, mnemonic: Mnemonic) -> String {
-        if isLogicalImmediate(mnemonic) { return "#0x" + String(value, radix: 16) }
+    /// value in hex. A DUPM→`mov` follows llvm's `printSVELogicalImm`: the
+    /// value sign-extended from its element width prints as signed decimal
+    /// when it fits int16, else the raw value prints as unsigned decimal
+    /// when it fits uint16, else hex. Every other mnemonic prints plain
+    /// unsigned decimal (compare imm7).
+    @inline(__always)
+    private static func putUnsignedImmediate(
+        _ value: UInt64, width: UInt8, mnemonic: Mnemonic, into out: inout TextBytes,
+    ) {
+        if isLogicalImmediate(mnemonic) {
+            out.put("#0x")
+            out.putHex(value)
+            return
+        }
         if mnemonic == .mov {
             let signed = signExtend(value, width: UInt64(width))
-            if signed >= -32768, signed <= 32767 { return "#\(signed)" }
-            if value <= 0xFFFF { return "#\(value)" }
-            return "#0x" + String(value, radix: 16)
+            if signed >= -32768, signed <= 32767 {
+                out.put(UInt8(ascii: "#"))
+                out.putDecimal(signed)
+                return
+            }
+            if value <= 0xFFFF {
+                out.put(UInt8(ascii: "#"))
+                out.putDecimal(value)
+                return
+            }
+            out.put("#0x")
+            out.putHex(value)
+            return
         }
-        return "#\(value)"
+        out.put(UInt8(ascii: "#"))
+        out.putDecimal(value)
     }
 
-    @inline(__always) @_effects(readonly)
+    @inline(__always)
     private static func signExtend(_ value: UInt64, width: UInt64) -> Int64 {
         if width >= 64 { return Int64(bitPattern: value) }
         let shift = UInt64(64) - width
         return Int64(bitPattern: value << shift) >> Int64(shift)
     }
 
-    @inline(__always) @_effects(readonly)
-    private static func shiftKind(_ k: ShiftKind) -> String {
-        switch k { case .lsl: "lsl"; case .lsr: "lsr"; case .asr: "asr"; case .ror: "ror"; case .msl: "msl" }
+    @inline(__always)
+    private static func putShiftKind(_ k: ShiftKind, into out: inout TextBytes) {
+        switch k {
+        case .lsl: out.put("lsl")
+        case .lsr: out.put("lsr")
+        case .asr: out.put("asr")
+        case .ror: out.put("ror")
+        case .msl: out.put("msl")
+        }
     }
 
-    @inline(__always) @_effects(readonly)
-    private static func suffix(_ s: ScalarSize) -> String {
-        switch s { case .b: "b"; case .h: "h"; case .s: "s"; case .d: "d"; case .q: "q" }
+    /// The element-size letter. Doubles as the scalar-register prefix — a
+    /// reduction's scalar destination is named by its element width, so
+    /// `.scalar(.b)` renders `b0` from the same table.
+    @inline(__always)
+    private static func putSuffix(_ s: ScalarSize, into out: inout TextBytes) {
+        switch s {
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        case .d: out.put("d")
+        case .q: out.put("q")
+        }
     }
 
-    @inline(__always) @_effects(readonly)
-    private static func scalarPrefix(_ s: ScalarSize) -> String {
-        switch s { case .b: "b"; case .h: "h"; case .s: "s"; case .d: "d"; case .q: "q" }
-    }
-
-    /// The NEON arrangement suffix. Only the four full-width (128-bit) forms are
+    /// The NEON arrangement suffix. Only the full-width (128-bit) forms are
     /// reachable from SVE-integer — the quadword reductions' destination.
-    @inline(__always) @_effects(readonly)
-    private static func arrangementText(_ a: VectorArrangement) -> String {
+    @inline(__always)
+    private static func putArrangement(_ a: VectorArrangement, into out: inout TextBytes) {
         switch a {
-        case .b8: "8b"
-        case .b16: "16b"
-        case .h2: "2h"
-        case .h4: "4h"
-        case .h8: "8h"
-        case .s2: "2s"
-        case .s4: "4s"
-        case .d1: "1d"
-        case .d2: "2d"
-        case .q1: "1q"
+        case .b8: out.put("8b")
+        case .b16: out.put("16b")
+        case .h2: out.put("2h")
+        case .h4: out.put("4h")
+        case .h8: out.put("8h")
+        case .s2: out.put("2s")
+        case .s4: out.put("4s")
+        case .d1: out.put("1d")
+        case .d2: out.put("2d")
+        case .q1: out.put("1q")
         }
     }
 
     @_effects(readonly)
-    static func name(_ m: Mnemonic) -> String {
+    static func name(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .abs: "abs"
         case .adclb: "adclb"
@@ -432,7 +541,7 @@ enum SVEIntegerCanonicalizer {
         case .uxth: "uxth"
         case .uxtw: "uxtw"
         case .xar: "xar"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

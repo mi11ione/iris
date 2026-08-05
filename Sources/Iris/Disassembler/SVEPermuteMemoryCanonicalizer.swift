@@ -15,157 +15,236 @@
 /// Formats SVE-permute/memory SVE permute / memory / crypto records exactly as llvm-mc
 /// renders them.
 enum SVEPermuteMemoryCanonicalizer {
-    @_effects(readonly)
-    static func format(_ instruction: Instruction) -> String {
-        let mnemonic = name(instruction.mnemonic)
-        if Array(instruction.operands).isEmpty { return mnemonic }
-        var parts: [String] = []
-        parts.reserveCapacity(Array(instruction.operands).count)
-        for op in Array(instruction.operands) {
-            parts.append(render(op))
+    /// The byte path — rendered straight into a UTF-8 buffer.
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        // This family's own table: a mnemonic from outside the group
+        // renders nothing rather than the spelling another family owns.
+        if let spelling = name(instruction.mnemonic) { out.put(spelling) }
+        let ops = instruction.operands
+        if ops.isEmpty { return }
+        out.put(UInt8(ascii: " "))
+        for i in 0 ..< ops.count {
+            if i > 0 { out.put(", ") }
+            put(ops[i], into: &out)
         }
-        return mnemonic + " " + parts.joined(separator: ", ")
     }
 
     // MARK: per-operand rendering
 
-    @_effects(readonly)
-    private static func render(_ op: Operand) -> String {
+    private static func put(_ op: Operand, into out: inout TextBytes) {
         switch op {
         case let .scalableVector(v):
-            var s = "z\(v.registerIndex)"
-            if let el = v.element { s += ".\(suffix(el))" }
-            if let idx = v.elementIndex { s += "[\(idx)]" }
-            return s
+            out.put(UInt8(ascii: "z"))
+            out.putDecimal(UInt64(v.registerIndex))
+            if let el = v.element {
+                out.put(UInt8(ascii: "."))
+                putSuffix(el, into: &out)
+            }
+            if let idx = v.elementIndex {
+                out.put(UInt8(ascii: "["))
+                out.putDecimal(UInt64(idx))
+                out.put(UInt8(ascii: "]"))
+            }
         case let .scalablePredicate(p):
-            var s = "p\(p.registerIndex)"
-            if let el = p.element { s += ".\(suffix(el))" }
-            if let idx = p.elementIndex { s += "[\(idx)]" }
+            out.put(UInt8(ascii: "p"))
+            out.putDecimal(UInt64(p.registerIndex))
+            if let el = p.element {
+                out.put(UInt8(ascii: "."))
+                putSuffix(el, into: &out)
+            }
+            if let idx = p.elementIndex {
+                out.put(UInt8(ascii: "["))
+                out.putDecimal(UInt64(idx))
+                out.put(UInt8(ascii: "]"))
+            }
             switch p.qualifier {
-            case .zeroing: s += "/z"
-            case .merging: s += "/m"
+            case .zeroing: out.put("/z")
+            case .merging: out.put("/m")
             case .none: break
             }
-            return s
         case let .scalableVectorGroup(g):
-            return groupText(g)
+            putGroup(g, into: &out)
         case let .scalableMemory(m):
-            return memoryText(m)
+            putMemory(m, into: &out)
         case let .register(r):
-            return registerText(r)
+            putRegister(r, into: &out)
         case let .vectorRegister(v):
             switch v.view {
-            case let .scalar(size): return "\(suffix(size))\(v.registerIndex)"
-            default: return "?v\(v.registerIndex)"
+            case let .scalar(size):
+                putSuffix(size, into: &out)
+                out.putDecimal(UInt64(v.registerIndex))
+            default:
+                out.put("?v")
+                out.putDecimal(UInt64(v.registerIndex))
             }
         case let .prefetchOperation(p):
-            return prefetchText(p)
+            putPrefetch(p, into: &out)
         case let .immediate(value, _):
-            return "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .unsignedImmediate(value, _):
-            return "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         default:
-            return "?"
+            out.put("?")
         }
     }
 
     // MARK: multi-vector group
 
-    /// `{ z0.b, z1.b }` for a pair, `{ z0.b - z3.b }` for a contiguous ascending
-    /// run of three or more with no register-file wrap, else a comma list.
-    @_effects(readonly)
-    private static func groupText(_ g: ScalableVectorGroup) -> String {
-        let dot = g.element.map { ".\(suffix($0))" } ?? ""
+    /// `{ z0.b, z1.b }` for a pair, `{ z0.b - z3.b }` for a contiguous
+    /// ascending run of three or more with no register-file wrap, else a
+    /// comma list.
+    private static func putGroup(_ g: ScalableVectorGroup, into out: inout TextBytes) {
         if g.count >= 3, g.layout == .consecutive, Int(g.firstIndex) + Int(g.count) - 1 <= 31 {
             let last = g.firstIndex &+ g.count &- 1
-            return "{ z\(g.firstIndex)\(dot) - z\(last)\(dot) }"
+            out.put("{ z")
+            out.putDecimal(UInt64(g.firstIndex))
+            putDot(g.element, into: &out)
+            out.put(" - z")
+            out.putDecimal(UInt64(last))
+            putDot(g.element, into: &out)
+            out.put(" }")
+            return
         }
-        var members: [String] = []
-        members.reserveCapacity(Int(g.count))
+        out.put("{ ")
         for j in 0 ..< g.count {
-            members.append("z\(g.memberIndex(j))\(dot)")
+            if j > 0 { out.put(", ") }
+            out.put(UInt8(ascii: "z"))
+            out.putDecimal(UInt64(g.memberIndex(j)))
+            putDot(g.element, into: &out)
         }
-        return "{ " + members.joined(separator: ", ") + " }"
+        out.put(" }")
     }
 
-    // MARK: memory bracket (–8.5)
+    @inline(__always)
+    private static func putDot(_ element: ScalarSize?, into out: inout TextBytes) {
+        guard let element else { return }
+        out.put(UInt8(ascii: "."))
+        putSuffix(element, into: &out)
+    }
 
-    @_effects(readonly)
-    private static func memoryText(_ m: ScalableMemoryOperand) -> String {
-        var s = "["
+    // MARK: memory bracket
+
+    private static func putMemory(_ m: ScalableMemoryOperand, into out: inout TextBytes) {
+        out.put(UInt8(ascii: "["))
         switch m.base {
-        case let .gpr(r): s += registerText64(r)
-        case let .vector(v): s += "z\(v.registerIndex)" + (v.element.map { ".\(suffix($0))" } ?? "")
+        case let .gpr(r):
+            putRegister64(r, into: &out)
+        case let .vector(v):
+            out.put(UInt8(ascii: "z"))
+            out.putDecimal(UInt64(v.registerIndex))
+            putDot(v.element, into: &out)
         }
         if let si = m.scalarIndex {
-            s += ", " + registerText64(si)
-            if m.scaleShift > 0 { s += ", lsl #\(m.scaleShift)" }
+            out.put(", ")
+            putRegister64(si, into: &out)
+            if m.scaleShift > 0 {
+                out.put(", lsl #")
+                out.putDecimal(UInt64(m.scaleShift))
+            }
         } else if let vi = m.index {
-            s += ", z\(vi.registerIndex)" + (vi.element.map { ".\(suffix($0))" } ?? "")
+            out.put(", z")
+            out.putDecimal(UInt64(vi.registerIndex))
+            putDot(vi.element, into: &out)
             switch m.indexExtend {
-            case .uxtw: s += ", uxtw"; if m.scaleShift > 0 { s += " #\(m.scaleShift)" }
-            case .sxtw: s += ", sxtw"; if m.scaleShift > 0 { s += " #\(m.scaleShift)" }
-            case .lsl: s += ", lsl #\(m.scaleShift)"
-            default: break
+            case .uxtw:
+                out.put(", uxtw")
+                if m.scaleShift > 0 {
+                    out.put(" #")
+                    out.putDecimal(UInt64(m.scaleShift))
+                }
+            case .sxtw:
+                out.put(", sxtw")
+                if m.scaleShift > 0 {
+                    out.put(" #")
+                    out.putDecimal(UInt64(m.scaleShift))
+                }
+            case .lsl:
+                out.put(", lsl #")
+                out.putDecimal(UInt64(m.scaleShift))
+            default:
+                break
             }
         }
         if m.displacement != 0 {
-            s += ", #\(m.displacement)"
-            if m.mulVL { s += ", mul vl" }
+            out.put(", #")
+            out.putDecimal(Int64(m.displacement))
+            if m.mulVL { out.put(", mul vl") }
         }
-        s += "]"
-        return s
+        out.put(UInt8(ascii: "]"))
     }
 
     // MARK: prefetch op
 
-    @_effects(readonly)
-    private static func prefetchText(_ p: PrefetchOperation) -> String {
+    private static func putPrefetch(_ p: PrefetchOperation, into out: inout TextBytes) {
         switch p.rawValue {
-        case 0: "pldl1keep"
-        case 1: "pldl1strm"
-        case 2: "pldl2keep"
-        case 3: "pldl2strm"
-        case 4: "pldl3keep"
-        case 5: "pldl3strm"
-        case 8: "pstl1keep"
-        case 9: "pstl1strm"
-        case 10: "pstl2keep"
-        case 11: "pstl2strm"
-        case 12: "pstl3keep"
-        case 13: "pstl3strm"
-        default: "#\(p.rawValue)"
+        case 0: out.put("pldl1keep")
+        case 1: out.put("pldl1strm")
+        case 2: out.put("pldl2keep")
+        case 3: out.put("pldl2strm")
+        case 4: out.put("pldl3keep")
+        case 5: out.put("pldl3strm")
+        case 8: out.put("pstl1keep")
+        case 9: out.put("pstl1strm")
+        case 10: out.put("pstl2keep")
+        case 11: out.put("pstl2strm")
+        case 12: out.put("pstl3keep")
+        case 13: out.put("pstl3strm")
+        default:
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(UInt64(p.rawValue))
         }
     }
 
     // MARK: register text
 
-    @_effects(readonly)
-    private static func registerText(_ r: RegisterRef) -> String {
+    private static func putRegister(_ r: RegisterRef, into out: inout TextBytes) {
         if r.canonicalIndex == 31 {
-            if r.isStackPointer { return r.width == .x64 ? "sp" : "wsp" }
-            if r.isZeroRegister { return r.width == .x64 ? "xzr" : "wzr" }
+            if r.isStackPointer {
+                out.put(r.width == .x64 ? "sp" : "wsp")
+                return
+            }
+            if r.isZeroRegister {
+                out.put(r.width == .x64 ? "xzr" : "wzr")
+                return
+            }
         }
-        if r.isSIMD { return "?s\(r.canonicalIndex)" }
-        return (r.width == .x64 ? "x" : "w") + "\(r.canonicalIndex)"
+        if r.isSIMD {
+            out.put("?s")
+            out.putDecimal(UInt64(r.canonicalIndex))
+            return
+        }
+        out.put(r.width == .x64 ? "x" : "w")
+        out.putDecimal(UInt64(r.canonicalIndex))
     }
 
     /// A GPR in an address always renders 64-bit (`xn`/`sp`).
-    @_effects(readonly)
-    private static func registerText64(_ r: RegisterRef) -> String {
-        if r.canonicalIndex == 31 { return "sp" }
-        return "x\(r.canonicalIndex)"
+    @inline(__always)
+    private static func putRegister64(_ r: RegisterRef, into out: inout TextBytes) {
+        if r.canonicalIndex == 31 {
+            out.put("sp")
+            return
+        }
+        out.put(UInt8(ascii: "x"))
+        out.putDecimal(UInt64(r.canonicalIndex))
     }
 
-    @inline(__always) @_effects(readonly)
-    private static func suffix(_ s: ScalarSize) -> String {
-        switch s { case .b: "b"; case .h: "h"; case .s: "s"; case .d: "d"; case .q: "q" }
+    @inline(__always)
+    private static func putSuffix(_ s: ScalarSize, into out: inout TextBytes) {
+        switch s {
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        case .d: out.put("d")
+        case .q: out.put("q")
+        }
     }
 
     // MARK: mnemonic text
 
     @_effects(readonly)
-    static func name(_ m: Mnemonic) -> String {
+    static func name(_ m: Mnemonic) -> StaticString? {
         switch m {
         // loads
         case .ld1b: "ld1b"; case .ld1h: "ld1h"; case .ld1w: "ld1w"; case .ld1d: "ld1d"

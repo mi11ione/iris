@@ -17,7 +17,7 @@ extension SVEPermuteMemoryDecode {
     @inline(__always)
     static func memLoadDraft(
         _ e: UInt32, _ a: UInt64, mn: Mnemonic, zt: UInt8, el: ScalarSize,
-        g: UInt8, addr: ScalableMemoryOperand, groupCount count: UInt8 = 1,
+        g: UInt8, addr: ScalableMemoryOperand, groupCount count: UInt8 = 1, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // A single-vector load renders a one-element braced list `{ Zt.<T> }`; a
         // structured load renders the whole group. Both write every member.
@@ -26,7 +26,7 @@ extension SVEPermuteMemoryDecode {
             semanticReads: addressReads(addr),
             semanticWrites: groupMask(zt, count: count),
             memoryAccess: .load, category: .sve,
-            operands: [group(zt, count: count, el), govern(g, .zeroing), .scalableMemory(addr)],
+            operandCount: sink.emit(group(zt, count: count, el), govern(g, .zeroing), .scalableMemory(addr)),
             scalableReads: predRead(g),
             scalableEffect: .readsStreamingMode,
         )
@@ -38,7 +38,7 @@ extension SVEPermuteMemoryDecode {
     @inline(__always)
     static func memStoreDraft(
         _ e: UInt32, _ a: UInt64, mn: Mnemonic, zt: UInt8, el: ScalarSize,
-        g: UInt8, addr: ScalableMemoryOperand, groupCount count: UInt8 = 1,
+        g: UInt8, addr: ScalableMemoryOperand, groupCount count: UInt8 = 1, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // A single-vector store renders a one-element braced list `{ Zt.<T> }`; a
         // structured store renders the whole group. Both read every member.
@@ -47,7 +47,7 @@ extension SVEPermuteMemoryDecode {
             semanticReads: addressReads(addr).union(groupMask(zt, count: count)),
             semanticWrites: .empty,
             memoryAccess: .store, category: .sve,
-            operands: [group(zt, count: count, el), govern(g, .none), .scalableMemory(addr)],
+            operandCount: sink.emit(group(zt, count: count, el), govern(g, .none), .scalableMemory(addr)),
             scalableReads: predRead(g),
             scalableEffect: .readsStreamingMode,
         )
@@ -57,7 +57,7 @@ extension SVEPermuteMemoryDecode {
     /// (bare), and the address. Base + index read; nothing written.
     @inline(__always)
     static func memPrefetchDraft(
-        _ e: UInt32, _ a: UInt64, mn: Mnemonic, g: UInt8, addr: ScalableMemoryOperand,
+        _ e: UInt32, _ a: UInt64, mn: Mnemonic, g: UInt8, addr: ScalableMemoryOperand, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // Every SVE prefetch fixes bit4=0 (the prefetch op is bits[3:0]); bit4=1
         // is a hole llvm-mc rejects.
@@ -67,7 +67,7 @@ extension SVEPermuteMemoryDecode {
             semanticReads: addressReads(addr),
             semanticWrites: .empty,
             memoryAccess: .prefetch, category: .sve,
-            operands: [prfop(e), govern(g, .none), .scalableMemory(addr)],
+            operandCount: sink.emit(prfop(e), govern(g, .none), .scalableMemory(addr)),
             scalableReads: predRead(g),
             scalableEffect: .readsStreamingMode,
         )

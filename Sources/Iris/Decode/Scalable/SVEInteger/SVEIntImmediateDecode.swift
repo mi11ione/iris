@@ -12,10 +12,10 @@
 
 extension SVEIntegerDecode {
     @inline(__always)
-    static func decodeImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if (e & 0xFF20_4000) == 0x2500_0000 { return decodeCompareSignedImmediate(e, a) } // G7
-        if (e & 0xFF3F_C000) == 0x2538_C000 { return decodeDupImmediate(e, a) } // G8
-        return decodeWideImmediate(e, a) // G10
+    static func decodeImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if (e & 0xFF20_4000) == 0x2500_0000 { return decodeCompareSignedImmediate(e, a, &sink) } // G7
+        if (e & 0xFF3F_C000) == 0x2538_C000 { return decodeDupImmediate(e, a, &sink) } // G8
+        return decodeWideImmediate(e, a, &sink) // G10
     }
 
     // MARK: G10 wide immediate — `<mn> <Zdn>.<T>, <Zdn>.<T>, #<imm8>{, LSL #8}`
@@ -27,7 +27,7 @@ extension SVEIntegerDecode {
     /// [20:16] selects the form, and with it the immediate's signedness and
     /// whether the `LSL #8` shift bit is available at all.
     @inline(__always)
-    static func decodeWideImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeWideImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // Both classes fix b15:14 = 11. The scope gate only pins b15 in the MUL
         // sub-region, so the b14=0 hole arrives here and must be rejected.
         guard (e >> 14) & 1 == 1 else { return undefined(e, a) }
@@ -51,47 +51,45 @@ extension SVEIntegerDecode {
         }
         // The shift-less forms have no b13 field; b13=1 there is reserved.
         if !hasShift, (e >> 13) & 1 != 0 { return undefined(e, a) }
-        return wideImmediateDraft(e, a, mnemonic: mnemonic, signed: signed, hasShift: hasShift)
+        return wideImmediateDraft(e, a, mnemonic: mnemonic, signed: signed, hasShift: hasShift, &sink)
     }
 
     /// Shared wide-immediate destructive draft: `<mn> Zdn.T, Zdn.T, #imm{, lsl #8}`.
     @inline(__always)
     static func wideImmediateDraft(
-        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, signed: Bool, hasShift: Bool,
+        _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, signed: Bool, hasShift: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let dn = zd(e), size = sz(e)
         let raw = (e >> 5) & 0xFF
         // LSL #8 requires an element ≥ 16 bits; sh=1 with sz=.b is UNDEFINED.
         if hasShift, (e >> 13) & 1 == 1, size == .b { return undefined(e, a) }
         let shift: UInt32 = hasShift && (e >> 13) & 1 == 1 ? 8 : 0
-        var operands = [Operand]()
-        operands.reserveCapacity(4)
-        operands.append(vec(dn, size))
-        operands.append(vec(dn, size))
-        appendShiftedImmediate(raw: raw, shift: shift, signed: signed, to: &operands)
+        let operandMark = sink.mark
+        sink.append(vec(dn, size))
+        sink.append(vec(dn, size))
+        appendShiftedImmediate(raw: raw, shift: shift, signed: signed, to: &sink)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(dn), semanticWrites: vecMask(dn), category: .sve,
-            operands: operands, scalableEffect: .readsStreamingMode,
+            operandCount: sink.count(since: operandMark), scalableEffect: .readsStreamingMode,
         )
     }
 
     // MARK: G8 DUP immediate (rendered `mov`; imm8 signed, optional LSL #8)
 
     @inline(__always)
-    static func decodeDupImmediate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeDupImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let d = zd(e), size = sz(e)
         let raw = (e >> 5) & 0xFF
         if (e >> 13) & 1 == 1, size == .b { return undefined(e, a) } // LSL #8 illegal for .b
         let shift: UInt32 = (e >> 13) & 1 == 1 ? 8 : 0
-        var operands = [Operand]()
-        operands.reserveCapacity(3)
-        operands.append(vec(d, size))
-        appendShiftedImmediate(raw: raw, shift: shift, signed: true, to: &operands)
+        let operandMark = sink.mark
+        sink.append(vec(d, size))
+        appendShiftedImmediate(raw: raw, shift: shift, signed: true, to: &sink)
         return DecodedDraft(
             address: a, encoding: e, mnemonic: .mov,
             semanticWrites: vecMask(d), category: .sve,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
             scalableEffect: .readsStreamingMode,
         )
     }

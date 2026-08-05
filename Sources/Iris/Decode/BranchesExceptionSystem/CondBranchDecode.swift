@@ -9,7 +9,7 @@
 
 enum CondBranchDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits 31:24 are already known to be 0x54 by the family decoder.
         // o0 = 0 → B.cond; o0 = 1 → BC.cond (FEAT_HBC). Identical operand
         // shape; only the mnemonic differs.
@@ -27,7 +27,7 @@ enum CondBranchDecode {
             branchClass: .conditional,
             flagEffect: .readsNZCV,
             category: .branchesExceptionSystem,
-            operands: [.conditionCode(cond), .label(byteOffset: byteOffset)],
+            operandCount: sink.emit(.conditionCode(cond), .label(byteOffset: byteOffset)),
         )
     }
 }

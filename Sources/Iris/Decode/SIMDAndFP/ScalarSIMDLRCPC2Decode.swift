@@ -10,7 +10,7 @@
 
 enum ScalarSIMDLRCPC2Decode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[11:10] must be 10 (the V=1 SIMD LRCPC2 marker — V=0 uses 00);
         // bit[21] must be 0 (no V=1 MTE form here).
         if (encoding >> 10) & 0x3 != 0b10 { return .undefined(at: address, encoding: encoding) }
@@ -62,7 +62,7 @@ enum ScalarSIMDLRCPC2Decode {
             memoryAccess: isLoad ? .load : .store,
             memoryOrdering: isLoad ? [.acquire] : [.release],
             flagEffect: .none, category: .simdAndFP,
-            operands: [simdfpScalarOperand(Rt, size: element), .memory(mem)],
+            operandCount: sink.emit(simdfpScalarOperand(Rt, size: element), .memory(mem)),
         )
     }
 }

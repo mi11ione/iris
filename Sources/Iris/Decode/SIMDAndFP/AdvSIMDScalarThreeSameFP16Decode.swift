@@ -9,7 +9,7 @@
 /// (size=01) or .s (size=10).
 enum AdvSIMDScalarThreeSameFP16Decode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 1)
         let a = UInt8((encoding >> 23) & 1)
         let op3 = UInt8((encoding >> 11) & 0x7)
@@ -30,11 +30,11 @@ enum AdvSIMDScalarThreeSameFP16Decode {
         case (1, 1, 5): m = .facgt
         default: return .undefined(at: address, encoding: encoding)
         }
-        return make(m: m, size: .h, accumulates: false, Rm: Rm, Rn: Rn, Rd: Rd, encoding: encoding, address: address)
+        return make(m: m, size: .h, accumulates: false, Rm: Rm, Rn: Rn, Rd: Rd, encoding: encoding, address: address, &sink)
     }
 
     @_optimize(speed)
-    static func decodeRDM(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeRDM(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 1)
         let size = UInt8((encoding >> 22) & 0x3)
         let op5 = UInt8((encoding >> 11) & 0x1F)
@@ -55,13 +55,13 @@ enum AdvSIMDScalarThreeSameFP16Decode {
         case 0b10: elementSize = .s
         default: return .undefined(at: address, encoding: encoding)
         }
-        return make(m: m, size: elementSize, accumulates: true, Rm: Rm, Rn: Rn, Rd: Rd, encoding: encoding, address: address)
+        return make(m: m, size: elementSize, accumulates: true, Rm: Rm, Rn: Rn, Rd: Rd, encoding: encoding, address: address, &sink)
     }
 
     @inline(__always)
     private static func make(
         m: Mnemonic, size: ScalarSize, accumulates: Bool,
-        Rm: UInt8, Rn: UInt8, Rd: UInt8, encoding: UInt32, address: UInt64,
+        Rm: UInt8, Rn: UInt8, Rd: UInt8, encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         var reads = simdfpInsertingVector(Rn, into: .empty)
         reads = simdfpInsertingVector(Rm, into: reads)
@@ -75,11 +75,7 @@ enum AdvSIMDScalarThreeSameFP16Decode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: size),
-                simdfpScalarOperand(Rn, size: size),
-                simdfpScalarOperand(Rm, size: size),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: size), simdfpScalarOperand(Rn, size: size), simdfpScalarOperand(Rm, size: size)),
         )
     }
 }

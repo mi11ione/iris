@@ -17,11 +17,11 @@ extension SVEFloatingPointDecode {
     // MARK: G11 — merging unary (0x65, bit21=0, bits[15:13]=101)
 
     @inline(__always)
-    static func decodeUnaryMerging(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnaryMerging(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let (mnemonic, dest, src) = unaryMergingForm(UInt8((e >> 16) & 0xFF)) else {
             return undefined(e, a)
         }
-        return unaryDraft(e, a, mnemonic, dest, src, .merging, partial: true)
+        return unaryDraft(e, a, mnemonic, dest, src, .merging, partial: true, &sink)
     }
 
     /// bits[23:16] → (mnemonic, destination element, source element) for the
@@ -110,13 +110,13 @@ extension SVEFloatingPointDecode {
     // MARK: G14 — zeroing unary (0x64, bit21=0, bits[20:19]=11, bit15=1)
 
     @inline(__always)
-    static func decodeUnaryZeroing(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeUnaryZeroing(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let (mnemonic, dest, src) = unaryZeroingForm(
             UInt8((e >> 16) & 0xFF), UInt8((e >> 13) & 0b111),
         ) else {
             return undefined(e, a)
         }
-        return unaryDraft(e, a, mnemonic, dest, src, .zeroing, partial: false)
+        return unaryDraft(e, a, mnemonic, dest, src, .zeroing, partial: false, &sink)
     }
 
     /// (bits[23:16], bits[15:13]) → (mnemonic, destination, source) for the
@@ -205,7 +205,7 @@ extension SVEFloatingPointDecode {
     // MARK: G15 — convert precision (0x64, bit21=0, bits[20:19]=00, bits[15:13]=101)
 
     @inline(__always)
-    static func decodeConvertPrecision(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeConvertPrecision(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The class pins bits[15:13]=101; the dispatcher's else-branch also
         // carries the 110/111 holes here, so bits[14:13] must be re-checked.
         if (e >> 13) & 0b11 != 0b01 { return undefined(e, a) }
@@ -231,7 +231,7 @@ extension SVEFloatingPointDecode {
         return unaryDraft(
             e, a, mnemonic, dest, src,
             merging ? .merging : .zeroing,
-            partial: preserving || merging,
+            partial: preserving || merging, &sink,
         )
     }
 
@@ -241,7 +241,7 @@ extension SVEFloatingPointDecode {
     static func unaryDraft(
         _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic,
         _ dest: ScalarSize, _ src: ScalarSize,
-        _ qualifier: PredicateQualifier, partial: Bool,
+        _ qualifier: PredicateQualifier, partial: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let d = zd(e), n = zn(e), g = pg3(e)
         var reads = vecMask(n)
@@ -254,7 +254,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: reads,
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, dest), govern(g, qualifier), vec(n, src)],
+            operandCount: sink.emit(vec(d, dest), govern(g, qualifier), vec(n, src)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableEffect: effect,
         )

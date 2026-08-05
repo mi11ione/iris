@@ -230,3 +230,27 @@ struct ListingRenderingTests {
         #expect(run.stdout.contains("0: d65f03c0  ret\n"))
     }
 }
+
+/// Validates the `--semantics` column against a record that HAS no
+/// semantics. A data-in-code or unallocated word carries no reads, no
+/// writes, no branch class and no memory effect, so its annotation is
+/// empty — and an empty annotation must contribute neither the padding
+/// nor the `;` marker, or every such line would end in trailing space.
+@Suite("Listing / semantics column with an empty annotation")
+struct SemanticsEmptyAnnotationTests {
+    private let renderer = ListingRenderer(palette: Palette(enabled: false), includeSemantics: true)
+
+    @Test func anUnallocatedWordGetsNoAnnotationAndNoPadding() {
+        let stream = InstructionStream(bytes: [0xFF, 0xFF, 0xFF, 0xFF] as [UInt8])
+        let line = renderer.line(for: stream[0], addressWidth: 4, context: nil)
+        #expect(line.hasSuffix("; undefined"), "got \(line.debugDescription)")
+        #expect(!line.hasSuffix(" "), "an empty annotation must not pad")
+    }
+
+    @Test func aRecordWithSemanticsStillGetsItsColumn() {
+        // `add x0, x1, #1` reads x1 and writes x0.
+        let stream = InstructionStream(bytes: [0x20, 0x04, 0x00, 0x91] as [UInt8])
+        let line = renderer.line(for: stream[0], addressWidth: 4, context: nil)
+        #expect(line.contains("; reads=x1 writes=x0"), "got \(line.debugDescription)")
+    }
+}

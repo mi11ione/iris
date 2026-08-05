@@ -16,7 +16,7 @@
 
 enum LDAPRDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rt = UInt8(encoding & 0x1F)
@@ -53,10 +53,7 @@ enum LDAPRDecode {
             memoryOrdering: [.acquire],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 }

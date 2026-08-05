@@ -7,7 +7,7 @@
 
 enum ScalarSIMDLoadLiteralDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let opc = UInt8((encoding >> 30) & 0x3)
         let imm19 = UInt32((encoding >> 5) & 0x7FFFF)
         let Rt = UInt8(encoding & 0x1F)
@@ -33,7 +33,7 @@ enum ScalarSIMDLoadLiteralDecode {
             branchClass: .none,
             memoryAccess: .load,
             memoryOrdering: [], flagEffect: .none, category: .simdAndFP,
-            operands: [simdfpScalarOperand(Rt, size: elementSize), .memory(memOperand)],
+            operandCount: sink.emit(simdfpScalarOperand(Rt, size: elementSize), .memory(memOperand)),
         )
     }
 }

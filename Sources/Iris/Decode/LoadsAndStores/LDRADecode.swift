@@ -22,7 +22,7 @@
 
 enum LDRADecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // LDRAA/LDRAB is 64-bit doubleword only — bits[31:30] = 11 FIXED.
         // Other sizes are unallocated/reserved; llvm-mc rejects them.
         let size = UInt8((encoding >> 30) & 0x3)
@@ -63,17 +63,14 @@ enum LDRADecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .memory(MemoryOperand(
-                    base: .register(rnRef),
-                    index: nil,
-                    displacement: displacement,
-                    extend: .none,
-                    shift: 0,
-                    writeback: writeback,
-                )),
-            ],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(
+                base: .register(rnRef),
+                index: nil,
+                displacement: displacement,
+                extend: .none,
+                shift: 0,
+                writeback: writeback,
+            ))),
         )
     }
 }

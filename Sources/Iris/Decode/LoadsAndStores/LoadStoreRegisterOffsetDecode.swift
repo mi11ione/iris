@@ -19,7 +19,7 @@
 
 enum LoadStoreRegisterOffsetDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let size = UInt8((encoding >> 30) & 0x3)
         let opc = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
@@ -105,17 +105,14 @@ enum LoadStoreRegisterOffsetDecode {
                 memoryOrdering: [],
                 flagEffect: .none,
                 category: .loadsAndStores,
-                operands: [
-                    .prefetchOperation(PrefetchOperation(rawValue: Rt)),
-                    .memory(MemoryOperand(
-                        base: .register(rnRef),
-                        index: rmRef,
-                        displacement: 0,
-                        extend: extendKind,
-                        shift: displayShift,
-                        writeback: .none,
-                    )),
-                ],
+                operandCount: sink.emit(.prefetchOperation(PrefetchOperation(rawValue: Rt)), .memory(MemoryOperand(
+                    base: .register(rnRef),
+                    index: rmRef,
+                    displacement: 0,
+                    extend: extendKind,
+                    shift: displayShift,
+                    writeback: .none,
+                ))),
             )
         default:
             return .undefined(at: address, encoding: encoding)
@@ -151,17 +148,14 @@ enum LoadStoreRegisterOffsetDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .memory(MemoryOperand(
-                    base: .register(rnRef),
-                    index: rmRef,
-                    displacement: 0,
-                    extend: extendKind,
-                    shift: displayShift,
-                    writeback: .none,
-                )),
-            ],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(
+                base: .register(rnRef),
+                index: rmRef,
+                displacement: 0,
+                extend: extendKind,
+                shift: displayShift,
+                writeback: .none,
+            ))),
         )
     }
 }

@@ -60,7 +60,7 @@ enum MOPSDecode {
     ]
 
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[31:30] are SBZ; nonzero is not a MOPS encoding.
         if (encoding >> 30) != 0 {
             return .undefined(at: address, encoding: encoding)
@@ -83,12 +83,12 @@ enum MOPSDecode {
         if szStage == 0b11 {
             return decodeSet(
                 encoding: encoding, address: address, o0: o0,
-                rD: rD, rN: rField9_5, rS: rField20_16,
+                rD: rD, rN: rField9_5, rS: rField20_16, &sink,
             )
         }
         return decodeCopy(
             encoding: encoding, address: address, o0: o0, stage: szStage,
-            rD: rD, rN: rField9_5, rS: rField20_16,
+            rD: rD, rN: rField9_5, rS: rField20_16, &sink,
         )
     }
 
@@ -97,7 +97,7 @@ enum MOPSDecode {
     @_optimize(speed)
     private static func decodeCopy(
         encoding: UInt32, address: UInt64, o0: UInt8, stage: UInt8,
-        rD: UInt8, rN: UInt8, rS: UInt8,
+        rD: UInt8, rN: UInt8, rS: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         if rS == 31 {
             return .undefined(at: address, encoding: encoding)
@@ -127,7 +127,7 @@ enum MOPSDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [.register(xd), .register(xs), .register(xn)],
+            operandCount: sink.emit(.register(xd), .register(xs), .register(xn)),
         )
     }
 
@@ -135,7 +135,7 @@ enum MOPSDecode {
     @_optimize(speed)
     private static func decodeSet(
         encoding: UInt32, address: UInt64, o0: UInt8,
-        rD: UInt8, rN: UInt8, rS: UInt8,
+        rD: UInt8, rN: UInt8, rS: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let stage = UInt8((encoding >> 14) & 0x3)
         // stage 11 is UNDEFINED.
@@ -169,7 +169,7 @@ enum MOPSDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [.register(xd), .register(xn), .register(xs)],
+            operandCount: sink.emit(.register(xd), .register(xn), .register(xs)),
         )
     }
 }

@@ -13,7 +13,7 @@
 
 enum LSUILoadStoreDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bit[21] is 0 for every valid LSUI 001001 form.
         if (encoding >> 21) & 1 != 0 { return .undefined(at: address, encoding: encoding) }
         let size = UInt8((encoding >> 30) & 0x3)
@@ -23,23 +23,23 @@ enum LSUILoadStoreDecode {
             guard size == 0b10 || size == 0b11 else {
                 return .undefined(at: address, encoding: encoding)
             }
-            return decodeExclusive(encoding: encoding, address: address, size: size)
+            return decodeExclusive(encoding: encoding, address: address, size: size, &sink)
         }
         // Compare-and-swap — LSUI CAS/CASP are 64-bit only (CASPT at size=01,
         // CAST at size=11; the 32-bit size encodings are reserved). bits[14:10]
         // is SBZ (CONSTRAINED UNPREDICTABLE, not UNDEFINED — llvm-mc decodes a
         // nonzero value, so do we).
         if size == 0b01 {
-            return decodeCASP(encoding: encoding, address: address)
+            return decodeCASP(encoding: encoding, address: address, &sink)
         }
         if size == 0b11 {
-            return decodeCAS(encoding: encoding, address: address)
+            return decodeCAS(encoding: encoding, address: address, &sink)
         }
         return .undefined(at: address, encoding: encoding)
     }
 
     @inline(__always)
-    private static func decodeExclusive(encoding: UInt32, address: UInt64, size: UInt8) -> DecodedDraft {
+    private static func decodeExclusive(encoding: UInt32, address: UInt64, size: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         let L = (encoding >> 22) & 1
         let o0 = (encoding >> 15) & 1
         let Rs = UInt8((encoding >> 16) & 0x1F)
@@ -62,10 +62,7 @@ enum LSUILoadStoreDecode {
                 branchClass: .none, memoryAccess: .exclusiveStore,
                 memoryOrdering: o0 == 0 ? [] : [.release],
                 flagEffect: .none, category: .loadsAndStores,
-                operands: [
-                    .register(rsRef), .register(rtRef),
-                    .memory(MemoryOperand(base: .register(rnRef))),
-                ],
+                operandCount: sink.emit(.register(rsRef), .register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
             )
         }
         // Load-exclusive: `<Wt|Xt>, [Xn|SP]`.
@@ -78,12 +75,14 @@ enum LSUILoadStoreDecode {
             branchClass: .none, memoryAccess: .exclusiveLoad,
             memoryOrdering: o0 == 0 ? [] : [.acquire],
             flagEffect: .none, category: .loadsAndStores,
-            operands: [.register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))],
+            operandCount: sink.emit(.register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 
     @inline(__always)
-    private static func decodeCAS(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeCAS(
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
+    ) -> DecodedDraft {
         let A = (encoding >> 22) & 1
         let R = (encoding >> 15) & 1
         let Rs = UInt8((encoding >> 16) & 0x1F)
@@ -113,15 +112,14 @@ enum LSUILoadStoreDecode {
             semanticReads: reads, semanticWrites: writes,
             branchClass: .none, memoryAccess: .atomic, memoryOrdering: ordering,
             flagEffect: .none, category: .loadsAndStores,
-            operands: [
-                .register(rsRef), .register(rtRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rsRef), .register(rtRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 
     @inline(__always)
-    private static func decodeCASP(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeCASP(
+        encoding: UInt32, address: UInt64, _ sink: inout OperandSink,
+    ) -> DecodedDraft {
         let A = (encoding >> 22) & 1
         let R = (encoding >> 15) & 1
         let Rs = UInt8((encoding >> 16) & 0x1F)
@@ -157,11 +155,7 @@ enum LSUILoadStoreDecode {
             semanticReads: reads, semanticWrites: writes,
             branchClass: .none, memoryAccess: .atomic, memoryOrdering: ordering,
             flagEffect: .none, category: .loadsAndStores,
-            operands: [
-                .register(rsRef), .register(rs1Ref),
-                .register(rtRef), .register(rt1Ref),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rsRef), .register(rs1Ref), .register(rtRef), .register(rt1Ref), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 }

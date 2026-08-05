@@ -14,65 +14,93 @@
 
 /// Formats SVE-FP records exactly as llvm-mc renders them.
 enum SVEFloatingPointCanonicalizer {
-    @_effects(readonly)
-    static func format(_ instruction: Instruction) -> String {
-        let mnemonic = name(instruction.mnemonic)
-        if Array(instruction.operands).isEmpty { return mnemonic }
-        var parts: [String] = []
-        parts.reserveCapacity(Array(instruction.operands).count)
-        for op in Array(instruction.operands) {
-            parts.append(render(op, instruction.mnemonic))
+    /// The byte path — rendered straight into a UTF-8 buffer.
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        // This family's own table, not the global one: a mnemonic from
+        // outside the group renders the `?<raw>` sentinel rather than the
+        // spelling another family owns.
+        if let spelling = name(instruction.mnemonic) {
+            out.put(spelling)
+        } else {
+            out.put(UInt8(ascii: "?"))
+            out.putDecimal(UInt64(instruction.mnemonic.rawValue))
         }
-        return mnemonic + " " + parts.joined(separator: ", ")
+        let ops = instruction.operands
+        if ops.isEmpty { return }
+        out.put(UInt8(ascii: " "))
+        for i in 0 ..< ops.count {
+            if i > 0 { out.put(", ") }
+            put(ops[i], instruction.mnemonic, into: &out)
+        }
     }
 
     // MARK: per-operand rendering
 
-    @_effects(readonly)
-    private static func render(_ op: Operand, _ mnemonic: Mnemonic) -> String {
+    private static func put(_ op: Operand, _ mnemonic: Mnemonic, into out: inout TextBytes) {
         switch op {
         case let .scalableVector(v):
-            var s = "z\(v.registerIndex)"
-            if let el = v.element { s += ".\(suffix(el))" }
-            if let idx = v.elementIndex { s += "[\(idx)]" }
-            return s
+            out.put(UInt8(ascii: "z"))
+            out.putDecimal(UInt64(v.registerIndex))
+            if let el = v.element {
+                out.put(UInt8(ascii: "."))
+                putSuffix(el, into: &out)
+            }
+            if let idx = v.elementIndex {
+                out.put(UInt8(ascii: "["))
+                out.putDecimal(UInt64(idx))
+                out.put(UInt8(ascii: "]"))
+            }
         case let .scalablePredicate(p):
             // A governing predicate renders bare (`p0/m`, or `p0` for the
             // reductions); only a result predicate carries an element suffix.
-            var s = "p\(p.registerIndex)"
-            if p.role == .result, let el = p.element { s += ".\(suffix(el))" }
+            out.put(UInt8(ascii: "p"))
+            out.putDecimal(UInt64(p.registerIndex))
+            if p.role == .result, let el = p.element {
+                out.put(UInt8(ascii: "."))
+                putSuffix(el, into: &out)
+            }
             switch p.qualifier {
-            case .zeroing: s += "/z"
-            case .merging: s += "/m"
+            case .zeroing: out.put("/z")
+            case .merging: out.put("/m")
             case .none: break
             }
-            return s
         case let .scalableVectorGroup(g):
             // llvm-mc pads the braces (`{ z4.s, z5.s }`).
-            var members: [String] = []
-            members.reserveCapacity(Int(g.count))
-            let dot = g.element.map { ".\(suffix($0))" } ?? ""
+            out.put("{ ")
             for j in 0 ..< g.count {
-                members.append("z\(g.memberIndex(j))\(dot)")
+                if j > 0 { out.put(", ") }
+                out.put(UInt8(ascii: "z"))
+                out.putDecimal(UInt64(g.memberIndex(j)))
+                if let el = g.element {
+                    out.put(UInt8(ascii: "."))
+                    putSuffix(el, into: &out)
+                }
             }
-            return "{ " + members.joined(separator: ", ") + " }"
+            out.put(" }")
         case let .vectorRegister(v):
             switch v.view {
             case let .scalar(size):
-                return "\(suffix(size))\(v.registerIndex)"
+                putSuffix(size, into: &out)
+                out.putDecimal(UInt64(v.registerIndex))
             case let .full(arrangement):
-                return "v\(v.registerIndex).\(arrangementText(arrangement))"
+                out.put(UInt8(ascii: "v"))
+                out.putDecimal(UInt64(v.registerIndex))
+                out.put(UInt8(ascii: "."))
+                putArrangement(arrangement, into: &out)
             case .element, .elementGroup, .lane:
-                return "?v\(v.registerIndex)"
+                out.put("?v")
+                out.putDecimal(UInt64(v.registerIndex))
             }
         case let .floatImmediate(bits, kind):
-            return floatText(bits: bits, kind: kind, mnemonic: mnemonic)
+            putFloat(bits: bits, kind: kind, mnemonic: mnemonic, into: &out)
         case let .immediate(value, _):
-            return "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .unsignedImmediate(value, _):
-            return "#\(value)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         default:
-            return "?"
+            out.put("?")
         }
     }
 
@@ -80,55 +108,67 @@ enum SVEFloatingPointCanonicalizer {
     /// expanded form for `fmov`, and the short exact constants for the
     /// arith-immediate family.
     @inline(__always)
-    @_effects(readonly)
-    private static func floatText(bits: UInt64, kind: FloatImmediateKind, mnemonic: Mnemonic) -> String {
-        if bits == 0 { return "#0.0" }
+    private static func putFloat(
+        bits: UInt64, kind: FloatImmediateKind, mnemonic: Mnemonic, into out: inout TextBytes,
+    ) {
+        if bits == 0 {
+            out.put("#0.0")
+            return
+        }
         let value = switch kind {
         case .half: SIMDFPCanonicalizer.halfBitsToDouble(UInt16(truncatingIfNeeded: bits))
         case .single: Double(Float(bitPattern: UInt32(truncatingIfNeeded: bits)))
         case .double: Double(bitPattern: bits)
         }
         if mnemonic != .fmov {
-            if value == 0.5 { return "#0.5" }
-            if value == 1.0 { return "#1.0" }
-            if value == 2.0 { return "#2.0" }
+            if value == 0.5 {
+                out.put("#0.5")
+                return
+            }
+            if value == 1.0 {
+                out.put("#1.0")
+                return
+            }
+            if value == 2.0 {
+                out.put("#2.0")
+                return
+            }
         }
-        return "#" + SIMDFPCanonicalizer.fixedEightFractionText(value)
+        out.put(UInt8(ascii: "#"))
+        out.putString(SIMDFPCanonicalizer.fixedEightFractionText(value))
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func suffix(_ s: ScalarSize) -> String {
+    private static func putSuffix(_ s: ScalarSize, into out: inout TextBytes) {
         switch s {
-        case .b: "b"
-        case .h: "h"
-        case .s: "s"
-        case .d: "d"
-        case .q: "q"
+        case .b: out.put("b")
+        case .h: out.put("h")
+        case .s: out.put("s")
+        case .d: out.put("d")
+        case .q: out.put("q")
         }
     }
 
     @inline(__always)
-    @_effects(readonly)
-    private static func arrangementText(_ a: VectorArrangement) -> String {
+    private static func putArrangement(_ a: VectorArrangement, into out: inout TextBytes) {
         switch a {
-        case .b8: "8b"
-        case .b16: "16b"
-        case .h4: "4h"
-        case .h8: "8h"
-        case .s2: "2s"
-        case .s4: "4s"
-        case .d1: "1d"
-        case .d2: "2d"
-        case .q1: "1q"
-        case .h2: "2h"
+        case .b8: out.put("8b")
+        case .b16: out.put("16b")
+        case .h4: out.put("4h")
+        case .h8: out.put("8h")
+        case .s2: out.put("2s")
+        case .s4: out.put("4s")
+        case .d1: out.put("1d")
+        case .d2: out.put("2d")
+        case .q1: out.put("1q")
+        case .h2: out.put("2h")
         }
     }
 
     // MARK: mnemonic text
 
     @_effects(readonly)
-    static func name(_ m: Mnemonic) -> String {
+    static func name(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .fabs: "fabs"
         case .fneg: "fneg"
@@ -259,7 +299,7 @@ enum SVEFloatingPointCanonicalizer {
         case .fcvtzun: "fcvtzun"
         case .scvtflt: "scvtflt"
         case .ucvtflt: "ucvtflt"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

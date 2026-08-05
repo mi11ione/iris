@@ -16,7 +16,7 @@ extension SVEFloatingPointDecode {
     // MARK: G9 — vector compare (0x65, bit21=0, bit14=1)
 
     @inline(__always)
-    static func decodeCompareVector(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCompareVector(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let size = fpSize(e) else { return undefined(e, a) }
         let key = ((e >> 13) & 0b100) | ((e >> 12) & 0b010) | ((e >> 4) & 0b001)
         let mnemonic: Mnemonic
@@ -35,12 +35,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n).union(vecMask(m)),
             category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)),
-                govern(g, .zeroing),
-                vec(n, size),
-                vec(m, size),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)), govern(g, .zeroing), vec(n, size), vec(m, size)),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableWrites: ScalableRegisterSet.empty.insertingPredicate(pd),
             scalableEffect: .readsStreamingMode,
@@ -50,7 +45,7 @@ extension SVEFloatingPointDecode {
     // MARK: G10 — compare with zero (0x65, bits[15:12]=0010, bits[20:19]=10)
 
     @inline(__always)
-    static func decodeCompareZero(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCompareZero(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bit18 is a fixed zero field in this class.
         if (e >> 18) & 1 != 0 { return undefined(e, a) }
         guard let size = fpSize(e) else { return undefined(e, a) }
@@ -70,12 +65,7 @@ extension SVEFloatingPointDecode {
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(n),
             category: .sve,
-            operands: [
-                .scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)),
-                govern(g, .zeroing),
-                vec(n, size),
-                .floatImmediate(bits: 0, kind: immediateKind(size)),
-            ],
+            operandCount: sink.emit(.scalablePredicate(ScalablePredicateRef(registerIndex: pd, element: size, role: .result)), govern(g, .zeroing), vec(n, size), .floatImmediate(bits: 0, kind: immediateKind(size))),
             scalableReads: ScalableRegisterSet.empty.insertingPredicate(g),
             scalableWrites: ScalableRegisterSet.empty.insertingPredicate(pd),
             scalableEffect: .readsStreamingMode,

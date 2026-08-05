@@ -9,17 +9,17 @@
 
 enum AddSubRegisterDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bit 21 splits shifted (0) vs extended (1).
         if (encoding >> 21) & 1 == 0 {
-            return decodeShifted(encoding: encoding, address: address)
+            return decodeShifted(encoding: encoding, address: address, &sink)
         }
-        return decodeExtended(encoding: encoding, address: address)
+        return decodeExtended(encoding: encoding, address: address, &sink)
     }
 
     @inline(__always)
     @_optimize(speed)
-    private static func decodeShifted(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeShifted(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let op = UInt8((encoding >> 30) & 0x1)
         let S = UInt8((encoding >> 29) & 0x1)
@@ -53,10 +53,9 @@ enum AddSubRegisterDecode {
         // mnemonic CMP (op=1) or CMN (op=0); flag effect inherited (.nzcv).
         if S == 1, Rd == 31 {
             let mnemonic: Mnemonic = op == 1 ? .cmp : .cmn
-            var operands: [Operand] = []
-            operands.reserveCapacity(2)
-            operands.append(.register(rnRef))
-            operands.append(shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6))
+            let operandMark = sink.mark
+            sink.append(.register(rnRef))
+            sink.append(shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6))
             return DecodedDraft(
                 address: address,
                 encoding: encoding,
@@ -65,7 +64,7 @@ enum AddSubRegisterDecode {
                 semanticWrites: .empty,
                 flagEffect: .nzcv,
                 category: .dataProcessingRegister,
-                operands: operands,
+                operandCount: sink.count(since: operandMark),
             )
         }
 
@@ -73,10 +72,9 @@ enum AddSubRegisterDecode {
         // or NEGS (S=1); flag effect inherited from base (.nzcv for NEGS).
         if op == 1, Rn == 31 {
             let mnemonic: Mnemonic = S == 1 ? .negs : .neg
-            var operands: [Operand] = []
-            operands.reserveCapacity(2)
-            operands.append(.register(rdRef))
-            operands.append(shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6))
+            let operandMark = sink.mark
+            sink.append(.register(rdRef))
+            sink.append(shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6))
             return DecodedDraft(
                 address: address,
                 encoding: encoding,
@@ -85,7 +83,7 @@ enum AddSubRegisterDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: S == 1 ? .nzcv : .none,
                 category: .dataProcessingRegister,
-                operands: operands,
+                operandCount: sink.count(since: operandMark),
             )
         }
 
@@ -95,11 +93,10 @@ enum AddSubRegisterDecode {
         } else {
             S == 0 ? .sub : .subs
         }
-        var operands: [Operand] = []
-        operands.reserveCapacity(3)
-        operands.append(.register(rdRef))
-        operands.append(.register(rnRef))
-        operands.append(shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6))
+        let operandMark = sink.mark
+        sink.append(.register(rdRef))
+        sink.append(.register(rnRef))
+        sink.append(shiftedOrPlain(reg: rmRef, kind: shiftKind, amount: imm6))
         return DecodedDraft(
             address: address,
             encoding: encoding,
@@ -108,13 +105,13 @@ enum AddSubRegisterDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: S == 1 ? .nzcv : .none,
             category: .dataProcessingRegister,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 
     @inline(__always)
     @_optimize(speed)
-    private static func decodeExtended(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    private static func decodeExtended(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let op = UInt8((encoding >> 30) & 0x1)
         let S = UInt8((encoding >> 29) & 0x1)
@@ -169,10 +166,7 @@ enum AddSubRegisterDecode {
                 semanticWrites: .empty,
                 flagEffect: .nzcv,
                 category: .dataProcessingRegister,
-                operands: [
-                    .register(rnRef),
-                    .extendedRegister(reg: rmRef, extend: extendKind, shift: imm3),
-                ],
+                operandCount: sink.emit(.register(rnRef), .extendedRegister(reg: rmRef, extend: extendKind, shift: imm3)),
             )
         }
 
@@ -189,11 +183,7 @@ enum AddSubRegisterDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: S == 1 ? .nzcv : .none,
             category: .dataProcessingRegister,
-            operands: [
-                .register(rdRef),
-                .register(rnRef),
-                .extendedRegister(reg: rmRef, extend: extendKind, shift: imm3),
-            ],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .extendedRegister(reg: rmRef, extend: extendKind, shift: imm3)),
         )
     }
 

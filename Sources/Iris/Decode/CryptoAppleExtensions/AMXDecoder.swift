@@ -23,7 +23,7 @@ struct AMXDecoder: Sendable {
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features _: Features,
+        encoding: UInt32, address: UInt64, features _: Features, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let field = AMXField(rawBits: encoding)
         let opcode = field.opcode
@@ -85,7 +85,7 @@ struct AMXDecoder: Sendable {
             address: address, encoding: encoding, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes,
             flagEffect: .none, category: .amx,
-            operands: [operand],
+            operandCount: sink.emit(operand),
         )
     }
 }

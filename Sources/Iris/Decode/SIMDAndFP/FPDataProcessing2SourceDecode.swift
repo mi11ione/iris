@@ -13,7 +13,7 @@ enum FPDataProcessing2SourceDecode {
     /// bits[21] == 1 AND bits[11:10] == 0b10. The caller (the top-level
     /// SIMD/FP dispatcher) routes here when those bits match.
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let ftype = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
         let opcode = UInt8((encoding >> 12) & 0xF)
@@ -61,7 +61,7 @@ enum FPDataProcessing2SourceDecode {
             memoryOrdering: [],
             flagEffect: .none,
             category: .simdAndFP,
-            operands: [vd, vn, vm],
+            operandCount: sink.emit(vd, vn, vm),
         )
     }
 }

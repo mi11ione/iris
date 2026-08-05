@@ -165,8 +165,8 @@ public enum DPRSemanticAttributes {
         case .rmif:
             // Writes exactly the flags the imm4 mask operand selects (bit3→N,
             // bit2→Z, bit1→C, bit0→V); reads none.
-            guard Array(Array(instruction.operands)).count >= 3,
-                  case let .unsignedImmediate(value, _) = Array(Array(instruction.operands))[2]
+            guard instruction.operands.count >= 3,
+                  case let .unsignedImmediate(value, _) = instruction.operands[2]
             else { return .nzcv }
             var fe: FlagEffect = []
             if value & 0x8 != 0 { fe.insert(.writesN) }
@@ -198,62 +198,62 @@ public enum DPRSemanticAttributes {
              .lsl, .lsr, .asr, .ror,
              .crc32b, .crc32h, .crc32w, .crc32x,
              .crc32cb, .crc32ch, .crc32cw, .crc32cx:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: false)
-                | registerMaskAt(operands: Array(Array(instruction.operands)), index: 2, unwrapShiftExtend: true)
+            let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
+                | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: true)
             return DPRExpectedReads(required: mask, allowed: mask)
         // CMP/CMN/TST: operand[0]=Rn, operand[1]=Rm-wrapped.
         case .cmp, .cmn, .tst:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 0, unwrapShiftExtend: false)
-                | registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: true)
+            let mask = registerMaskAt(operands: instruction.operands, index: 0, unwrapShiftExtend: false)
+                | registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: true)
             return DPRExpectedReads(required: mask, allowed: mask)
         // NEG/NEGS: operand[0]=Rd, operand[1]=Rm-wrapped. Reads only Rm.
         // NGC/NGCS / MOV / MVN: operand[0]=Rd, operand[1]=Rm-possibly-wrapped.
         case .neg, .negs, .ngc, .ngcs, .mov, .mvn:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: true)
+            let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: true)
             return DPRExpectedReads(required: mask, allowed: mask)
         // CCMP/CCMN register form: operand[0]=Rn, operand[1]=Rm.
         // CCMP/CCMN immediate form: operand[0]=Rn, operand[1]=imm5.
         // The mask is "first register" plus optional "second register if
         // operand[1] is a register"; helper handles both shapes.
         case .ccmp, .ccmn:
-            var mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 0, unwrapShiftExtend: false)
-            mask |= registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: false)
+            var mask = registerMaskAt(operands: instruction.operands, index: 0, unwrapShiftExtend: false)
+            mask |= registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
         // CSEL/CSINC/CSINV/CSNEG base: operand[0]=Rd, [1]=Rn, [2]=Rm.
         case .csel, .csinc, .csinv, .csneg:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: false)
-                | registerMaskAt(operands: Array(Array(instruction.operands)), index: 2, unwrapShiftExtend: false)
+            let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
+                | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
         // CSET/CSETM: operand[0]=Rd. Reads empty (Rn=Rm=XZR dropped).
         case .cset, .csetm:
             return DPRExpectedReads(required: 0, allowed: 0)
         // CINC/CINV/CNEG: operand[0]=Rd, [1]=Rn. Reads Rn only (Rn=Rm).
         case .cinc, .cinv, .cneg:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: false)
+            let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
         // MADD/MSUB/SMADDL/SMSUBL/UMADDL/UMSUBL base 4-operand:
         // [0]=Rd, [1]=Rn, [2]=Rm, [3]=Ra. Reads {Rn, Rm, Ra}.
         case .madd, .msub, .smaddl, .smsubl, .umaddl, .umsubl, .maddpt, .msubpt:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: false)
-                | registerMaskAt(operands: Array(Array(instruction.operands)), index: 2, unwrapShiftExtend: false)
-                | registerMaskAt(operands: Array(Array(instruction.operands)), index: 3, unwrapShiftExtend: false)
+            let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
+                | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: false)
+                | registerMaskAt(operands: instruction.operands, index: 3, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
         // MUL/MNEG/SMULL/SMNEGL/UMULL/UMNEGL aliases 3-operand:
         // [0]=Rd, [1]=Rn, [2]=Rm. Reads {Rn, Rm}.
         // SMULH/UMULH same shape.
         case .mul, .mneg, .smull, .smnegl, .umull, .umnegl, .smulh, .umulh:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: false)
-                | registerMaskAt(operands: Array(Array(instruction.operands)), index: 2, unwrapShiftExtend: false)
+            let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
+                | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
         // Data-processing 1-source: [0]=Rd, [1]=Rn. Reads {Rn}. CSSC
         // ABS/CTZ/CNT share the shape.
         case .rbit, .rev, .rev16, .rev32, .clz, .cls, .abs, .ctz, .cnt:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 1, unwrapShiftExtend: false)
+            let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
         // FlagM: RMIF / SETF8 / SETF16 read Rn at operand[0] (RMIF's other
         // operands are immediates; SETF* has none).
         case .rmif, .setf8, .setf16:
-            let mask = registerMaskAt(operands: Array(Array(instruction.operands)), index: 0, unwrapShiftExtend: false)
+            let mask = registerMaskAt(operands: instruction.operands, index: 0, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
         default:
             return nil
@@ -290,7 +290,7 @@ public enum DPRSemanticAttributes {
              .addpt, .subpt, .maddpt, .msubpt,
              .crc32b, .crc32h, .crc32w, .crc32x,
              .crc32cb, .crc32ch, .crc32cw, .crc32cx:
-            return registerMaskAt(operands: Array(Array(instruction.operands)), index: 0, unwrapShiftExtend: false)
+            return registerMaskAt(operands: instruction.operands, index: 0, unwrapShiftExtend: false)
         default:
             return nil
         }
@@ -305,7 +305,7 @@ public enum DPRSemanticAttributes {
     @_effects(readonly)
     @inline(__always)
     public static func registerMaskAt(
-        operands: [Operand], index: Int, unwrapShiftExtend: Bool,
+        operands: Instruction.Operands, index: Int, unwrapShiftExtend: Bool,
     ) -> UInt64 {
         guard index >= 0, index < operands.count else { return 0 }
         let op = operands[index]

@@ -1,0 +1,169 @@
+# Copyright (c) 2026 Roman Zhuzhgov
+# Licensed under the Apache License, Version 2.0
+#
+# Homebrew tap sync: points mi11ione/homebrew-tap's iris formula at a
+# published release, then checks that what it pushed is actually installable.
+#
+# Called by `release.yml` after a release is created, and runnable on its own
+# (workflow_dispatch) to re-sync the tap to any existing release. The manual
+# path is the recovery path: HOMEBREW_TAP_TOKEN is a PAT and PATs expire, at
+# which point releases keep succeeding while the tap quietly serves the old
+# version. Being able to re-run this alone means recovery is a button, not an
+# archaeology exercise in what the last release forgot to do.
+#
+# Needs a PAT with contents:write on mi11ione/homebrew-tap as the
+# HOMEBREW_TAP_TOKEN secret — `github.token` is scoped to this repo and
+# cannot push to the tap. Without the secret the job warns and succeeds
+# rather than failing a release whose artifacts are already published.
+
+name: Tap
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release tag to sync the tap to"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to sync the tap to (blank: the latest release)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sync:
+    name: Bump Homebrew formula
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      ok: ${{ steps.gate.outputs.ok }}
+      version: ${{ steps.rel.outputs.version }}
+    steps:
+      - name: Tap token present?
+        id: gate
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${TAP_TOKEN}" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set — mi11ione/homebrew-tap still points at the previous release, so \`brew install mi11ione/tap/iris\` installs the OLD version. Run Scripts/bump-formula.sh against the tap by hand, or add the secret."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          # A shape check, not an auth check: `gh secret set` with no -b reads
+          # the value from stdin, so a non-interactive shell stores an empty
+          # string, and `-b "$(pbpaste)"` stores whatever the clipboard last
+          # held. Both have happened. Neither is worth discovering as `Bad
+          # credentials` three retries into actions/checkout.
+          # The whitespace test is separate because grep is line-oriented and
+          # would happily match a token with a trailing newline glued on —
+          # which authenticates as nothing.
+          elif [ "${TAP_TOKEN}" != "${TAP_TOKEN%%[[:space:]]*}" ] \
+            || ! printf '%s' "${TAP_TOKEN}" | grep -qE '^(gh[pousr]_|github_pat_)[A-Za-z0-9_]+$'; then
+            echo "::error::HOMEBREW_TAP_TOKEN is set but is not shaped like a GitHub token (expected a ghp_ or github_pat_ prefix, no whitespace). It was likely set from the wrong value — re-set the secret and re-run this workflow."
+            exit 1
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Dispatched with no version: whatever the latest release is. Called
+      # from release.yml: the tag that release.yml just published.
+      - name: Resolve the release
+        id: rel
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${INPUT_VERSION}"
+          if [ -z "${VERSION}" ]; then
+            VERSION="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName -q .tagName)"
+          fi
+          echo "syncing the tap to ${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        if: steps.gate.outputs.ok == 'true'
+
+      - uses: actions/checkout@v6
+        if: steps.gate.outputs.ok == 'true'
+        with:
+          repository: mi11ione/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Bump and push the formula
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.rel.outputs.version }}
+        run: |
+          gh release download "${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern checksums.txt \
+            --output checksums.txt
+          Scripts/bump-formula.sh tap/Formula/iris.rb "${VERSION}" checksums.txt
+          cd tap
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+          if git diff --quiet -- Formula/iris.rb; then
+            # Already at this version — the interesting question is then
+            # whether the token COULD have pushed, since that is the half a
+            # no-op hides. A dry run authenticates and asks the server for
+            # git-receive-pack, so an expired or read-only PAT fails here
+            # instead of silently at the next release.
+            echo "formula already at ${VERSION}; checking push access"
+            git push --dry-run origin HEAD:main
+            exit 0
+          fi
+          git commit -q -m "iris ${VERSION}" -- Formula/iris.rb
+          git push origin HEAD:main
+
+      # What the formula promises, checked against what is actually
+      # downloadable — every arch, not just this runner's. A URL typo or a
+      # transposed checksum fails here, seconds after the push, instead of
+      # on the machine of whoever runs the arch nobody tested.
+      - name: Verify the formula
+        if: steps.gate.outputs.ok == 'true'
+        run: |
+          ruby -c tap/Formula/iris.rb
+          awk '/^[[:space:]]*url[[:space:]]+"/ { u = $2 }
+               /^[[:space:]]*sha256[[:space:]]+"/ { print u, $2 }' \
+            tap/Formula/iris.rb | tr -d '"' > pairs.txt
+          cat pairs.txt
+          test "$(wc -l < pairs.txt)" -eq 3
+          while read -r url sha; do
+            curl -fsSL --retry 3 -o asset.tar.gz "${url}"
+            echo "${sha}  asset.tar.gz" | sha256sum -c -
+          done < pairs.txt
+
+  # The real thing, on the platform most iris users are on and with a
+  # native Homebrew: resolve through the tap exactly as
+  # `brew install mi11ione/tap/iris` does, and run what it installs.
+  # Its own job because that needs a macOS runner, which a step cannot ask
+  # for. Reads the tap over the network, so it sees the pushed formula, not
+  # the sync job's working copy.
+  install:
+    name: Install from the tap
+    needs: [sync]
+    if: needs.sync.outputs.ok == 'true'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: brew install mi11ione/tap/iris
+        env:
+          VERSION: ${{ needs.sync.outputs.version }}
+        run: |
+          brew install mi11ione/tap/iris
+          test "$(iris --version)" = "iris ${VERSION}"
+          # Decodes one instruction, the same canary the formula's own `test`
+          # block uses. Matched loosely: the column layout is presentation,
+          # not a contract, and this step is here to catch a broken install,
+          # not to pin the disassembler's output format.
+          iris 0xd503201f | grep -qw nop

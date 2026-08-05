@@ -63,7 +63,7 @@ enum HintTable {
 
 enum HintDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64, imm7: UInt8) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, imm7: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
         let entry = HintTable.entries[Int(imm7)]
         if entry.mnemonic == .hint {
             // Unknown HINT — emit as generic hint with the raw imm7.
@@ -72,7 +72,7 @@ enum HintDecode {
                 encoding: encoding,
                 mnemonic: .hint,
                 category: .branchesExceptionSystem,
-                operands: [.unsignedImmediate(value: UInt64(imm7), width: 7)],
+                operandCount: sink.emit(.unsignedImmediate(value: UInt64(imm7), width: 7)),
             )
         }
         if entry.subTargetOperand != 0 {
@@ -83,7 +83,7 @@ enum HintDecode {
                 encoding: encoding,
                 mnemonic: entry.mnemonic,
                 category: .branchesExceptionSystem,
-                operands: [.unsignedImmediate(value: UInt64(entry.subTargetOperand), width: 2)],
+                operandCount: sink.emit(.unsignedImmediate(value: UInt64(entry.subTargetOperand), width: 2)),
             )
         }
         let (reads, writes) = HintDecode.pacImplicitRegisters(for: entry.mnemonic)
@@ -94,7 +94,7 @@ enum HintDecode {
             semanticReads: reads,
             semanticWrites: writes,
             category: .branchesExceptionSystem,
-            operands: [],
+            operandCount: 0,
         )
     }
 

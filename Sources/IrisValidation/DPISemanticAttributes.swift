@@ -133,7 +133,7 @@ public enum DPISemanticAttributes {
     /// from its operand list.
     @_effects(readonly)
     public static func expectedReadMask(for instruction: Instruction) -> DPIExpectedReads? {
-        let ops = Array(Array(instruction.operands))
+        let ops = instruction.operands
         func reg(_ i: Int) -> UInt64 {
             registerMaskAt(operands: ops, index: i)
         }
@@ -204,7 +204,7 @@ public enum DPISemanticAttributes {
              .sbfiz, .sbfx, .ubfiz, .ubfx,
              .asr, .lsr, .lsl,
              .sxtb, .sxth, .sxtw, .uxtb, .uxth:
-            registerMaskAt(operands: Array(Array(instruction.operands)), index: 0)
+            registerMaskAt(operands: instruction.operands, index: 0)
         default:
             nil
         }
@@ -216,7 +216,7 @@ public enum DPISemanticAttributes {
     /// decoder uses). DPI register operands are always plain `.register`.
     @_effects(readonly)
     @inline(__always)
-    public static func registerMaskAt(operands: [Operand], index: Int) -> UInt64 {
+    public static func registerMaskAt(operands: Instruction.Operands, index: Int) -> UInt64 {
         guard index >= 0, index < operands.count else { return 0 }
         guard case let .register(r) = operands[index] else { return 0 }
         if r.isZeroRegister { return 0 }

@@ -17,19 +17,6 @@ public enum InstructionText {
         "0x" + String(value, radix: 16)
     }
 
-    /// Lowercase hex of an instruction word, zero-padded to 8 digits.
-    public static func word(_ value: UInt32) -> String {
-        let s = String(value, radix: 16)
-        return String(repeating: "0", count: 8 - s.count) + s
-    }
-
-    /// Lowercase hex of an address, zero-padded to at least `width` digits.
-    public static func address(_ value: UInt64, width: Int) -> String {
-        let s = String(value, radix: 16)
-        guard s.count < width else { return s }
-        return String(repeating: "0", count: width - s.count) + s
-    }
-
     /// The mnemonic token of a rendered instruction: everything before
     /// the first space (the whole text for operand-less instructions).
     public static func mnemonicToken(of text: String) -> Substring {

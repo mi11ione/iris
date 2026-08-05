@@ -75,7 +75,7 @@ extension Mnemonic {
     /// the family's slice of ``Mnemonic/name``, declared beside the
     /// constants it names so the two cannot drift. Unallocated raw
     /// values in the family's range return `"?<raw>"`.
-    static func dataProcessingImmediateName(_ m: Mnemonic) -> String {
+    static func dataProcessingImmediateName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .add: "add"
         case .adds: "adds"
@@ -114,7 +114,7 @@ extension Mnemonic {
         case .sxtw: "sxtw"
         case .uxtb: "uxtb"
         case .uxth: "uxth"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

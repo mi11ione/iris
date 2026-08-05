@@ -9,7 +9,7 @@
 enum AddSubCarryDecode {
     @inline(__always)
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let op = UInt8((encoding >> 30) & 0x1)
         let S = UInt8((encoding >> 29) & 0x1)
@@ -20,7 +20,7 @@ enum AddSubCarryDecode {
 
         // FEAT_FlagM (RMIF / SETF8 / SETF16) shares this tier with non-zero
         // sub-fields; decode it before the opcode2 guard would reject it.
-        if let flagM = FlagManipulationDecode.decode(encoding: encoding, address: address) {
+        if let flagM = FlagManipulationDecode.decode(encoding: encoding, address: address, &sink) {
             return flagM
         }
         // FEAT_CPA checked-pointer ADDPT / SUBPT share this tier: sf=1, S=0,
@@ -42,7 +42,7 @@ enum AddSubCarryDecode {
                 semanticWrites: insertingNonZero(reg: rd, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingRegister,
-                operands: [.register(rd), .register(rn), rmOperand],
+                operandCount: sink.emit(.register(rd), .register(rn), rmOperand),
             )
         }
         // Add/subtract-with-carry proper requires opcode2 == 000000; any
@@ -69,7 +69,7 @@ enum AddSubCarryDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: S == 1 ? [.nzcv, .readsC] : .readsC,
                 category: .dataProcessingRegister,
-                operands: [.register(rdRef), .register(rmRef)],
+                operandCount: sink.emit(.register(rdRef), .register(rmRef)),
             )
         }
 
@@ -86,7 +86,7 @@ enum AddSubCarryDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: S == 1 ? [.nzcv, .readsC] : .readsC,
             category: .dataProcessingRegister,
-            operands: [.register(rdRef), .register(rnRef), .register(rmRef)],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef)),
         )
     }
 }

@@ -9,7 +9,7 @@
 
 enum AdvSIMDAcrossLanesDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
@@ -44,10 +44,7 @@ enum AdvSIMDAcrossLanesDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [
-                    simdfpScalarOperand(Rd, size: resultSize),
-                    simdfpVectorOperand(Rn, arrangement: srcArr),
-                ],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: resultSize), simdfpVectorOperand(Rn, arrangement: srcArr)),
             )
         }
 
@@ -90,10 +87,7 @@ enum AdvSIMDAcrossLanesDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: resultSize),
-                simdfpVectorOperand(Rn, arrangement: srcArrangement),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: resultSize), simdfpVectorOperand(Rn, arrangement: srcArrangement)),
         )
     }
 

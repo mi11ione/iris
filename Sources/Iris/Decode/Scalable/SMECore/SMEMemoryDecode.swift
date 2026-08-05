@@ -12,11 +12,11 @@
 extension SMECoreDecode {
     /// Decode an SME `ZA` load/store word.
     @inline(__always)
-    static func decodeMemory(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if let row = ld1st1Row(e) { return decodeTileMemory(e, a, row) }
+    static func decodeMemory(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if let row = ld1st1Row(e) { return decodeTileMemory(e, a, row, &sink) }
         switch e & 0xFFFF_9C10 {
-        case 0xE100_0000: return decodeLdrStrZA(e, a, .ldr, isStore: false)
-        case 0xE120_0000: return decodeLdrStrZA(e, a, .str, isStore: true)
+        case 0xE100_0000: return decodeLdrStrZA(e, a, .ldr, isStore: false, &sink)
+        case 0xE120_0000: return decodeLdrStrZA(e, a, .str, isStore: true, &sink)
         default: return undefined(e, a)
         }
     }
@@ -52,7 +52,7 @@ extension SMECoreDecode {
     /// [20:16]) is a GPR index unless 31 (no index); the shift is the access
     /// element's log2 byte size (0 for `.b`).
     @inline(__always)
-    static func decodeTileMemory(_ e: UInt32, _ a: UInt64, _ row: TileMemoryRow) -> DecodedDraft {
+    static func decodeTileMemory(_ e: UInt32, _ a: UInt64, _ row: TileMemoryRow, _ sink: inout OperandSink) -> DecodedDraft {
         let slice = tileSlice(e, row.element, UInt8(e & 0xF))
         let pg = pn3(e)
         let rnIndex = rn(e), rmIndex = rm(e)
@@ -63,11 +63,7 @@ extension SMECoreDecode {
             scaleShift: row.element.rawValue,
         )
         // Load: governing predicate is zeroing (`/z`); store: bare (`Pg`).
-        let operands: [Operand] = [
-            .zaTileSlice(slice),
-            govern(pg, row.isLoad ? .zeroing : .none),
-            .scalableMemory(memory),
-        ]
+        let operandCount = sink.emit(.zaTileSlice(slice), govern(pg, row.isLoad ? .zeroing : .none), .scalableMemory(memory))
         let tileMask = slice.zaMask
         var reads = gprMask(rnIndex).union(gprMask(12 &+ rv(e)))
         if hasIndex { reads = reads.union(gprMask(rmIndex)) }
@@ -77,7 +73,7 @@ extension SMECoreDecode {
                 semanticReads: reads,
                 memoryAccess: .load,
                 category: .sme,
-                operands: operands,
+                operandCount: operandCount,
                 scalableReads: predRead(pg),
                 scalableWrites: ScalableRegisterSet.empty.inserting(tileMask),
                 scalableEffect: [.readsStreamingMode, .partialWrite],
@@ -88,7 +84,7 @@ extension SMECoreDecode {
             semanticReads: reads,
             memoryAccess: .store,
             category: .sme,
-            operands: operands,
+            operandCount: operandCount,
             scalableReads: predRead(pg).inserting(tileMask),
             scalableEffect: [.readsStreamingMode],
         )
@@ -100,7 +96,7 @@ extension SMECoreDecode {
     /// (bits[3:0]) is both the vector-select offset and the memory offset;
     /// non-streaming-safe (no `readsStreamingMode`).
     @inline(__always)
-    static func decodeLdrStrZA(_ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, isStore: Bool) -> DecodedDraft {
+    static func decodeLdrStrZA(_ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, isStore: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         let selectIndex = 12 &+ rv(e)
         let rnIndex = rn(e)
         let imm4 = UInt8(e & 0xF)
@@ -112,7 +108,7 @@ extension SMECoreDecode {
             displacement: Int32(imm4),
             mulVL: true,
         )
-        let operands: [Operand] = [.zaArrayVector(arrayVector), .scalableMemory(memory)]
+        let operandCount = sink.emit(.zaArrayVector(arrayVector), .scalableMemory(memory))
         let reads = gprMask(rnIndex).union(gprMask(selectIndex))
         if isStore {
             return DecodedDraft(
@@ -120,7 +116,7 @@ extension SMECoreDecode {
                 semanticReads: reads,
                 memoryAccess: .store,
                 category: .sme,
-                operands: operands,
+                operandCount: operandCount,
                 scalableReads: ScalableRegisterSet.empty.inserting(.whole),
             )
         }
@@ -129,7 +125,7 @@ extension SMECoreDecode {
             semanticReads: reads,
             memoryAccess: .load,
             category: .sme,
-            operands: operands,
+            operandCount: operandCount,
             scalableWrites: ScalableRegisterSet.empty.inserting(.whole),
             scalableEffect: [.partialWrite],
         )

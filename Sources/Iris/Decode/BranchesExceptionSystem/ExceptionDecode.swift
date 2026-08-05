@@ -14,7 +14,7 @@
 
 enum ExceptionDecode {
     @inline(__always)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits 4:2 must be 000 for every encoding in this sub-class.
         if (encoding >> 2) & 0x7 != 0 {
             return .undefined(at: address, encoding: encoding)
@@ -41,7 +41,7 @@ enum ExceptionDecode {
             mnemonic: mnemonic,
             branchClass: .exception,
             category: .branchesExceptionSystem,
-            operands: [.unsignedImmediate(value: UInt64(imm16), width: 16)],
+            operandCount: sink.emit(.unsignedImmediate(value: UInt64(imm16), width: 16)),
         )
     }
 }

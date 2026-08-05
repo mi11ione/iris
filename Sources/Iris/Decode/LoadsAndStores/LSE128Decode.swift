@@ -24,7 +24,7 @@ enum LSE128Decode {
     ]
 
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The dispatcher routes only size == 00 here (nonzero sizes fall
         // to RCW-pair / MTE / UNDEFINED upstream).
         let A = UInt8((encoding >> 23) & 1)
@@ -83,11 +83,7 @@ enum LSE128Decode {
             memoryOrdering: ordering,
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .register(rsRef),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rtRef), .register(rsRef), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 }

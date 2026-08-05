@@ -23,20 +23,24 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
 
     init() {}
 
+    var tag: FamilyTag {
+        .loadsAndStores
+    }
+
     var op0Values: Set<UInt8> {
         Self.lsOp0Values
     }
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features: Features,
+        encoding: UInt32, address: UInt64, features: Features, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // FEAT_MOPS CPY/SET must be detected BEFORE the V check: CPY/SETG
         // carry bit26 (o0) = 1, which the V test would misroute to SIMD.
         // The discriminant fixes bits 28,27,24,10 set and 29,25,21 clear,
         // leaving o0 / bits[23:22] / register fields free.
         if (encoding & 0x3B20_0C00) == 0x1900_0400 {
-            return MOPSDecode.decode(encoding: encoding, address: address)
+            return MOPSDecode.decode(encoding: encoding, address: address, &sink)
         }
 
         // V=1 (SIMD/FP load/store) is delegated to
@@ -44,7 +48,7 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
         let V = (encoding >> 26) & 1
         if V == 1 {
             return SIMDAndFPDecoder.decodeVectorLoadStore(
-                encoding: encoding, address: address,
+                encoding: encoding, address: address, &sink,
             )
         }
 
@@ -52,7 +56,7 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
         switch bits29_24 {
         case 0b011000:
             // L1 — Load register (literal): LDR/LDRSW/PRFM literal.
-            return LoadLiteralDecode.decode(encoding: encoding, address: address)
+            return LoadLiteralDecode.decode(encoding: encoding, address: address, &sink)
 
         case 0b001000:
             // L2 / L3 / L4 / L4c / L5 — share the exclusive+ordered shell.
@@ -60,7 +64,7 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
             if bit21 == 0 {
                 // L2 exclusive register OR L4 LDAR/STLR OR L4c LDLAR/STLLR.
                 return LoadStoreExclusiveAndOrderedDecode.decode(
-                    encoding: encoding, address: address,
+                    encoding: encoding, address: address, &sink,
                 )
             }
             // bit21 == 1: L3 exclusive pair OR L5 CAS / CASP family.
@@ -79,20 +83,20 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
             let bit23 = (encoding >> 23) & 1
             let bit31 = (encoding >> 31) & 1
             if bit23 == 1 {
-                return CompareAndSwapDecode.decode(encoding: encoding, address: address)
+                return CompareAndSwapDecode.decode(encoding: encoding, address: address, &sink)
             }
             if bit31 == 0 {
-                return CompareAndSwapDecode.decodeCASP(encoding: encoding, address: address)
+                return CompareAndSwapDecode.decodeCASP(encoding: encoding, address: address, &sink)
             }
-            return LoadStoreExclusivePairDecode.decode(encoding: encoding, address: address)
+            return LoadStoreExclusivePairDecode.decode(encoding: encoding, address: address, &sink)
 
         case 0b001001:
             // FEAT_LSUI unprivileged exclusive + compare-and-swap.
-            return LSUILoadStoreDecode.decode(encoding: encoding, address: address)
+            return LSUILoadStoreDecode.decode(encoding: encoding, address: address, &sink)
 
         case 0b101000, 0b101001:
             // L6 — Load/store register pair (no-allocate / post / signed / pre).
-            return LoadStorePairDecode.decode(encoding: encoding, address: address)
+            return LoadStorePairDecode.decode(encoding: encoding, address: address, &sink)
 
         case 0b111000:
             // L4b LDAPR, L7, L8, L9, L10, L11, L13, L15 share this shell.
@@ -101,18 +105,18 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
             if bit21 == 0 {
                 switch bits11_10 {
                 case 0b00:
-                    return LoadStoreUnscaledDecode.decode(encoding: encoding, address: address)
+                    return LoadStoreUnscaledDecode.decode(encoding: encoding, address: address, &sink)
                 case 0b01:
                     return LoadStoreIndexedDecode.decode(
-                        encoding: encoding, address: address, writebackKind: .postIndex,
+                        encoding: encoding, address: address, writebackKind: .postIndex, &sink,
                     )
                 case 0b10:
-                    return LoadStoreUnprivilegedDecode.decode(encoding: encoding, address: address)
+                    return LoadStoreUnprivilegedDecode.decode(encoding: encoding, address: address, &sink)
                 // bits[11:10] ∈ {00,01,10,11} all enumerated; 0b11
                 // (pre-indexed) is `default`.
                 default:
                     return LoadStoreIndexedDecode.decode(
-                        encoding: encoding, address: address, writebackKind: .preIndex,
+                        encoding: encoding, address: address, writebackKind: .preIndex, &sink,
                     )
                 }
             }
@@ -128,11 +132,11 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                 if opHi == 0b1001 || opHi == 0b1010 || opHi == 0b1011 || opHi == 0b1101 {
                     let size = (encoding >> 30) & 0x3
                     if size == 0b11, (encoding >> 22) & 0x3 == 0b00 {
-                        return LS64Decode.decode(encoding: encoding, address: address)
+                        return LS64Decode.decode(encoding: encoding, address: address, &sink)
                     }
                     if size <= 0b01, opHi != 0b1101 {
                         return AtomicExtensionsDecode.decodeRCWNonPair(
-                            encoding: encoding, address: address,
+                            encoding: encoding, address: address, &sink,
                         )
                     }
                 }
@@ -148,9 +152,9 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                 let bits20_16 = (encoding >> 16) & 0x1F
                 let bits15_12 = (encoding >> 12) & 0xF
                 if bit23 == 1, bit22 == 0, bits20_16 == 0x1F, bits15_12 == 0b1100 {
-                    return LDAPRDecode.decode(encoding: encoding, address: address)
+                    return LDAPRDecode.decode(encoding: encoding, address: address, &sink)
                 }
-                return LSEAtomicDecode.decode(encoding: encoding, address: address)
+                return LSEAtomicDecode.decode(encoding: encoding, address: address, &sink)
             case 0b10:
                 // FEAT_RPRES RPRFM shares the register-offset prefetch cell
                 // (size=11, opc=10) with PRFM (register); the discriminator
@@ -159,9 +163,9 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                    (encoding >> 22) & 0x3 == 0b10,
                    (encoding >> 3) & 0x3 == 0b11
                 {
-                    return RangePrefetchDecode.decode(encoding: encoding, address: address)
+                    return RangePrefetchDecode.decode(encoding: encoding, address: address, &sink)
                 }
-                return LoadStoreRegisterOffsetDecode.decode(encoding: encoding, address: address)
+                return LoadStoreRegisterOffsetDecode.decode(encoding: encoding, address: address, &sink)
             // bits[11:10] ∈ {00,01,10,11} all enumerated; {01,11} is `default`
             // — L15 ARM64E LDRAA/LDRAB (01 = signed-offset W=0, 11 = pre-index
             // writeback W=1). ARM64E-only; on plain ARM64 it is unallocated.
@@ -169,12 +173,12 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                 if !features.contains(.pointerAuthentication) {
                     return .undefined(at: address, encoding: encoding)
                 }
-                return LDRADecode.decode(encoding: encoding, address: address)
+                return LDRADecode.decode(encoding: encoding, address: address, &sink)
             }
 
         case 0b111001:
             // L12 — Load/store register, unsigned offset (scaled imm12).
-            return LoadStoreUnsignedOffsetDecode.decode(encoding: encoding, address: address)
+            return LoadStoreUnsignedOffsetDecode.decode(encoding: encoding, address: address, &sink)
 
         default:
             // 0b011001 — op0 ∈ {4, C} at V=0 yields exactly the eight
@@ -194,12 +198,12 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                     let size = (encoding >> 30) & 0x3
                     if size <= 0b01 {
                         if let rcwPair = AtomicExtensionsDecode.decodeRCWPair(
-                            encoding: encoding, address: address,
+                            encoding: encoding, address: address, &sink,
                         ) {
                             return rcwPair
                         }
                         if size == 0b00 {
-                            return LSE128Decode.decode(encoding: encoding, address: address)
+                            return LSE128Decode.decode(encoding: encoding, address: address, &sink)
                         }
                         return .undefined(at: address, encoding: encoding)
                     }
@@ -208,7 +212,7 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                     // MTE STG/STZG/ST2G/STZ2G post-index → falls through to MTE.
                     if (encoding >> 30) & 0x3 <= 0b01 {
                         return AtomicExtensionsDecode.decodeLSUI(
-                            encoding: encoding, address: address,
+                            encoding: encoding, address: address, &sink,
                         )
                     }
                 case 0b10:
@@ -216,7 +220,7 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                     // ST2G/STZ2G pre-index → falls through to MTE.
                     if (encoding >> 30) & 0x3 <= 0b01 {
                         return AtomicExtensionsDecode.decodeRCWCas(
-                            encoding: encoding, address: address,
+                            encoding: encoding, address: address, &sink,
                         )
                     }
                 // bits[11:10] ∈ {00,01,10,11} all enumerated; 0b11 is `default`.
@@ -225,12 +229,12 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                     // ST2G/STZ2G signed-offset → falls through to MTE.
                     if (encoding >> 30) & 0x3 <= 0b01 {
                         return AtomicExtensionsDecode.decodeRCWCasp(
-                            encoding: encoding, address: address,
+                            encoding: encoding, address: address, &sink,
                         )
                     }
                 }
                 if let mteLS = MemoryTaggingDecode.decodeLS(
-                    encoding: encoding, address: address,
+                    encoding: encoding, address: address, &sink,
                 ) {
                     return mteLS
                 }
@@ -244,19 +248,19 @@ struct LoadsAndStoresDecoder: FamilyDecoder {
                 // {10,11}).
                 if (encoding >> 22) & 0x3 <= 0b01 {
                     return AtomicExtensionsDecode.decodeRCPC3Pair(
-                        encoding: encoding, address: address,
+                        encoding: encoding, address: address, &sink,
                     )
                 }
                 return AtomicExtensionsDecode.decodeRCPC3Single(
-                    encoding: encoding, address: address,
+                    encoding: encoding, address: address, &sink,
                 )
             case 0b11:
                 // FEAT_GCS GCSSTR / GCSSTTR.
-                return AtomicExtensionsDecode.decodeGCS(encoding: encoding, address: address)
+                return AtomicExtensionsDecode.decodeGCS(encoding: encoding, address: address, &sink)
             // bits[11:10] ∈ {00,01,10,11}; {00,01} is `default` — LRCPC2
             // LDAPUR/STLUR (unscaled imm9, bit10 part of imm9).
             default:
-                return LRCPC2Decode.decode(encoding: encoding, address: address)
+                return LRCPC2Decode.decode(encoding: encoding, address: address, &sink)
             }
         }
     }

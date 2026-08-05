@@ -28,7 +28,7 @@
 
 enum FPIntegerConversionDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let ftype = UInt8((encoding >> 22) & 0x3)
         let rmode = UInt8((encoding >> 19) & 0x3)
@@ -42,7 +42,7 @@ enum FPIntegerConversionDecode {
         if ftype == 0b10 {
             return decodeFMOVTopHalf(
                 encoding: encoding, address: address,
-                sf: sf, rmode: rmode, opcode: opcode, Rn: Rn, Rd: Rd,
+                sf: sf, rmode: rmode, opcode: opcode, Rn: Rn, Rd: Rd, &sink,
             )
         }
 
@@ -65,7 +65,7 @@ enum FPIntegerConversionDecode {
                 semanticWrites: simdfpInsertingNonZeroGPR(reg: dstGPR, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [.register(dstGPR), simdfpScalarOperand(Rn, size: size)],
+                operandCount: sink.emit(.register(dstGPR), simdfpScalarOperand(Rn, size: size)),
             )
         }
 
@@ -80,7 +80,7 @@ enum FPIntegerConversionDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [simdfpScalarOperand(Rd, size: size), .register(srcGPR)],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: size), .register(srcGPR)),
             )
         }
 
@@ -106,7 +106,7 @@ enum FPIntegerConversionDecode {
                     semanticWrites: simdfpInsertingNonZeroGPR(reg: gpr, into: .empty),
                     branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                     flagEffect: .none, category: .simdAndFP,
-                    operands: [.register(gpr), simdfpScalarOperand(Rn, size: size)],
+                    operandCount: sink.emit(.register(gpr), simdfpScalarOperand(Rn, size: size)),
                 )
             }
             let gpr = simdfpGprOperand(encoding: Rn, width: gprWidth, spOrGeneral: false)
@@ -117,7 +117,7 @@ enum FPIntegerConversionDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [simdfpScalarOperand(Rd, size: size), .register(gpr)],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: size), .register(gpr)),
             )
         }
 
@@ -150,7 +150,7 @@ enum FPIntegerConversionDecode {
     @_optimize(speed)
     private static func decodeFMOVTopHalf(
         encoding: UInt32, address: UInt64,
-        sf: UInt8, rmode: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8,
+        sf: UInt8, rmode: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // ftype=10 is reserved except for these two encodings (with sf=1
         // and rmode=01 and opcode ∈ {110, 111}).
@@ -169,7 +169,7 @@ enum FPIntegerConversionDecode {
                 semanticWrites: simdfpInsertingNonZeroGPR(reg: gpr, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [.register(gpr), velt],
+                operandCount: sink.emit(.register(gpr), velt),
             )
         case 0b111:
             // FMOV V.D[1], X: dst = V.D[1] element, src = X-reg. The
@@ -186,7 +186,7 @@ enum FPIntegerConversionDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [velt, .register(gpr)],
+                operandCount: sink.emit(velt, .register(gpr)),
             )
         default:
             return .undefined(at: address, encoding: encoding)

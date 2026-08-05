@@ -9,7 +9,7 @@ enum ExtractDecode {
     @inline(__always)
     @_optimize(speed)
     @_effects(readonly)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         // Per ARM ARM C6.2.123 EXTR: opc bits 30:29 must be 00 and bit 21 (o0) must be 0.
         let opcHigh = UInt8((encoding >> 29) & 0x3)
@@ -44,10 +44,7 @@ enum ExtractDecode {
                 semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(imms), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(imms), width: 6)),
             )
         }
 
@@ -63,10 +60,7 @@ enum ExtractDecode {
             semanticWrites: insertingNonZero(reg: rdRef, into: .empty),
             flagEffect: .none,
             category: .dataProcessingImmediate,
-            operands: [
-                .register(rdRef), .register(rnRef), .register(rmRef),
-                .unsignedImmediate(value: UInt64(imms), width: 6),
-            ],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .register(rmRef), .unsignedImmediate(value: UInt64(imms), width: 6)),
         )
     }
 }

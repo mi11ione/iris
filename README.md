@@ -128,11 +128,17 @@ for inst in stream where inst.isCall {
 
 Every `Instruction` carries bit-exact register read/write sets, memory access and ordering, per-flag effects, ADR/ADRP page math, and precisely-scoped predicates — with scalable code treated in its own vocabulary (predicate, FFR, and ZA state in `scalableReads`/`scalableWrites`, streaming behavior in `scalableEffect`). It is the precomputed layer CFG builders, emulators, and decompilers otherwise write first.
 
+Rendering a whole stream goes through one buffer rather than a `String` per instruction, and a caller assembling its own document can append into that buffer directly:
+
+```swift
+print(DisassemblyListing.render(stream))   // one line of canonical text per record
+```
+
 No dependencies and no imports, so it runs anywhere Swift compiles: macOS, Linux, Windows, Android, and on-device iOS. CI builds every one.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mi11ione/iris", from: "0.6.0")
+    .package(url: "https://github.com/mi11ione/iris", from: "0.7.0")
 ]
 ```
 
@@ -173,13 +179,24 @@ Correctness is defined by external oracles, never asserted from inside:
 
 ## Performance
 
-Apple M4, release build, 256 MiB mixed buffer, medians over 5 runs. Methodology and reproduction in [`Benchmarks/README.md`](Benchmarks/README.md).
+Apple M4, release build, medians over 9 runs. Methodology and reproduction in [`Benchmarks/README.md`](Benchmarks/README.md).
 
-- Bulk decode: 16.1M words/s single-thread, 117.7M words/s parallel.
-- Address lookups: 11.0 ns stable (the pinned-session tier), 5.2 ns raw index arithmetic.
-- Against Capstone v5 on identical input: **~10.3× faster** at decode while computing more than its detail mode, ~3.3× faster at text-output parity ([methodology](Benchmarks/CapstoneComparison/README.md)).
+- Bulk decode: 54.5M words/s single-thread, 302M words/s parallel on a 256 MiB mixed buffer; 58.7M words/s over real `__TEXT,__text` from shipped binaries.
+- Address lookups: 12.3 ns stable (the pinned-session tier), 5.1 ns raw index arithmetic. A single word through the tier-0 `decode(_:)` entry point is 36.6 ns.
+- Text: a whole-stream listing renders at 30.9M instructions/s, the per-instruction `text` entry point at 20.0M/s. The semantic column reads at 180M/s.
+- Against Capstone v5 on identical input: **~37× faster** at decode while computing more than its detail mode, ~9.4× faster at text-output parity ([methodology](Benchmarks/CapstoneComparison/README.md)).
 
-A nightly smoke guards these numbers with checked-in thresholds.
+Whole-file disassembly against every other ARM64 disassembler on the machine, same thin arm64e slices, output line counts alongside so a tool printing less is visible rather than looking fast:
+
+| `/usr/lib/dyld`, 169,165 instructions | time | lines |
+|---|---|---|
+| **iris** | **303 ms** | 175,902 |
+| otool | 296 ms | 172,514 |
+| llvm-objdump | 377 ms | 175,839 |
+| objdump (Apple) | 408 ms | 175,839 |
+| rizin | past the 20 s deadline | — |
+
+A nightly smoke guards the throughput number with a checked-in threshold.
 
 ## Scope
 

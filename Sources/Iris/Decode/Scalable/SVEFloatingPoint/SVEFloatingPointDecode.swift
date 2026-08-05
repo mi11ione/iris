@@ -19,13 +19,13 @@ enum SVEFloatingPointDecode {
     /// Decode an in-scope SVE floating-point word. Precondition (by
     /// construction, not asserted): `isSVEFloatingPointEncoding(encoding)`.
     @_optimize(speed)
-    static func decode(encoding e: UInt32, address a: UInt64) -> DecodedDraft {
+    static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch (e >> 24) & 0xFF {
-        case 0x65: decode65(e, a)
-        case 0x64: decode64(e, a)
-        case 0x04: decodeUnaryTrigCarveOut(e, a) // G25 FABS/FNEG + FTSSEL/FEXPA
-        case 0x05: decodeFCopy(e, a) // G26 FCPY → fmov
-        default: decodeFDup(e, a) // 0x25 — G26 FDUP → fmov
+        case 0x65: decode65(e, a, &sink)
+        case 0x64: decode64(e, a, &sink)
+        case 0x04: decodeUnaryTrigCarveOut(e, a, &sink) // G25 FABS/FNEG + FTSSEL/FEXPA
+        case 0x05: decodeFCopy(e, a, &sink) // G26 FCPY → fmov
+        default: decodeFDup(e, a, &sink) // 0x25 — G26 FDUP → fmov
         }
     }
 
@@ -40,31 +40,31 @@ enum SVEFloatingPointDecode {
     // (G11); 110/111 unallocated.
 
     @inline(__always)
-    static func decode65(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode65(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 21) & 1 == 1 {
             // sve_fp_3op_p_zds_a (b15=0) / _b (b15=1).
-            return (e >> 15) & 1 == 0 ? decodeFMLAFamily(e, a) : decodeFMADFamily(e, a)
+            return (e >> 15) & 1 == 0 ? decodeFMLAFamily(e, a, &sink) : decodeFMADFamily(e, a, &sink)
         }
         if (e >> 14) & 1 == 1 {
             // G9 — bit14 alone marks the vector-compare region: the compare
             // selector is (bit15, bit13, bit4), so FCMUO/FACGE/FACGT carry
             // bit15=1 and the class spans bits[15:14] ∈ {01, 11}.
-            return decodeCompareVector(e, a)
+            return decodeCompareVector(e, a, &sink)
         }
         switch (e >> 13) & 0b111 {
-        case 0b000: return decodeUnpredicated3Op(e, a) // G5
-        case 0b001: return decode65ReductionColumn(e, a) // G6/G7/G8/G10/G13
+        case 0b000: return decodeUnpredicated3Op(e, a, &sink) // G5
+        case 0b001: return decode65ReductionColumn(e, a, &sink) // G6/G7/G8/G10/G13
         case 0b100:
             // bits[20:19]: 00/01 → predicated binary (G1); 11 → immediate
             // (G2); 10 → FTMAD (G12).
             switch (e >> 19) & 0b11 {
-            case 0b11: return decodeArithImmediate(e, a) // G2
-            case 0b10: return decodeFTMAD(e, a) // G12
-            default: return decodePredicatedBinary(e, a) // G1
+            case 0b11: return decodeArithImmediate(e, a, &sink) // G2
+            case 0b10: return decodeFTMAD(e, a, &sink) // G12
+            default: return decodePredicatedBinary(e, a, &sink) // G1
             }
         // bits[15:13]==0b101 (G11 merging unary) is the only remaining value:
         // bit14 was intercepted above, so 0b01x/0b11x cannot reach this switch.
-        default: return decodeUnaryMerging(e, a) // G11
+        default: return decodeUnaryMerging(e, a, &sink) // G11
         }
     }
 
@@ -76,19 +76,19 @@ enum SVEFloatingPointDecode {
     /// down-converts, FP8 up-converts, pair int-converts, and
     /// FRECPE/FRSQRTE.
     @inline(__always)
-    static func decode65ReductionColumn(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode65ReductionColumn(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 19) & 0b11 != 0b01 {
-            if (e >> 20) & 1 == 0 { return decodeFastReduction(e, a) } // G7
+            if (e >> 20) & 1 == 0 { return decodeFastReduction(e, a, &sink) } // G7
             return (e >> 19) & 1 == 0
-                ? decodeCompareZero(e, a) // G10
-                : decodeFADDA(e, a) // G8
+                ? decodeCompareZero(e, a, &sink) // G10
+                : decodeFADDA(e, a, &sink) // G8
         }
         // Class-mask chain (mutually disjoint patterns from the catalogue).
-        if (e & 0xFFFE_F000) == 0x6508_3000 { return decodeFP8ConvertSingle(e, a) } // G13a
-        if (e & 0xFFFF_F000) == 0x650A_3000 { return decodeFP8DownConvertPair(e, a) } // G13b/c
-        if (e & 0xFF3F_F000) == 0x650C_3000 { return decodeFP8UpConvert(e, a) } // G13e
-        if (e & 0xFF3F_F800) == 0x650D_3000 { return decodeIntConvertPair(e, a) } // G13d
-        if (e & 0xFF3E_FC00) == 0x650E_3000 { return decodeReciprocalEstimate(e, a) } // G6
+        if (e & 0xFFFE_F000) == 0x6508_3000 { return decodeFP8ConvertSingle(e, a, &sink) } // G13a
+        if (e & 0xFFFF_F000) == 0x650A_3000 { return decodeFP8DownConvertPair(e, a, &sink) } // G13b/c
+        if (e & 0xFF3F_F000) == 0x650C_3000 { return decodeFP8UpConvert(e, a, &sink) } // G13e
+        if (e & 0xFF3F_F800) == 0x650D_3000 { return decodeIntConvertPair(e, a, &sink) } // G13d
+        if (e & 0xFF3E_FC00) == 0x650E_3000 { return decodeReciprocalEstimate(e, a, &sink) } // G6
         return undefined(e, a)
     }
 
@@ -102,25 +102,25 @@ enum SVEFloatingPointDecode {
     // widening / dot / matrix cluster, split on bits[15:10] regions.
 
     @inline(__always)
-    static func decode64(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode64(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 21) & 1 == 0 {
             if (e >> 15) & 1 == 0 {
-                return decodeFCMLAVector(e, a) // G17 (rot at [14:13])
+                return decodeFCMLAVector(e, a, &sink) // G17 (rot at [14:13])
             }
             if (e >> 20) & 1 == 0 {
                 // bit20=0: FCADD at bits[14:13]=00 (bit19 is part of its fixed
                 // zero field, checked inside) or convert-precision at
                 // bits[14:13]=01 (bit19 selects `/M` vs `/Z` there).
                 return (e >> 13) & 0b11 == 0b00
-                    ? decodeFCADD(e, a) // G17
-                    : decodeConvertPrecision(e, a) // G15
+                    ? decodeFCADD(e, a, &sink) // G17
+                    : decodeConvertPrecision(e, a, &sink) // G15
             }
             if (e >> 19) & 1 == 1 {
-                return decodeUnaryZeroing(e, a) // G14 (bits[20:19]=11)
+                return decodeUnaryZeroing(e, a, &sink) // G14 (bits[20:19]=11)
             }
             return (e >> 13) & 0b11 == 0b00
-                ? decodePairwise(e, a) // G16 (bits[20:19]=10)
-                : decodeQuadReduction(e, a) // G24
+                ? decodePairwise(e, a, &sink) // G16 (bits[20:19]=10)
+                : decodeQuadReduction(e, a, &sink) // G24
         }
         // bit21=1 — the indexed / widening / dot / matrix cluster. The class
         // patterns interleave on bits[23:22] and bits[11:10] (e.g. the fp8 dot
@@ -128,19 +128,19 @@ enum SVEFloatingPointDecode {
         // routing is a chain of class-common mask tests taken verbatim from
         // the catalogue; every pair of patterns below is mask-disjoint, making
         // the chain order-free.
-        if (e & 0xFF20_FC00) == 0x6420_2400 { return decodeClamp(e, a) } // G23
-        if (e & 0xFFA0_F000) == 0x64A0_1000 { return decodeFCMLAIndexed(e, a) } // G17c
-        if (e & 0xFF20_F400) == 0x6420_2000 { return decodeIndexedFMUL(e, a) } // G18b
-        if (e & 0xFF20_F000) == 0x6420_0000 { return decodeIndexedFMA(e, a) } // G18a
-        if (e & 0xFF60_F000) == 0x6420_5000 { return decodeFP8LongIndexed(e, a) } // G21b
-        if (e & 0xFF20_F000) == 0x6420_C000 { return decodeFP8LongLongIndexed(e, a) } // G21c
-        if (e & 0xFFA0_FC00) == 0x6420_4000 { return decodeDotIndexed(e, a) } // G20b
-        if (e & 0xFFA0_F400) == 0x6420_4400 { return decodeFP8DotIndexed(e, a) } // G20c
-        if (e & 0xFFA0_D000) == 0x64A0_4000 { return decodeWideningMLAIndexed(e, a) } // G19b
-        if (e & 0xFF20_F800) == 0x6420_E000 { return decodeMatrixMLA(e, a) } // G21d+G22
-        if (e & 0xFFA0_D800) == 0x64A0_8000 { return decodeWideningMLA(e, a) } // G19a
-        if (e & 0xFFA0_F800) == 0x6420_8000 { return decodeDot(e, a) } // G20a
-        if (e & 0xFF60_CC00) == 0x6420_8800 { return decodeFP8MLA(e, a) } // G21a
+        if (e & 0xFF20_FC00) == 0x6420_2400 { return decodeClamp(e, a, &sink) } // G23
+        if (e & 0xFFA0_F000) == 0x64A0_1000 { return decodeFCMLAIndexed(e, a, &sink) } // G17c
+        if (e & 0xFF20_F400) == 0x6420_2000 { return decodeIndexedFMUL(e, a, &sink) } // G18b
+        if (e & 0xFF20_F000) == 0x6420_0000 { return decodeIndexedFMA(e, a, &sink) } // G18a
+        if (e & 0xFF60_F000) == 0x6420_5000 { return decodeFP8LongIndexed(e, a, &sink) } // G21b
+        if (e & 0xFF20_F000) == 0x6420_C000 { return decodeFP8LongLongIndexed(e, a, &sink) } // G21c
+        if (e & 0xFFA0_FC00) == 0x6420_4000 { return decodeDotIndexed(e, a, &sink) } // G20b
+        if (e & 0xFFA0_F400) == 0x6420_4400 { return decodeFP8DotIndexed(e, a, &sink) } // G20c
+        if (e & 0xFFA0_D000) == 0x64A0_4000 { return decodeWideningMLAIndexed(e, a, &sink) } // G19b
+        if (e & 0xFF20_F800) == 0x6420_E000 { return decodeMatrixMLA(e, a, &sink) } // G21d+G22
+        if (e & 0xFFA0_D800) == 0x64A0_8000 { return decodeWideningMLA(e, a, &sink) } // G19a
+        if (e & 0xFFA0_F800) == 0x6420_8000 { return decodeDot(e, a, &sink) } // G20a
+        if (e & 0xFF60_CC00) == 0x6420_8800 { return decodeFP8MLA(e, a, &sink) } // G21a
         return undefined(e, a)
     }
 

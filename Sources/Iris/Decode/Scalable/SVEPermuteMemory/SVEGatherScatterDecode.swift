@@ -22,83 +22,83 @@ extension SVEPermuteMemoryDecode {
     /// bit15 — the vector-base/replicate/prefetch column (bit15=1) vs the
     /// scalar-base gather / gather-prefetch column (bit15=0).
     @inline(__always)
-    static func decode32bitGatherRegion(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode32bitGatherRegion(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // LDR (Z/P fill): bits[31:22]=1000010110 with bits[15:13]=010 (Z) or
         // 000 (P). (The same bits[31:22] with other markers are prfm_ss/gld.)
         if (e >> 22) & 0x3FF == 0b10_0001_0110 {
             let mk = (e >> 13) & 0b111
-            if mk == 0b010 || mk == 0b000 { return decodeFillSpill(e, a, isStore: false) }
+            if mk == 0b010 || mk == 0b000 { return decodeFillSpill(e, a, isStore: false, &sink) }
         }
         // prfm_si (contiguous prefetch, scalar+imm): bits[31:22]=1000010111,
         // bit15=0. `<prfop>, Pg, [Xn{, #imm6, mul vl}]`, msz=bits[14:13].
         if (e >> 22) & 0x3FF == 0b10_0001_0111, (e >> 15) & 1 == 0 {
-            return decodePrefetchSI(e, a)
+            return decodePrefetchSI(e, a, &sink)
         }
-        return decode32Gather(e, a)
+        return decode32Gather(e, a, &sink)
     }
 
     /// Contiguous scalar+imm prefetch `<prfop>, Pg, [Xn{, #imm6, mul vl}]`.
     @inline(__always)
-    static func decodePrefetchSI(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePrefetchSI(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let msz = UInt8((e >> 13) & 0b11)
         let g = pg3(e), n = rn(e)
         let imm = signExtend6((e >> 16) & 0x3F)
         let addr = ScalableMemoryOperand(base: .gpr(.x(n)), displacement: imm, mulVL: true)
-        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr)
+        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr, &sink)
     }
 
     // MARK: 64-bit gather region (0xC4/0xC5)
 
     @inline(__always)
-    static func decode64bitGatherRegion(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode64bitGatherRegion(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The 64-bit region has no contiguous prefetch-si (that lives at 0x85);
         // every scalar-base word here is a gather.
-        decode64Gather(e, a)
+        decode64Gather(e, a, &sink)
     }
 
     /// 0x84/0x85: bit15 splits scalar-base gather (0) from the vector-base /
     /// replicate / prefetch column (1).
     @inline(__always)
-    static func decode32Gather(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode32Gather(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 15) & 1 == 1 {
-            if (e >> 22) & 1 == 1 { return decodeReplicate(e, a) } // LD1R
-            if (e >> 21) & 1 == 1 { return decodeGatherVI(e, a, indexEl: .s) } // gld_vi
+            if (e >> 22) & 1 == 1 { return decodeReplicate(e, a, &sink) } // LD1R
+            if (e >> 21) & 1 == 1 { return decodeGatherVI(e, a, indexEl: .s, &sink) } // gld_vi
             switch (e >> 13) & 0b11 {
             // 32-bit gldnt: bits[14:13]=00 signed, 01 unsigned.
-            case 0b00, 0b01: return decodeGatherNT(e, a, element: .s, signed: (e >> 13) & 0b11 == 0)
-            case 0b10: return decodePrefetchSS(e, a) // contiguous prefetch [Xn, Xm]
-            default: return decodePrefetchVI(e, a, indexEl: .s) // gather prefetch [Zn, #imm]
+            case 0b00, 0b01: return decodeGatherNT(e, a, element: .s, signed: (e >> 13) & 0b11 == 0, &sink)
+            case 0b10: return decodePrefetchSS(e, a, &sink) // contiguous prefetch [Xn, Xm]
+            default: return decodePrefetchVI(e, a, indexEl: .s, &sink) // gather prefetch [Zn, #imm]
             }
         }
         // prfm_sv occupies the byte-scaled hole (bits[24:23]=00, bit21=1).
-        if (e >> 23) & 0b11 == 0, (e >> 21) & 1 == 1 { return decodePrefetchSV(e, a, indexEl: .s) }
-        return decodeGatherSV(e, a, indexEl: .s, packed: false)
+        if (e >> 23) & 0b11 == 0, (e >> 21) & 1 == 1 { return decodePrefetchSV(e, a, indexEl: .s, &sink) }
+        return decodeGatherSV(e, a, indexEl: .s, packed: false, &sink)
     }
 
     /// 0xC4/0xC5: bit15 is the packed-64-bit-offset (`lsl`) bit for the
     /// scalar-base gather; the vector-base gldnt/LD1Q/prefetch forms are
     /// bit15=1 with bit22=0.
     @inline(__always)
-    static func decode64Gather(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decode64Gather(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 15) & 1 == 1 {
             if (e >> 22) & 1 == 1 {
                 // prfm_sv (scalar-base prefetch) occupies bits[24:23]=00, bit21=1.
-                if (e >> 23) & 0b11 == 0, (e >> 21) & 1 == 1 { return decodePrefetchSV(e, a, indexEl: .d) }
-                return decodeGatherSV(e, a, indexEl: .d, packed: true) // lsl gather
+                if (e >> 23) & 0b11 == 0, (e >> 21) & 1 == 1 { return decodePrefetchSV(e, a, indexEl: .d, &sink) }
+                return decodeGatherSV(e, a, indexEl: .d, packed: true, &sink) // lsl gather
             }
             // bit21=1 → vector-base + immediate gather (`gld_vi`).
-            if (e >> 21) & 1 == 1 { return decodeGatherVI(e, a, indexEl: .d) }
+            if (e >> 21) & 1 == 1 { return decodeGatherVI(e, a, indexEl: .d, &sink) }
             // bit21=0, split by bits[14:13]: 00 gldnt-signed, 10 gldnt-unsigned,
             // 01 LD1Q (sz=00 only, else hole), 11 gather prefetch (prfm_vi).
             switch (e >> 13) & 0b11 {
-            case 0b00: return decodeGatherNT(e, a, element: .d, signed: true)
-            case 0b10: return decodeGatherNT(e, a, element: .d, signed: false)
-            case 0b01: return (e >> 23) & 0b11 == 0 ? decodeLD1Q(e, a) : undefined(e, a)
-            default: return decodePrefetchVI(e, a, indexEl: .d)
+            case 0b00: return decodeGatherNT(e, a, element: .d, signed: true, &sink)
+            case 0b10: return decodeGatherNT(e, a, element: .d, signed: false, &sink)
+            case 0b01: return (e >> 23) & 0b11 == 0 ? decodeLD1Q(e, a, &sink) : undefined(e, a)
+            default: return decodePrefetchVI(e, a, indexEl: .d, &sink)
             }
         }
-        if (e >> 23) & 0b11 == 0, (e >> 21) & 1 == 1 { return decodePrefetchSV(e, a, indexEl: .d) }
-        return decodeGatherSV(e, a, indexEl: .d, packed: false)
+        if (e >> 23) & 0b11 == 0, (e >> 21) & 1 == 1 { return decodePrefetchSV(e, a, indexEl: .d, &sink) }
+        return decodeGatherSV(e, a, indexEl: .d, packed: false, &sink)
     }
 
     // MARK: gather load forms
@@ -107,7 +107,7 @@ extension SVEPermuteMemoryDecode {
     /// 32-bit uses uxtw/sxtw (bit22); 64-bit unpacked uses uxtw/sxtw (bit22),
     /// 64-bit packed (`packed`) uses `lsl`/none. Scaled by bit21.
     @inline(__always)
-    static func decodeGatherSV(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize, packed: Bool) -> DecodedDraft {
+    static func decodeGatherSV(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize, packed: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         let opcBits: UInt32 = ((e >> 23) & 0b11) << 2 | ((e >> 13) & 0b11)
         let opc = UInt8(opcBits)
         guard let (mn, destEl, accessEl, ff) = gatherOpc(opc, wide: indexEl == .d) else { return undefined(e, a) }
@@ -124,41 +124,41 @@ extension SVEPermuteMemoryDecode {
             indexExtend: extend,
             scaleShift: scaled ? elementScale(accessEl) : 0,
         )
-        var draft = memLoadDraft(e, a, mn: mn, zt: t, el: destEl, g: g, addr: addr)
+        var draft = memLoadDraft(e, a, mn: mn, zt: t, el: destEl, g: g, addr: addr, &sink)
         if ff { draft = markFirstFault(draft) }
         return draft
     }
 
     /// Vector-base + immediate gather load `[Zn.<T>{, #imm}]`.
     @inline(__always)
-    static func decodeGatherVI(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize) -> DecodedDraft {
+    static func decodeGatherVI(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let opcBits: UInt32 = ((e >> 23) & 0b11) << 2 | ((e >> 13) & 0b11)
         let opc = UInt8(opcBits)
         guard let (mn, destEl, accessEl, ff) = gatherOpc(opc, wide: indexEl == .d) else { return undefined(e, a) }
         let t = rd(e), g = pg3(e), n = rn(e)
         let imm = Int32((e >> 16) & 0x1F) &* Int32(1 << elementScale(accessEl))
         let addr = ScalableMemoryOperand(base: .vector(ScalableVectorRef(registerIndex: n, element: indexEl)), displacement: imm)
-        var draft = memLoadDraft(e, a, mn: mn, zt: t, el: destEl, g: g, addr: addr)
+        var draft = memLoadDraft(e, a, mn: mn, zt: t, el: destEl, g: g, addr: addr, &sink)
         if ff { draft = markFirstFault(draft) }
         return draft
     }
 
     /// LD1Q — SVE2p1 quadword gather: `{Zt.q}, Pg/z, [Zn.d, Xm]`.
     @inline(__always)
-    static func decodeLD1Q(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeLD1Q(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let t = rd(e), g = pg3(e), n = rn(e), m = rm(e)
         let addr = ScalableMemoryOperand(
             base: .vector(ScalableVectorRef(registerIndex: n, element: .d)),
             scalarIndex: m == 31 ? nil : .x(m),
         )
-        return memLoadDraft(e, a, mn: .ld1q, zt: t, el: .q, g: g, addr: addr)
+        return memLoadDraft(e, a, mn: .ld1q, zt: t, el: .q, g: g, addr: addr, &sink)
     }
 
     /// gldnt — vector-base non-temporal gather load `{Zt.<T>}, Pg/z, [Zn.<T>, Xm]`.
     /// The sign bit differs by width (32-bit: bit13; 64-bit: bit14), so the
     /// caller passes it; `.d` has no signed variant (that combo is a hole).
     @inline(__always)
-    static func decodeGatherNT(_ e: UInt32, _ a: UInt64, element: ScalarSize, signed: Bool) -> DecodedDraft {
+    static func decodeGatherNT(_ e: UInt32, _ a: UInt64, element: ScalarSize, signed: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         guard let (mn, destEl) = gatherNTName(e, wide: element == .d, signed: signed) else { return undefined(e, a) }
         let t = rd(e), g = pg3(e), n = rn(e), m = rm(e)
         // Rm=31 (SP/XZR) renders `[Zn.<T>]` — no scalar index.
@@ -166,7 +166,7 @@ extension SVEPermuteMemoryDecode {
             base: .vector(ScalableVectorRef(registerIndex: n, element: element)),
             scalarIndex: m == 31 ? nil : .x(m),
         )
-        let draft = memLoadDraft(e, a, mn: mn, zt: t, el: destEl, g: g, addr: addr)
+        let draft = memLoadDraft(e, a, mn: mn, zt: t, el: destEl, g: g, addr: addr, &sink)
         return markNonTemporal(draft)
     }
 
@@ -174,7 +174,7 @@ extension SVEPermuteMemoryDecode {
 
     /// Scalar-base + vector-index prefetch `<prfop>, Pg, [Xn, Zm.<T>{, ext #msz}]`.
     @inline(__always)
-    static func decodePrefetchSV(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize) -> DecodedDraft {
+    static func decodePrefetchSV(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let msz = UInt8((e >> 13) & 0b11)
         let g = pg3(e), n = rn(e), m = rm(e)
         // 64-bit packed form (bit15=1) → lsl, but a byte access (msz=0) has no
@@ -190,13 +190,13 @@ extension SVEPermuteMemoryDecode {
             indexExtend: extend,
             scaleShift: msz,
         )
-        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr)
+        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr, &sink)
     }
 
     /// Vector-base + immediate prefetch `<prfop>, Pg, [Zn.<T>{, #imm}]`. The
     /// prfm_vi size is bits[24:23] (not [14:13]).
     @inline(__always)
-    static func decodePrefetchVI(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize) -> DecodedDraft {
+    static func decodePrefetchVI(_ e: UInt32, _ a: UInt64, indexEl: ScalarSize, _ sink: inout OperandSink) -> DecodedDraft {
         let msz = UInt8((e >> 23) & 0b11)
         let g = pg3(e), n = rn(e)
         // The immediate is scaled by the prefetch element size (prfw → ×4).
@@ -204,18 +204,18 @@ extension SVEPermuteMemoryDecode {
             base: .vector(ScalableVectorRef(registerIndex: n, element: indexEl)),
             displacement: Int32((e >> 16) & 0x1F) &* Int32(1 << msz),
         )
-        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr)
+        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr, &sink)
     }
 
     /// Contiguous scalar+scalar prefetch `<prfop>, Pg, [Xn, Xm{, lsl #k}]`. The
     /// prfm_ss size is bits[24:23].
     @inline(__always)
-    static func decodePrefetchSS(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodePrefetchSS(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard rm(e) != 31 else { return undefined(e, a) } // Rm=31 not a valid index
         let msz = UInt8((e >> 23) & 0b11)
         let g = pg3(e), n = rn(e), m = rm(e)
         let addr = ScalableMemoryOperand(base: .gpr(.x(n)), scalarIndex: .x(m), scaleShift: msz)
-        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr)
+        return memPrefetchDraft(e, a, mn: prefetchName(msz), g: g, addr: addr, &sink)
     }
 
     // MARK: scatter (from the store region)
@@ -224,7 +224,7 @@ extension SVEPermuteMemoryDecode {
     /// opc = bits[24:22] selects the (mnemonic, access element, index element);
     /// the extend (uxtw/sxtw/none) is passed from the mk column. Scaled by bit21.
     @inline(__always)
-    static func decodeScatterSV(_ e: UInt32, _ a: UInt64, extend: ExtendKind) -> DecodedDraft {
+    static func decodeScatterSV(_ e: UInt32, _ a: UInt64, extend: ExtendKind, _ sink: inout OperandSink) -> DecodedDraft {
         // At mk=101 (extend==.none) bit22=1 is the vector-base + immediate
         // scatter (`sst_vi`); opc packs as bits[24:23]:[21]. (At mk=100/110
         // bit22 is opc's low bit, so this only applies to the mk=101 column.)
@@ -235,7 +235,7 @@ extension SVEPermuteMemoryDecode {
             let t = rd(e), g = pg3(e), n = rn(e)
             let imm = Int32((e >> 16) & 0x1F) &* Int32(1 << UInt8((e >> 23) & 0b11))
             let addr = ScalableMemoryOperand(base: .vector(ScalableVectorRef(registerIndex: n, element: indexEl)), displacement: imm)
-            return memStoreDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr)
+            return memStoreDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr, &sink)
         }
         let opc = UInt8((e >> 22) & 0b111)
         guard let (mn, el, indexEl) = scatterOpc(opc) else { return undefined(e, a) }
@@ -253,34 +253,34 @@ extension SVEPermuteMemoryDecode {
             // Scale = access (msz) log2 = bits[24:23], not the vector element.
             scaleShift: scaled ? UInt8((e >> 23) & 0b11) : 0,
         )
-        return memStoreDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr)
+        return memStoreDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr, &sink)
     }
 
     /// sstnt vector-base non-temporal scatter or ST1Q.
     @inline(__always)
-    static func decodeScatterNTOrQuad(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeScatterNTOrQuad(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bit21=1 → ST1Q (only when bits[24:22]=000; else a hole). bit21=0 →
         // the vector-base non-temporal scatter (`sstnt`).
         if (e >> 21) & 1 == 1 {
-            return (e >> 22) & 0b111 == 0 ? decodeST1Q(e, a) : undefined(e, a)
+            return (e >> 22) & 0b111 == 0 ? decodeST1Q(e, a, &sink) : undefined(e, a)
         }
-        return decodeScatterNTReg(e, a)
+        return decodeScatterNTReg(e, a, &sink)
     }
 
     /// ST1Q — `{Zt.q}, Pg, [Zn.d, Xm]`.
     @inline(__always)
-    static func decodeST1Q(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeST1Q(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let t = rd(e), g = pg3(e), n = rn(e), m = rm(e)
         let addr = ScalableMemoryOperand(
             base: .vector(ScalableVectorRef(registerIndex: n, element: .d)),
             scalarIndex: m == 31 ? nil : .x(m),
         )
-        return memStoreDraft(e, a, mn: .st1q, zt: t, el: .q, g: g, addr: addr)
+        return memStoreDraft(e, a, mn: .st1q, zt: t, el: .q, g: g, addr: addr, &sink)
     }
 
     /// sstnt — vector-base non-temporal scatter `{Zt.<T>}, Pg, [Zn.<T>, Xm]`.
     @inline(__always)
-    static func decodeScatterNTReg(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeScatterNTReg(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let opc = UInt8((e >> 22) & 0b111)
         guard let (mn, el) = scatterNTName(opc) else { return undefined(e, a) }
         let t = rd(e), g = pg3(e), n = rn(e), m = rm(e)
@@ -291,7 +291,7 @@ extension SVEPermuteMemoryDecode {
             base: .vector(ScalableVectorRef(registerIndex: n, element: indexEl)),
             scalarIndex: m == 31 ? nil : .x(m),
         )
-        let draft = memStoreDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr)
+        let draft = memStoreDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr, &sink)
         return markNonTemporal(draft)
     }
 
@@ -301,14 +301,14 @@ extension SVEPermuteMemoryDecode {
     /// `{Zt.<T>}, Pg/z, [Xn{, #imm}]`. (dtypeh, dtypel) select the mnemonic and
     /// element per the replicate table.
     @inline(__always)
-    static func decodeReplicate(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeReplicate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let dtypeh = UInt8((e >> 23) & 0b11)
         let dtypel = UInt8((e >> 13) & 0b11)
         let (mn, el, access) = replicateForm(dtypeh: dtypeh, dtypel: dtypel)
         let t = rd(e), g = pg3(e), n = rn(e)
         let imm = Int32((e >> 16) & 0x3F) &* Int32(access)
         let addr = ScalableMemoryOperand(base: .gpr(.x(n)), displacement: imm)
-        return memLoadDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr)
+        return memLoadDraft(e, a, mn: mn, zt: t, el: el, g: g, addr: addr, &sink)
     }
 
     // MARK: helpers

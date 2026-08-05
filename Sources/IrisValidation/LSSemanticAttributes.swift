@@ -30,6 +30,57 @@ public struct LSSemanticIssue: Sendable, Equatable {
     }
 }
 
+/// A whole operand shape packed into one word.
+///
+/// The shape table used to hand back a `[LSOperandKind]`. Even cached in a
+/// `static let`, every lookup on the verification path paid a `swift_once`
+/// guard for the global plus a retain and a release of the returned array,
+/// on a path that allocates nothing else. The shape is at most five
+/// operands drawn from four kinds, so it fits in thirteen bits: a trivial
+/// value that is compared, not referenced.
+@frozen
+public struct LSOperandShape: Sendable, Equatable {
+    /// bits [2:0] operand count; bits [4+2k:3+2k] the kind of operand `k`.
+    @usableFromInline let packed: UInt16
+
+    /// Widest shape the table describes (`CASP`: two register pairs plus
+    /// the base).
+    @usableFromInline static let maxCount = 5
+
+    init(_ kinds: LSOperandKind...) {
+        var bits = UInt16(kinds.count)
+        for (k, kind) in kinds.enumerated() {
+            bits |= UInt16(kind.code) << UInt16(3 + 2 * k)
+        }
+        packed = bits
+    }
+
+    /// Number of operands in the shape.
+    @inlinable public var count: Int {
+        Int(packed & 0b111)
+    }
+
+    /// The kind at `index`, or `nil` when `index` is past the shape.
+    @inlinable public func kind(at index: Int) -> LSOperandKind? {
+        guard index >= 0, index < count else { return nil }
+        return LSOperandKind(code: UInt8((packed >> UInt16(3 + 2 * index)) & 0b11))
+    }
+
+    /// The shape as a list — the published form, derived from the packed
+    /// value so the two can never describe different shapes.
+    public var kinds: [LSOperandKind] {
+        var out: [LSOperandKind] = []
+        out.reserveCapacity(count)
+        // Every index here is in range by construction, so this reads the
+        // packed field directly rather than through the bounds-checking
+        // ``kind(at:)`` — which would leave a branch nothing can take.
+        for i in 0 ..< count {
+            out.append(LSOperandKind(code: UInt8((packed >> UInt16(3 + 2 * i)) & 0b11)))
+        }
+        return out
+    }
+}
+
 /// Typed operand-kind summary for the operand-shape table.
 @frozen
 public enum LSOperandKind: Sendable, Equatable {
@@ -41,6 +92,25 @@ public enum LSOperandKind: Sendable, Equatable {
     case prefetchOperation
     /// `.immediate(_)` or `.unsignedImmediate(_)` operand.
     case immediate
+
+    /// Two-bit encoding used by ``LSOperandShape``.
+    @usableFromInline var code: UInt8 {
+        switch self {
+        case .register: 0
+        case .memory: 1
+        case .prefetchOperation: 2
+        case .immediate: 3
+        }
+    }
+
+    @usableFromInline init(code: UInt8) {
+        switch code {
+        case 0: self = .register
+        case 1: self = .memory
+        case 2: self = .prefetchOperation
+        default: self = .immediate
+        }
+    }
 }
 
 /// Per-record semantic-field verification against the spec table.
@@ -94,12 +164,12 @@ public enum LSSemanticChecker {
                 )
             }
         }
-        if let expectedShape = LSSemanticAttributes.expectedOperandShape(for: instruction.mnemonic) {
-            if !operandsMatchShape(Array(Array(instruction.operands)), expected: expectedShape) {
+        if let expectedShape = LSSemanticAttributes.packedOperandShape(for: instruction.mnemonic) {
+            if !operandsMatchShape(instruction.operands, expected: expectedShape) {
                 return LSSemanticIssue(
                     field: "operandShape",
-                    actual: formatOperandShape(Array(Array(instruction.operands))),
-                    expected: "\(expectedShape)",
+                    actual: formatOperandShape(instruction.operands),
+                    expected: "\(expectedShape.kinds)",
                 )
             }
         }
@@ -139,19 +209,19 @@ public enum LSSemanticChecker {
     @inline(__always)
     @_effects(readonly)
     private static func operandsMatchShape(
-        _ ops: [Operand], expected: [LSOperandKind],
+        _ ops: Instruction.Operands, expected: LSOperandShape,
     ) -> Bool {
         guard ops.count == expected.count else { return false }
         for i in 0 ..< ops.count {
-            guard let actual = operandKind(of: ops[i]) else { return false }
-            if actual != expected[i] { return false }
+            guard let actual = operandKind(of: ops[i]), actual == expected.kind(at: i)
+            else { return false }
         }
         return true
     }
 
     /// Cold path: only invoked when a shape mismatch is being reported.
     @_effects(readonly)
-    private static func formatOperandShape(_ ops: [Operand]) -> String {
+    private static func formatOperandShape(_ ops: Instruction.Operands) -> String {
         var shape: [LSOperandKind] = []
         shape.reserveCapacity(ops.count)
         for op in ops {
@@ -163,22 +233,23 @@ public enum LSSemanticChecker {
 
 /// Per-mnemonic semantic-attribute lookups.
 public enum LSSemanticAttributes {
-    // Precomputed operand-shape arrays — referenced from expectedOperandShape
-    // so each call returns the cached value rather than constructing a new
-    // array on the verification hot path.
-    private static let shapeRegMem: [LSOperandKind] = [.register, .memory]
-    private static let shapeRegRegMem: [LSOperandKind] = [.register, .register, .memory]
-    private static let shapeRegRegRegMem: [LSOperandKind] = [
+    // Operand shapes as packed words. These are trivial values, so a lookup
+    // is a load — no `swift_once` guard for a global array, and no retain
+    // and release of a returned reference on a path that otherwise
+    // allocates nothing.
+    private static let shapeRegMem = LSOperandShape(.register, .memory)
+    private static let shapeRegRegMem = LSOperandShape(.register, .register, .memory)
+    private static let shapeRegRegRegMem = LSOperandShape(
         .register, .register, .register, .memory,
-    ]
-    private static let shapeRegRegRegRegMem: [LSOperandKind] = [
+    )
+    private static let shapeRegRegRegRegMem = LSOperandShape(
         .register, .register, .register, .register, .memory,
-    ]
-    private static let shapePrfMem: [LSOperandKind] = [.prefetchOperation, .memory]
+    )
+    private static let shapePrfMem = LSOperandShape(.prefetchOperation, .memory)
     // FEAT_MOPS: three working registers, no memory operand in the list.
-    private static let shapeRegRegReg: [LSOperandKind] = [.register, .register, .register]
+    private static let shapeRegRegReg = LSOperandShape(.register, .register, .register)
     /// FEAT_RPRES RPRFM: range-prefetch op (immediate) + range register + base.
-    private static let shapeImmRegMem: [LSOperandKind] = [.immediate, .register, .memory]
+    private static let shapeImmRegMem = LSOperandShape(.immediate, .register, .memory)
 
     /// Architecturally-correct `FlagEffect` for an L/S mnemonic. Every
     /// L/S instruction is `.none` (no NZCV write); this method exists for
@@ -338,9 +409,18 @@ public enum LSSemanticAttributes {
         }
     }
 
+    /// The per-mnemonic operand shape as a list. Derived from
+    /// ``packedOperandShape(for:)`` — one table, two views, so they cannot
+    /// describe different shapes. The verification path uses the packed
+    /// form; this is for callers that want to read the shape.
+    @_effects(readonly)
+    public static func expectedOperandShape(for m: Mnemonic) -> [LSOperandKind]? {
+        packedOperandShape(for: m)?.kinds
+    }
+
     @_effects(readonly)
     @_optimize(speed)
-    public static func expectedOperandShape(for m: Mnemonic) -> [LSOperandKind]? {
+    public static func packedOperandShape(for m: Mnemonic) -> LSOperandShape? {
         switch m {
         case .ldr, .str, .ldrb, .strb, .ldrh, .strh, .ldrsb, .ldrsh, .ldrsw,
              .ldur, .stur, .ldurb, .sturb, .ldurh, .sturh,
@@ -431,7 +511,7 @@ public enum LSSemanticAttributes {
         guard let access = expectedMemoryAccess(for: instruction.mnemonic) else {
             return nil
         }
-        let ops = Array(Array(instruction.operands))
+        let ops = instruction.operands
         let r = instruction.mnemonic.rawValue
         // FEAT_RPRES RPRFM: reads the range register (op[1]) + base (op[2]).
         if r == 2313 {
@@ -536,7 +616,7 @@ public enum LSSemanticAttributes {
         guard let access = expectedMemoryAccess(for: instruction.mnemonic) else {
             return nil
         }
-        let ops = Array(Array(instruction.operands))
+        let ops = instruction.operands
         let r = instruction.mnemonic.rawValue
         // FEAT_LS64 st64bv/st64bv0: write the status register op[0] (Xs).
         if r == 2316 || r == 2317 {
@@ -661,7 +741,7 @@ public enum LSSemanticAttributes {
     @inline(__always)
     @_effects(readonly)
     private static func lastMemoryOperand(
-        _ ops: [Operand],
+        _ ops: Instruction.Operands,
     ) -> (index: Int, memory: MemoryOperand)? {
         for i in stride(from: ops.count - 1, through: 0, by: -1) {
             if case let .memory(m) = ops[i] { return (i, m) }
@@ -688,7 +768,7 @@ public enum LSSemanticAttributes {
     @inline(__always)
     @_effects(readonly)
     private static func registerMaskBits(
-        _ ops: [Operand], over range: Range<Int>,
+        _ ops: Instruction.Operands, over range: Range<Int>,
     ) -> UInt64 {
         var mask: UInt64 = 0
         for i in range {

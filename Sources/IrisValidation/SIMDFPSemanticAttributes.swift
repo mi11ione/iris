@@ -112,7 +112,7 @@ public enum SIMDFPSemanticChecker {
         // `.shiftAmount`, never `.shiftedRegister`. Validate operand shape
         // BEFORE deriving read/write masks from the operands — a
         // structurally-invalid operand is not a mask divergence.
-        for op in Array(Array(instruction.operands)) {
+        for op in instruction.operands {
             if case let .shiftedRegister(_, kind, _) = op, kind == .msl {
                 return SIMDFPSemanticIssue(
                     field: "shift-kind-context",
@@ -233,7 +233,7 @@ public enum SIMDFPSemanticAttributes {
     private static func destinationIsAlsoSource(_ instruction: Instruction) -> Bool {
         let m = instruction.mnemonic
         if destinationReadsItself(for: m) { return true }
-        let ops = Array(Array(instruction.operands))
+        let ops = instruction.operands
         if m == .orr || m == .bic, ops.count >= 2 {
             switch ops[1] {
             case .immediate, .unsignedImmediate: return true
@@ -255,7 +255,7 @@ public enum SIMDFPSemanticAttributes {
     @_optimize(speed)
     public static func expectedWriteMask(for instruction: Instruction) -> UInt64? {
         let m = instruction.mnemonic
-        let ops = Array(Array(instruction.operands))
+        let ops = instruction.operands
         switch expectedMemoryAccess(for: m) {
         case .load:
             // Loaded register(s) are operand[0 ..< memory]; writeback also
@@ -284,7 +284,7 @@ public enum SIMDFPSemanticAttributes {
     @_optimize(speed)
     public static func expectedReadMask(for instruction: Instruction) -> UInt64? {
         let m = instruction.mnemonic
-        let ops = Array(Array(instruction.operands))
+        let ops = instruction.operands
         switch expectedMemoryAccess(for: m) {
         case .load:
             // A load reads its base + index. A single-structure element load
@@ -340,7 +340,7 @@ public enum SIMDFPSemanticAttributes {
 
     @inline(__always)
     @_effects(readonly)
-    private static func registerMaskOver(_ ops: [Operand], _ range: Range<Int>) -> UInt64 {
+    private static func registerMaskOver(_ ops: Instruction.Operands, _ range: Range<Int>) -> UInt64 {
         var mask: UInt64 = 0
         for i in range {
             mask |= registerBit(of: ops[i])
@@ -350,7 +350,7 @@ public enum SIMDFPSemanticAttributes {
 
     @inline(__always)
     @_effects(readonly)
-    private static func lastMemoryOperand(_ ops: [Operand]) -> (index: Int, memory: MemoryOperand)? {
+    private static func lastMemoryOperand(_ ops: Instruction.Operands) -> (index: Int, memory: MemoryOperand)? {
         for i in stride(from: ops.count - 1, through: 0, by: -1) {
             if case let .memory(mm) = ops[i] { return (i, mm) }
         }

@@ -14,51 +14,55 @@ struct BranchesExceptionSystemDecoder: FamilyDecoder {
 
     init() {}
 
+    var tag: FamilyTag {
+        .branchesExceptionSystem
+    }
+
     var op0Values: Set<UInt8> {
         Self.besOp0Values
     }
 
     @_optimize(speed)
     func decode(
-        encoding: UInt32, address: UInt64, features _: Features,
+        encoding: UInt32, address: UInt64, features _: Features, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // Sub-dispatch on bits 31:24 per the ARM ARM class table.
         let bits31_24 = UInt8((encoding >> 24) & 0xFF)
         switch bits31_24 {
         // B (unconditional branch immediate) — 4 encodings 0x14..0x17.
         case 0x14, 0x15, 0x16, 0x17:
-            return BranchImmDecode.decodeB(encoding: encoding, address: address)
+            return BranchImmDecode.decodeB(encoding: encoding, address: address, &sink)
         // BL — 4 encodings 0x94..0x97.
         case 0x94, 0x95, 0x96, 0x97:
-            return BranchImmDecode.decodeBL(encoding: encoding, address: address)
+            return BranchImmDecode.decodeBL(encoding: encoding, address: address, &sink)
         // Conditional branch — single bits 31:24 = 0x54.
         case 0x54:
-            return CondBranchDecode.decode(encoding: encoding, address: address)
+            return CondBranchDecode.decode(encoding: encoding, address: address, &sink)
         // CBZ — 32-bit (sf=0) at 0x34; 64-bit (sf=1) at 0xB4.
         case 0x34, 0xB4:
-            return CompareBranchDecode.decode(encoding: encoding, address: address)
+            return CompareBranchDecode.decode(encoding: encoding, address: address, &sink)
         // CBNZ — 32-bit at 0x35; 64-bit at 0xB5.
         case 0x35, 0xB5:
-            return CompareBranchDecode.decode(encoding: encoding, address: address)
+            return CompareBranchDecode.decode(encoding: encoding, address: address, &sink)
         // TBZ — bit-pos<32 at 0x36; bit-pos>=32 at 0xB6.
         case 0x36, 0xB6:
-            return TestBranchDecode.decode(encoding: encoding, address: address)
+            return TestBranchDecode.decode(encoding: encoding, address: address, &sink)
         // TBNZ — bit-pos<32 at 0x37; bit-pos>=32 at 0xB7.
         case 0x37, 0xB7:
-            return TestBranchDecode.decode(encoding: encoding, address: address)
+            return TestBranchDecode.decode(encoding: encoding, address: address, &sink)
         // FEAT_CMPBR compare-and-branch — register/byte/halfword at 0x74
         // (sf=0) / 0xF4 (sf=1); immediate at 0x75 / 0xF5.
         case 0x74, 0xF4, 0x75, 0xF5:
-            return CompareBranchRegDecode.decode(encoding: encoding, address: address)
+            return CompareBranchRegDecode.decode(encoding: encoding, address: address, &sink)
         // Exception generation.
         case 0xD4:
-            return ExceptionDecode.decode(encoding: encoding, address: address)
+            return ExceptionDecode.decode(encoding: encoding, address: address, &sink)
         // System (HINT / barrier / MSR-imm / WFXT / SYS / SYSL / MSR-reg / MRS).
         case 0xD5:
-            return SystemDecode.decode(encoding: encoding, address: address)
+            return SystemDecode.decode(encoding: encoding, address: address, &sink)
         // Branch register (regular + auth).
         case 0xD6, 0xD7:
-            return BranchRegDecode.decode(encoding: encoding, address: address)
+            return BranchRegDecode.decode(encoding: encoding, address: address, &sink)
         default:
             // op0 ∈ {0xA, 0xB} guarantees bits 28:25 = 101x, but the full
             // bits 31:24 covers 8 bits; not every combination corresponds

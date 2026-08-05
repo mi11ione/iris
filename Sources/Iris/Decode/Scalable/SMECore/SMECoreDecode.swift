@@ -18,14 +18,14 @@ enum SMECoreDecode {
     /// Decode an in-scope SME-core word. Precondition (by construction, not
     /// asserted): `isSMECoreEncoding(e)`.
     @_optimize(speed)
-    static func decode(encoding e: UInt32, address a: UInt64) -> DecodedDraft {
+    static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch e & 0xE000_0000 {
-        case 0x8000_0000, 0xA000_0000: decodeOuterProduct(e, a)
-        case 0xC000_0000: decodeMoveZero(e, a)
+        case 0x8000_0000, 0xA000_0000: decodeOuterProduct(e, a, &sink)
+        case 0xC000_0000: decodeMoveZero(e, a, &sink)
         // 111 — ZA load/store. The precondition fixes bit31, so 100/101/110
         // above leave this as the only remaining value of bits[31:29] and the
         // dispatch needs no unreachable UNDEFINED arm.
-        default: decodeMemory(e, a)
+        default: decodeMemory(e, a, &sink)
         }
     }
 

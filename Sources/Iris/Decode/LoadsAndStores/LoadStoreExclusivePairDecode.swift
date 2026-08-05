@@ -20,7 +20,7 @@
 
 enum LoadStoreExclusivePairDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // The top-level dispatcher routes here only when bit[31]=1, so
         // size[31:30] ∈ {0b10, 0b11} — word-pair or dword-pair. Byte/
         // halfword pair encodings have bit[31]=0 and are reserved; the
@@ -80,12 +80,7 @@ enum LoadStoreExclusivePairDecode {
                 memoryOrdering: memoryOrdering,
                 flagEffect: .none,
                 category: .loadsAndStores,
-                operands: [
-                    .register(rsRef),
-                    .register(rtRef),
-                    .register(rt2Ref),
-                    .memory(MemoryOperand(base: .register(rnRef))),
-                ],
+                operandCount: sink.emit(.register(rsRef), .register(rtRef), .register(rt2Ref), .memory(MemoryOperand(base: .register(rnRef)))),
             )
         }
 
@@ -103,11 +98,7 @@ enum LoadStoreExclusivePairDecode {
             memoryOrdering: memoryOrdering,
             flagEffect: .none,
             category: .loadsAndStores,
-            operands: [
-                .register(rtRef),
-                .register(rt2Ref),
-                .memory(MemoryOperand(base: .register(rnRef))),
-            ],
+            operandCount: sink.emit(.register(rtRef), .register(rt2Ref), .memory(MemoryOperand(base: .register(rnRef)))),
         )
     }
 }

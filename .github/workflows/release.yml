@@ -3,8 +3,16 @@
 #
 # Release pipeline: pushing a semver tag builds prebuilt `iris` binaries
 # (macOS universal, Linux x86_64 + aarch64), checksums them, and attaches
-# everything to an auto-created GitHub Release. `install.sh` and the
-# Homebrew tap consume these artifacts.
+# everything to an auto-created GitHub Release, then points the Homebrew tap
+# at that release. `install.sh` reads the same artifacts.
+#
+# The tap bump lives in `tap.yml` (also runnable on its own) and needs a PAT
+# with contents:write on mi11ione/homebrew-tap as the HOMEBREW_TAP_TOKEN
+# secret. Absent that secret the release still publishes and the tap job
+# warns — the formula then advertises the PREVIOUS version, an install that
+# looks successful and isn't. That is not hypothetical: 0.5.0 and 0.6.0 both
+# shipped while the tap kept serving 0.4.0, which is why the bump belongs
+# here and not in someone's memory.
 #
 # Binaries are unsigned by design at this stage: both install paths
 # (curl script, brew) fetch without a quarantine attribute. Developer ID
@@ -107,3 +115,13 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "${VERSION}" \
             --notes "Prebuilt \`iris\` binaries: macOS universal (arm64 + x86_64), Linux x86_64 and aarch64 (static Swift stdlib). Install with the one-liner in the README, \`brew install mi11ione/tap/iris\`, or download and verify against \`checksums.txt\`."
+
+  # Points the tap at the release just published. Separate workflow so the
+  # same sync can be re-run on its own when the PAT behind it expires.
+  tap:
+    name: Homebrew tap
+    needs: [release]
+    uses: ./.github/workflows/tap.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit

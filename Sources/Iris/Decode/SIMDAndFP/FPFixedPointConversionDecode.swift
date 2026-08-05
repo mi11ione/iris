@@ -14,7 +14,7 @@
 
 enum FPFixedPointConversionDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         // Routing has already verified bit[30] = 0, bit[29] (S) = 0,
         // bits[28:24] = 11110 and bit[21] = 0. Fields: ftype = bits[23:22],
@@ -70,7 +70,7 @@ enum FPFixedPointConversionDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [simdfpScalarOperand(Rd, size: size), .register(gpr), scaleOp],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: size), .register(gpr), scaleOp),
             )
         case .fpToGPR:
             let gpr = simdfpGprOperand(encoding: Rd, width: intWidth, spOrGeneral: false)
@@ -81,7 +81,7 @@ enum FPFixedPointConversionDecode {
                 semanticWrites: simdfpInsertingNonZeroGPR(reg: gpr, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [.register(gpr), simdfpScalarOperand(Rn, size: size), scaleOp],
+                operandCount: sink.emit(.register(gpr), simdfpScalarOperand(Rn, size: size), scaleOp),
             )
         }
     }

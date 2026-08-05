@@ -299,6 +299,20 @@ public extension Instruction {
     }
 }
 
+extension Instruction.Operands: ExpressibleByArrayLiteral {
+    /// Build a standalone operand view from a literal list.
+    ///
+    /// Stream-formed views window onto the stream's shared buffer and have
+    /// no list to be built from, so this is the seam for the other
+    /// direction: a caller that *has* operands and needs the view type —
+    /// validation helpers, synthetic records, fixtures. The literal owns
+    /// its storage, so it costs one allocation; decode never takes this
+    /// path, it emits into the stream's buffer instead.
+    public init(arrayLiteral elements: Operand...) {
+        self.init(base: elements, offset: 0, count: elements.count)
+    }
+}
+
 public extension Instruction {
     /// True when this record is the decoder's UNDEFINED witness, a
     /// reserved or unallocated encoding, or an encoding belonging to an

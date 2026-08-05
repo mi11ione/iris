@@ -8,7 +8,7 @@
 
 enum FPConditionalSelectDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let ftype = UInt8((encoding >> 22) & 0x3)
         let Rm = UInt8((encoding >> 16) & 0x1F)
         let cond = UInt8((encoding >> 12) & 0xF)
@@ -36,12 +36,7 @@ enum FPConditionalSelectDecode {
             memoryOrdering: [],
             flagEffect: .readsNZCV,
             category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: size),
-                simdfpScalarOperand(Rn, size: size),
-                simdfpScalarOperand(Rm, size: size),
-                .conditionCode(cc),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: size), simdfpScalarOperand(Rn, size: size), simdfpScalarOperand(Rm, size: size), .conditionCode(cc)),
         )
     }
 }

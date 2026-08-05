@@ -11,7 +11,7 @@
 
 enum AdvSIMDTwoRegMiscDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
@@ -30,7 +30,7 @@ enum AdvSIMDTwoRegMiscDecode {
         if opcode >= 0b11000 || (opcode >= 0b01100 && opcode <= 0b01111 && bit23 == 1) {
             return decodeFPFamily(
                 encoding: encoding, address: address,
-                Q: Q, U: U, size: size, opcode: opcode, Rn: Rn, Rd: Rd,
+                Q: Q, U: U, size: size, opcode: opcode, Rn: Rn, Rd: Rd, &sink,
             )
         }
 
@@ -40,7 +40,7 @@ enum AdvSIMDTwoRegMiscDecode {
         if opcode == 0b10110 || opcode == 0b10111 {
             return decodeFPConvertNarrowLong(
                 encoding: encoding, address: address,
-                Q: Q, U: U, size: size, opcode: opcode, Rn: Rn, Rd: Rd,
+                Q: Q, U: U, size: size, opcode: opcode, Rn: Rn, Rd: Rd, &sink,
             )
         }
 
@@ -58,16 +58,15 @@ enum AdvSIMDTwoRegMiscDecode {
 
         // CM*-zero forms render with a #0 second operand.
         let zeroForm = isZeroCompareForm(U: U, opcode: opcode)
-        var operands: [Operand] = []
-        operands.reserveCapacity(zeroForm ? 3 : 2)
-        operands.append(simdfpVectorOperand(Rd, arrangement: dstArrangement))
-        operands.append(simdfpVectorOperand(Rn, arrangement: srcArrangement))
+        let operandMark = sink.mark
+        sink.append(simdfpVectorOperand(Rd, arrangement: dstArrangement))
+        sink.append(simdfpVectorOperand(Rn, arrangement: srcArrangement))
         if zeroForm {
-            operands.append(.unsignedImmediate(value: 0, width: 1))
+            sink.append(.unsignedImmediate(value: 0, width: 1))
         }
         // SHLL shifts by the source element width (8/16/32 for .8b/.4h/.2s).
         if m == .shll || m == .shll2 {
-            operands.append(.unsignedImmediate(value: UInt64(8) << UInt64(size), width: 8))
+            sink.append(.unsignedImmediate(value: UInt64(8) << UInt64(size), width: 8))
         }
 
         return DecodedDraft(
@@ -77,7 +76,7 @@ enum AdvSIMDTwoRegMiscDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 
@@ -222,7 +221,7 @@ enum AdvSIMDTwoRegMiscDecode {
     /// altBit. The (U, opcode, altBit) table mirrors the FP32/64 family
     /// minus URECPE/URSQRTE (op 11100, alt=1 — .2s/.4s integer-recip only)
     /// and FRINT32/64. Routed by the dispatcher at bits[20:17]=1100.
-    static func decodeFP16TwoRegMisc(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeFP16TwoRegMisc(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 1)
         let U = UInt8((encoding >> 29) & 1)
         let altBit = UInt8((encoding >> 23) & 1)
@@ -269,12 +268,10 @@ enum AdvSIMDTwoRegMiscDecode {
         case .fcmgt, .fcmeq, .fcmlt, .fcmge, .fcmle: true
         default: false
         }
-        var operands: [Operand] = [
-            simdfpVectorOperand(Rd, arrangement: arrangement),
-            simdfpVectorOperand(Rn, arrangement: arrangement),
-        ]
+        let operandMark = sink.mark
+        _ = sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement))
         if zeroForm {
-            operands.append(.floatImmediate(bits: 0, kind: .half))
+            sink.append(.floatImmediate(bits: 0, kind: .half))
         }
         return DecodedDraft(
             address: address, encoding: encoding, mnemonic: m,
@@ -282,7 +279,7 @@ enum AdvSIMDTwoRegMiscDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 
@@ -293,7 +290,7 @@ enum AdvSIMDTwoRegMiscDecode {
     @_effects(readonly)
     private static func decodeFPConvertNarrowLong(
         encoding: UInt32, address: UInt64,
-        Q: UInt8, U: UInt8, size: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8,
+        Q: UInt8, U: UInt8, size: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let bit23 = (size >> 1) & 1
         let sz = size & 1
@@ -315,10 +312,7 @@ enum AdvSIMDTwoRegMiscDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [
-                    simdfpVectorOperand(Rd, arrangement: .h8),
-                    simdfpVectorOperand(Rn, arrangement: Q == 1 ? .b16 : .b8),
-                ],
+                operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: .h8), simdfpVectorOperand(Rn, arrangement: Q == 1 ? .b16 : .b8)),
             )
         }
         switch (U, opcode, bit23) {
@@ -349,10 +343,7 @@ enum AdvSIMDTwoRegMiscDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: dstArr),
-                simdfpVectorOperand(Rn, arrangement: srcArr),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: dstArr), simdfpVectorOperand(Rn, arrangement: srcArr)),
         )
     }
 
@@ -361,7 +352,7 @@ enum AdvSIMDTwoRegMiscDecode {
     private static func decodeFPFamily(
         encoding: UInt32, address: UInt64,
         Q: UInt8, U: UInt8, size: UInt8, opcode: UInt8,
-        Rn: UInt8, Rd: UInt8,
+        Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         // FP family two-reg-misc — sz = size[0] (bit[22]).
         let sz = size & 1
@@ -398,10 +389,7 @@ enum AdvSIMDTwoRegMiscDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [
-                    simdfpVectorOperand(Rd, arrangement: arrangement),
-                    simdfpVectorOperand(Rn, arrangement: arrangement),
-                ],
+                operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement)),
             )
         }
         let m: Mnemonic
@@ -461,13 +449,12 @@ enum AdvSIMDTwoRegMiscDecode {
         default:
             false
         }
-        var operands: [Operand] = []
-        operands.reserveCapacity(zeroForm ? 3 : 2)
-        operands.append(simdfpVectorOperand(Rd, arrangement: arrangement))
-        operands.append(simdfpVectorOperand(Rn, arrangement: arrangement))
+        let operandMark = sink.mark
+        sink.append(simdfpVectorOperand(Rd, arrangement: arrangement))
+        sink.append(simdfpVectorOperand(Rn, arrangement: arrangement))
         if zeroForm {
             let fpKind: FloatImmediateKind = sz == 0 ? .single : .double
-            operands.append(.floatImmediate(bits: 0, kind: fpKind))
+            sink.append(.floatImmediate(bits: 0, kind: fpKind))
         }
         return DecodedDraft(
             address: address, encoding: encoding,
@@ -476,7 +463,7 @@ enum AdvSIMDTwoRegMiscDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 }

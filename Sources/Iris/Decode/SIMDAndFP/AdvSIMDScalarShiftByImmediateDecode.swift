@@ -10,7 +10,7 @@
 
 enum AdvSIMDScalarShiftByImmediateDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 0x1)
         let immh = UInt8((encoding >> 19) & 0xF)
         let immb = UInt8((encoding >> 16) & 0x7)
@@ -86,11 +86,7 @@ enum AdvSIMDScalarShiftByImmediateDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpScalarOperand(Rd, size: elementSize),
-                simdfpScalarOperand(Rn, size: srcSize),
-                .unsignedImmediate(value: UInt64(shift), width: 8),
-            ],
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: elementSize), simdfpScalarOperand(Rn, size: srcSize), .unsignedImmediate(value: UInt64(shift), width: 8)),
         )
     }
 

@@ -150,11 +150,19 @@ public struct ListingRenderer: Sendable {
         // line, so a scope that lands in no part of this section leaves it
         // out of the listing entirely.
         var headerEmitted = false
+        // One buffer for the whole section: every line appends into it and
+        // exactly one `String` is constructed at the end, in place of one
+        // per line plus one per token within each line.
+        var out = TextBytes(capacity: Swift.max(4096, stream.records.count * 48))
         func emitSectionHeader() {
             guard !headerEmitted else { return }
             headerEmitted = true
-            emit("\n")
-            emit(palette.label(section.displayName + ":") + "\n")
+            out.put(UInt8(ascii: "\n"))
+            palette.open("1", into: &out)
+            out.putString(section.displayName)
+            out.put(UInt8(ascii: ":"))
+            palette.close(into: &out)
+            out.put(UInt8(ascii: "\n"))
         }
         // The referenced-data idiom (adrp + add/ldr) reads the line before
         // the current one, so the previous record is carried forward (it is
@@ -168,11 +176,20 @@ public struct ListingRenderer: Sendable {
             // Word-aligned labels only: a label can only attach to a
             // line, and lines sit at record addresses.
             if let label = labels[instruction.address] {
-                emit("\n")
-                emit(palette.label(label + ":") + "\n")
+                out.put(UInt8(ascii: "\n"))
+                palette.open("1", into: &out)
+                out.putString(label)
+                out.put(UInt8(ascii: ":"))
+                palette.close(into: &out)
+                out.put(UInt8(ascii: "\n"))
             }
-            emit(line(for: instruction, addressWidth: width, context: context, preceding: preceding) + "\n")
+            putLine(
+                for: instruction, addressWidth: width,
+                context: context, preceding: preceding, into: &out,
+            )
+            out.put(UInt8(ascii: "\n"))
         }
+        if out.count > 0 { emit(out.makeString()) }
     }
 
     /// Emit a bare stream (the direct-decode modes): no labels, no
@@ -180,9 +197,15 @@ public struct ListingRenderer: Sendable {
     public func emitStream(_ stream: InstructionStream, emit: (String) -> Void) {
         let last = stream.baseAddress &+ (stream.byteCount > 0 ? stream.byteCount &- 1 : 0)
         let width = String(last, radix: 16).count
+        var out = TextBytes(capacity: Swift.max(256, stream.records.count * 48))
         for instruction in stream {
-            emit(line(for: instruction, addressWidth: width, context: nil, preceding: nil) + "\n")
+            putLine(
+                for: instruction, addressWidth: width,
+                context: nil, preceding: nil, into: &out,
+            )
+            out.put(UInt8(ascii: "\n"))
         }
+        if out.count > 0 { emit(out.makeString()) }
     }
 
     /// Render one instruction line (no trailing newline). `preceding` is
@@ -195,31 +218,12 @@ public struct ListingRenderer: Sendable {
         context: Context?,
         preceding: Instruction? = nil,
     ) -> String {
-        let address = InstructionText.address(instruction.address, width: addressWidth)
-        let word = wordColumn(for: instruction)
-        var body = bodyText(for: instruction, context: context, preceding: preceding)
-
-        if includeSemantics {
-            let annotation = SemanticsAnnotation.annotation(for: instruction)
-            if !annotation.isEmpty {
-                let padding = String(repeating: " ", count: max(Self.semanticsColumn - body.plain.count, 1))
-                body.colored += padding + palette.annotation("; " + annotation)
-            }
-        }
-        return palette.address(address + ":") + " " + word + "  " + body.colored
-    }
-
-    /// The 8-character raw-word column; truncated tails show their
-    /// residual bytes' value at its natural width, space-padded.
-    func wordColumn(for instruction: Instruction) -> String {
-        let tailBytes = instruction.record.tailByteCount
-        if tailBytes > 0 {
-            let digits = tailBytes * 2
-            let s = String(instruction.encoding, radix: 16)
-            let padded = String(repeating: "0", count: max(digits - s.count, 0)) + s
-            return padded + String(repeating: " ", count: 8 - digits)
-        }
-        return InstructionText.word(instruction.encoding)
+        var out = TextBytes(capacity: 128)
+        putLine(
+            for: instruction, addressWidth: addressWidth,
+            context: context, preceding: preceding, into: &out,
+        )
+        return out.makeString()
     }
 
     /// The text column: canonical text with branch targets made
@@ -349,5 +353,112 @@ public struct ListingRenderer: Sendable {
         }
         result.append(contentsOf: symbols.symbols(in: 0 ..< end))
         return result
+    }
+}
+
+// MARK: - Byte-path line assembly
+
+// A listing line is an address column, a raw word, canonical text and an
+// annotation. Building that per line through `String` costs a `String`
+// per token plus one per concatenation — for a large binary that is over
+// a million short-lived allocations, and it dwarfs the decode it is
+// presenting: walking and decoding dyld is 18 ms, rendering it was 372.
+//
+// These append into a caller-owned `TextBytes`, so one buffer serves a
+// whole section and exactly one `String` is constructed from it.
+
+extension Palette {
+    /// Open an escape sequence, or nothing when color is off.
+    @inline(__always)
+    func open(_ code: StaticString, into out: inout TextBytes) {
+        guard enabled else { return }
+        out.put("\u{1B}[")
+        out.put(code)
+        out.put(UInt8(ascii: "m"))
+    }
+
+    /// Close the current escape sequence, or nothing when color is off.
+    @inline(__always)
+    func close(into out: inout TextBytes) {
+        guard enabled else { return }
+        out.put("\u{1B}[0m")
+    }
+}
+
+extension InstructionText {
+    /// Lowercase hex, zero-padded to at least `width` digits.
+    @inline(__always)
+    static func putAddress(_ value: UInt64, width: Int, into out: inout TextBytes) {
+        var digits = 1
+        var probe = value
+        while probe >= 16 {
+            probe >>= 4; digits += 1
+        }
+        for _ in digits ..< width {
+            out.put(UInt8(ascii: "0"))
+        }
+        out.putHex(value)
+    }
+
+    /// The 8-digit raw-word column.
+    @inline(__always)
+    static func putWord(_ value: UInt32, into out: inout TextBytes) {
+        putAddress(UInt64(value), width: 8, into: &out)
+    }
+}
+
+public extension ListingRenderer {
+    /// Append one rendered line (no trailing newline) to `out`.
+    ///
+    /// The `String`-returning ``line(for:addressWidth:context:preceding:)``
+    /// is this, plus one `String` construction; callers building a whole
+    /// listing use this and construct once at the end.
+    func putLine(
+        for instruction: Instruction,
+        addressWidth: Int,
+        context: Context?,
+        preceding: Instruction? = nil,
+        into out: inout TextBytes,
+    ) {
+        palette.open("2", into: &out)
+        InstructionText.putAddress(instruction.address, width: addressWidth, into: &out)
+        out.put(UInt8(ascii: ":"))
+        palette.close(into: &out)
+        out.put(UInt8(ascii: " "))
+        putWordColumn(for: instruction, into: &out)
+        out.put("  ")
+
+        // The body still arrives as a pair of `String`s: its annotations
+        // come from symbolication and referenced-data lookups that are
+        // `String`-valued at their source. The plain form is what the
+        // semantics column pads against.
+        let body = bodyText(for: instruction, context: context, preceding: preceding)
+        out.putString(body.colored)
+        guard includeSemantics else { return }
+        let annotation = SemanticsAnnotation.annotation(for: instruction)
+        guard !annotation.isEmpty else { return }
+        let padding = max(Self.semanticsColumn - body.plain.count, 1)
+        for _ in 0 ..< padding {
+            out.put(UInt8(ascii: " "))
+        }
+        palette.open("90", into: &out)
+        out.put("; ")
+        out.putString(annotation)
+        palette.close(into: &out)
+    }
+
+    /// The raw-word column, byte path.
+    @inline(__always)
+    internal func putWordColumn(for instruction: Instruction, into out: inout TextBytes) {
+        let tailBytes = instruction.record.tailByteCount
+        guard tailBytes > 0 else {
+            InstructionText.putWord(instruction.encoding, into: &out)
+            return
+        }
+        let digits = tailBytes * 2
+        InstructionText.putAddress(UInt64(instruction.encoding), width: digits, into: &out)
+        for _ in 0 ..< (8 - digits) {
+            out.put(UInt8(ascii: " "))
+        }
     }
 }

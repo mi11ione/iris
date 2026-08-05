@@ -10,7 +10,7 @@
 // this slot is the three-register-extension class (FCMA/dot/MMLA).
 enum AdvSIMDThreeSameFP16Decode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[15:14] must be 00 for this class; bit14=1 is reserved.
         if (encoding >> 14) & 1 == 1 { return .undefined(at: address, encoding: encoding) }
         let Q = UInt8((encoding >> 30) & 1)
@@ -66,11 +66,7 @@ enum AdvSIMDThreeSameFP16Decode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: arrangement),
-                simdfpVectorOperand(Rn, arrangement: arrangement),
-                simdfpVectorOperand(Rm, arrangement: arrangement),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: arrangement), simdfpVectorOperand(Rn, arrangement: arrangement), simdfpVectorOperand(Rm, arrangement: arrangement)),
         )
     }
 }

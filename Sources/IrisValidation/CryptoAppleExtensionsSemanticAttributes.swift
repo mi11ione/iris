@@ -122,7 +122,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
         }
 
         // Reads / writes by architectural class.
-        let ops = Array(Array(instruction.operands))
+        let ops = instruction.operands
         let (expectedReads, expectedWrites): (UInt64, UInt64) = if isCrypto {
             cryptoReadsWrites(m: m, ops: ops)
         } else if isMTEDPI {
@@ -161,7 +161,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
     /// zero-source PAC/AUT and XPAC read Rd; PACGA and MTE-DPR read Rn+Rm
     /// (Rd pure output).
     @_effects(readonly)
-    private static func pacMTEDPRReadsWrites(m: Mnemonic, ops: [Operand]) -> (UInt64, UInt64) {
+    private static func pacMTEDPRReadsWrites(m: Mnemonic, ops: Instruction.Operands) -> (UInt64, UInt64) {
         let rd0 = operandRegisterMask(ops, 0)
         let rd1 = operandRegisterMask(ops, 1)
         let rd2 = operandRegisterMask(ops, 2)
@@ -179,7 +179,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
     /// (operands 1...) plus the destination when it is also a source (the
     /// accumulate/round forms). Immediate operands contribute no register.
     @_effects(readonly)
-    private static func cryptoReadsWrites(m: Mnemonic, ops: [Operand]) -> (UInt64, UInt64) {
+    private static func cryptoReadsWrites(m: Mnemonic, ops: Instruction.Operands) -> (UInt64, UInt64) {
         let writes = operandRegisterMask(ops, 0)
         var reads: UInt64 = 0
         var i = 1
@@ -198,7 +198,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
     ///   - stores (STG/ST2G/STZG/STZ2G/STGM/STZGM): read Rt + base; pre/post
     ///     writeback updates the base register.
     @_effects(readonly)
-    private static func mteLoadStoreReadsWrites(m: Mnemonic, ops: [Operand]) -> (UInt64, UInt64) {
+    private static func mteLoadStoreReadsWrites(m: Mnemonic, ops: Instruction.Operands) -> (UInt64, UInt64) {
         let rt = operandRegisterMask(ops, 0)
         let base = memoryBaseMask(ops, 1)
         let wb = memoryWriteback(ops, 1) ? base : 0
@@ -217,7 +217,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
     /// undocumented opcodes name no register. No AMX op writes a GPR (the
     /// coprocessor state is not in the general register file).
     @_effects(readonly)
-    private static func amxReads(_ ops: [Operand]) -> UInt64 {
+    private static func amxReads(_ ops: Instruction.Operands) -> UInt64 {
         guard case let .amxField(field) = ops.first else { return 0 }
         guard field.opcode <= 22, field.opcode != 17 else { return 0 }
         let x = field.operandField
@@ -230,7 +230,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
     /// register (XZR/WZR) contributes nothing; SIMD registers occupy
     /// canonical indices 32...63.
     @_effects(readonly)
-    private static func operandRegisterMask(_ ops: [Operand], _ index: Int) -> UInt64 {
+    private static func operandRegisterMask(_ ops: Instruction.Operands, _ index: Int) -> UInt64 {
         guard index >= 0, index < ops.count else { return 0 }
         switch ops[index] {
         case let .register(r):
@@ -244,7 +244,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
 
     /// Base-register mask for a `.memory` operand.
     @_effects(readonly)
-    private static func memoryBaseMask(_ ops: [Operand], _ index: Int) -> UInt64 {
+    private static func memoryBaseMask(_ ops: Instruction.Operands, _ index: Int) -> UInt64 {
         guard index >= 0, index < ops.count, case let .memory(mem) = ops[index] else { return 0 }
         guard case let .register(r) = mem.base, !r.isZeroRegister else { return 0 }
         return UInt64(1) << UInt64(r.canonicalIndex)
@@ -252,7 +252,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
 
     /// Whether a `.memory` operand carries pre/post-index writeback.
     @_effects(readonly)
-    private static func memoryWriteback(_ ops: [Operand], _ index: Int) -> Bool {
+    private static func memoryWriteback(_ ops: Instruction.Operands, _ index: Int) -> Bool {
         guard index >= 0, index < ops.count, case let .memory(mem) = ops[index] else { return false }
         return mem.writeback != .none
     }

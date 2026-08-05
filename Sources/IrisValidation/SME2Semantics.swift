@@ -58,7 +58,7 @@ public enum SME2SemanticChecker {
 
         // ZA is touched iff the record carries a ZA operand (array vector,
         // tile, or tile slice).
-        let hasZAOperand = Array(draft.operands).contains { operand in
+        let hasZAOperand = draft.operands.contains { operand in
             switch operand {
             case .zaArrayVector, .zaTile, .zaTileSlice: true
             default: false
@@ -70,7 +70,7 @@ public enum SME2SemanticChecker {
         }
 
         // ZT0 is touched iff the record carries a ZT0 operand.
-        let hasZT0Operand = Array(draft.operands).contains { operand in
+        let hasZT0Operand = draft.operands.contains { operand in
             if case .zt0 = operand { true } else { false }
         }
         let touchesZT0 = draft.scalableReads.containsZT0 || draft.scalableWrites.containsZT0

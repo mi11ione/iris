@@ -185,7 +185,7 @@ extension Mnemonic {
     /// the family's slice of ``Mnemonic/name``, declared beside the
     /// constants it names so the two cannot drift. Unallocated raw
     /// values in the family's range return `"?<raw>"`.
-    static func branchesExceptionSystemName(_ m: Mnemonic) -> String {
+    static func branchesExceptionSystemName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .b: "b"
         case .bl: "bl"
@@ -291,7 +291,7 @@ extension Mnemonic {
         case .smstop: "smstop"
         case .bCond: "b.cond"
         case .bcCond: "bc.cond"
-        default: "?\(m.rawValue)"
+        default: nil
         }
     }
 }

@@ -9,7 +9,7 @@
 
 enum AdvSIMDScalarTwoRegMiscDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let U = UInt8((encoding >> 29) & 0x1)
         let size = UInt8((encoding >> 22) & 0x3)
         let opcode = UInt8((encoding >> 12) & 0x1F)
@@ -57,12 +57,12 @@ enum AdvSIMDScalarTwoRegMiscDecode {
             case (1, 0b01101, 1): m = .fcmle; zeroForm = true
             default: return .undefined(at: address, encoding: encoding)
             }
-            var operands: [Operand] = []
-            operands.append(simdfpScalarOperand(Rd, size: elementSize))
-            operands.append(simdfpScalarOperand(Rn, size: elementSize))
+            let operandMark = sink.mark
+            sink.append(simdfpScalarOperand(Rd, size: elementSize))
+            sink.append(simdfpScalarOperand(Rn, size: elementSize))
             if zeroForm {
                 let fpKind: FloatImmediateKind = sz == 0 ? .single : .double
-                operands.append(.floatImmediate(bits: 0, kind: fpKind))
+                sink.append(.floatImmediate(bits: 0, kind: fpKind))
             }
             return DecodedDraft(
                 address: address, encoding: encoding,
@@ -71,7 +71,7 @@ enum AdvSIMDScalarTwoRegMiscDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: operands,
+                operandCount: sink.count(since: operandMark),
             )
         }
         // FCVTXN (scalar): U=1, opcode=0b10110 — narrowing D→S FP convert.
@@ -85,7 +85,7 @@ enum AdvSIMDScalarTwoRegMiscDecode {
                 semanticWrites: simdfpInsertingVector(Rd, into: .empty),
                 branchClass: .none, memoryAccess: .none, memoryOrdering: [],
                 flagEffect: .none, category: .simdAndFP,
-                operands: [simdfpScalarOperand(Rd, size: .s), simdfpScalarOperand(Rn, size: .d)],
+                operandCount: sink.emit(simdfpScalarOperand(Rd, size: .s), simdfpScalarOperand(Rn, size: .d)),
             )
         }
 
@@ -114,23 +114,23 @@ enum AdvSIMDScalarTwoRegMiscDecode {
         //    src = the 2x-wider element (h/s/d); size==11 reserved.
         //  - compare-zero / abs / neg: 64-bit (D) only.
         //  - saturating (suqadd/sqabs/sqneg/usqadd): all element sizes.
-        var operands: [Operand] = []
+        let operandMark = sink.mark
         switch m {
         case .sqxtn, .sqxtun, .uqxtn:
             guard size != 0b11 else { return .undefined(at: address, encoding: encoding) }
-            operands.append(simdfpScalarOperand(Rd, size: scalarElementFromSize(size)))
-            operands.append(simdfpScalarOperand(Rn, size: scalarElementFromSize(size + 1)))
+            sink.append(simdfpScalarOperand(Rd, size: scalarElementFromSize(size)))
+            sink.append(simdfpScalarOperand(Rn, size: scalarElementFromSize(size + 1)))
         case .cmgt, .cmeq, .cmlt, .cmge, .cmle, .abs, .neg:
             guard size == 0b11 else { return .undefined(at: address, encoding: encoding) }
-            operands.append(simdfpScalarOperand(Rd, size: .d))
-            operands.append(simdfpScalarOperand(Rn, size: .d))
+            sink.append(simdfpScalarOperand(Rd, size: .d))
+            sink.append(simdfpScalarOperand(Rn, size: .d))
         default:
             let elementSize = scalarElementFromSize(size)
-            operands.append(simdfpScalarOperand(Rd, size: elementSize))
-            operands.append(simdfpScalarOperand(Rn, size: elementSize))
+            sink.append(simdfpScalarOperand(Rd, size: elementSize))
+            sink.append(simdfpScalarOperand(Rn, size: elementSize))
         }
         if zeroForm {
-            operands.append(.unsignedImmediate(value: 0, width: 1))
+            sink.append(.unsignedImmediate(value: 0, width: 1))
         }
         return DecodedDraft(
             address: address, encoding: encoding,
@@ -139,13 +139,13 @@ enum AdvSIMDScalarTwoRegMiscDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 
     /// Scalar FP16 two-register miscellaneous (.h). bits[21:17]=11100,
     /// bit22=1; bit23=altBit. Scalar Hd/Hn operands; fcmxx-zero adds #0.0.
-    static func decodeFP16(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decodeFP16(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (encoding >> 22) & 1 == 0 { return .undefined(at: address, encoding: encoding) }
         let U = UInt8((encoding >> 29) & 1)
         let altBit = UInt8((encoding >> 23) & 1)
@@ -180,18 +180,16 @@ enum AdvSIMDScalarTwoRegMiscDecode {
         case .fcmgt, .fcmeq, .fcmlt, .fcmge, .fcmle: true
         default: false
         }
-        var operands: [Operand] = [
-            simdfpScalarOperand(Rd, size: .h),
-            simdfpScalarOperand(Rn, size: .h),
-        ]
-        if zeroForm { operands.append(.floatImmediate(bits: 0, kind: .half)) }
+        let operandMark = sink.mark
+        _ = sink.emit(simdfpScalarOperand(Rd, size: .h), simdfpScalarOperand(Rn, size: .h))
+        if zeroForm { sink.append(.floatImmediate(bits: 0, kind: .half)) }
         return DecodedDraft(
             address: address, encoding: encoding, mnemonic: m,
             semanticReads: simdfpInsertingVector(Rn, into: .empty),
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: operands,
+            operandCount: sink.count(since: operandMark),
         )
     }
 }

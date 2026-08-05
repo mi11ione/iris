@@ -173,55 +173,55 @@ struct DPRSemanticAttributesTests {
     }
 
     @Test func registerMaskAtPlainRegisterReturnsBit() {
-        let ops: [Operand] = [.register(.x(5))]
+        let ops: Instruction.Operands = [.register(.x(5))]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 0, unwrapShiftExtend: false)
         #expect(mask == (1 << 5))
     }
 
     @Test func registerMaskAtZeroRegisterReturnsZero() {
-        let ops: [Operand] = [.register(.xzr())]
+        let ops: Instruction.Operands = [.register(.xzr())]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 0, unwrapShiftExtend: false)
         #expect(mask == 0)
     }
 
     @Test func registerMaskAtIndexOutOfRangeReturnsZero() {
-        let ops: [Operand] = [.register(.x(1))]
+        let ops: Instruction.Operands = [.register(.x(1))]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 5, unwrapShiftExtend: false)
         #expect(mask == 0)
     }
 
     @Test func registerMaskAtNegativeIndexReturnsZero() {
-        let ops: [Operand] = [.register(.x(1))]
+        let ops: Instruction.Operands = [.register(.x(1))]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: -1, unwrapShiftExtend: false)
         #expect(mask == 0)
     }
 
     @Test func registerMaskAtShiftedRegisterUnwrappedReturnsBit() {
-        let ops: [Operand] = [.shiftedRegister(reg: .x(3), shift: .lsl, amount: 1)]
+        let ops: Instruction.Operands = [.shiftedRegister(reg: .x(3), shift: .lsl, amount: 1)]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 0, unwrapShiftExtend: true)
         #expect(mask == (1 << 3))
     }
 
     @Test func registerMaskAtShiftedRegisterNoUnwrapReturnsZero() {
-        let ops: [Operand] = [.shiftedRegister(reg: .x(3), shift: .lsl, amount: 1)]
+        let ops: Instruction.Operands = [.shiftedRegister(reg: .x(3), shift: .lsl, amount: 1)]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 0, unwrapShiftExtend: false)
         #expect(mask == 0)
     }
 
     @Test func registerMaskAtExtendedRegisterUnwrappedReturnsBit() {
-        let ops: [Operand] = [.extendedRegister(reg: .x(7), extend: .uxtx, shift: 0)]
+        let ops: Instruction.Operands = [.extendedRegister(reg: .x(7), extend: .uxtx, shift: 0)]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 0, unwrapShiftExtend: true)
         #expect(mask == (1 << 7))
     }
 
     @Test func registerMaskAtExtendedRegisterNoUnwrapReturnsZero() {
-        let ops: [Operand] = [.extendedRegister(reg: .x(7), extend: .uxtx, shift: 0)]
+        let ops: Instruction.Operands = [.extendedRegister(reg: .x(7), extend: .uxtx, shift: 0)]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 0, unwrapShiftExtend: false)
         #expect(mask == 0)
     }
 
     @Test func registerMaskAtUnsupportedOperandReturnsZero() {
-        let ops: [Operand] = [.conditionCode(.eq)]
+        let ops: Instruction.Operands = [.conditionCode(.eq)]
         let mask = DPRSemanticAttributes.registerMaskAt(operands: ops, index: 0, unwrapShiftExtend: true)
         #expect(mask == 0)
     }

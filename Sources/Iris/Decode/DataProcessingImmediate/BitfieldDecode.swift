@@ -14,7 +14,7 @@ enum BitfieldDecode {
     @inline(__always)
     @_optimize(speed)
     @_effects(readonly)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sf = UInt8((encoding >> 31) & 0x1)
         let opc = UInt8((encoding >> 29) & 0x3)
         let n = UInt8((encoding >> 22) & 0x1)
@@ -65,7 +65,7 @@ enum BitfieldDecode {
                     semanticWrites: baseWrites,
                     flagEffect: .none,
                     category: .dataProcessingImmediate,
-                    operands: [.register(rdRef), .register(rnWn)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnWn)),
                 )
             }
             if imms == 15 {
@@ -78,7 +78,7 @@ enum BitfieldDecode {
                     semanticWrites: baseWrites,
                     flagEffect: .none,
                     category: .dataProcessingImmediate,
-                    operands: [.register(rdRef), .register(rnWn)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnWn)),
                 )
             }
             if imms == 31, sf == 1 {
@@ -93,7 +93,7 @@ enum BitfieldDecode {
                     semanticWrites: baseWrites,
                     flagEffect: .none,
                     category: .dataProcessingImmediate,
-                    operands: [.register(rdRef), .register(rnWn)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnWn)),
                 )
             }
         }
@@ -111,7 +111,7 @@ enum BitfieldDecode {
                     semanticWrites: baseWrites,
                     flagEffect: .none,
                     category: .dataProcessingImmediate,
-                    operands: [.register(rdRef), .register(rnRef)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnRef)),
                 )
             }
             if imms == 15 {
@@ -123,7 +123,7 @@ enum BitfieldDecode {
                     semanticWrites: baseWrites,
                     flagEffect: .none,
                     category: .dataProcessingImmediate,
-                    operands: [.register(rdRef), .register(rnRef)],
+                    operandCount: sink.emit(.register(rdRef), .register(rnRef)),
                 )
             }
         }
@@ -138,10 +138,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(immr), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(immr), width: 6)),
             )
         }
 
@@ -155,10 +152,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(immr), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(immr), width: 6)),
             )
         }
 
@@ -173,10 +167,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(shift), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(shift), width: 6)),
             )
         }
 
@@ -192,11 +183,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(lsb), width: 6),
-                    .unsignedImmediate(value: UInt64(widthOp), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(lsb), width: 6), .unsignedImmediate(value: UInt64(widthOp), width: 6)),
             )
         }
 
@@ -211,11 +198,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(immr), width: 6),
-                    .unsignedImmediate(value: UInt64(imms &- immr &+ 1), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(immr), width: 6), .unsignedImmediate(value: UInt64(imms &- immr &+ 1), width: 6)),
             )
         }
 
@@ -231,11 +214,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(lsb), width: 6),
-                    .unsignedImmediate(value: UInt64(widthOp), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(lsb), width: 6), .unsignedImmediate(value: UInt64(widthOp), width: 6)),
             )
         }
 
@@ -250,11 +229,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(immr), width: 6),
-                    .unsignedImmediate(value: UInt64(imms &- immr &+ 1), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(immr), width: 6), .unsignedImmediate(value: UInt64(imms &- immr &+ 1), width: 6)),
             )
         }
 
@@ -272,11 +247,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef),
-                    .unsignedImmediate(value: UInt64(lsb), width: 6),
-                    .unsignedImmediate(value: UInt64(widthOp), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .unsignedImmediate(value: UInt64(lsb), width: 6), .unsignedImmediate(value: UInt64(widthOp), width: 6)),
             )
         }
 
@@ -292,11 +263,7 @@ enum BitfieldDecode {
                 semanticWrites: baseWrites,
                 flagEffect: .none,
                 category: .dataProcessingImmediate,
-                operands: [
-                    .register(rdRef), .register(rnRef),
-                    .unsignedImmediate(value: UInt64(lsb), width: 6),
-                    .unsignedImmediate(value: UInt64(widthOp), width: 6),
-                ],
+                operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(lsb), width: 6), .unsignedImmediate(value: UInt64(widthOp), width: 6)),
             )
         }
 
@@ -317,11 +284,7 @@ enum BitfieldDecode {
             semanticWrites: baseWrites,
             flagEffect: .none,
             category: .dataProcessingImmediate,
-            operands: [
-                .register(rdRef), .register(rnRef),
-                .unsignedImmediate(value: UInt64(immr), width: 6),
-                .unsignedImmediate(value: UInt64(imms &- immr &+ 1), width: 6),
-            ],
+            operandCount: sink.emit(.register(rdRef), .register(rnRef), .unsignedImmediate(value: UInt64(immr), width: 6), .unsignedImmediate(value: UInt64(imms &- immr &+ 1), width: 6)),
         )
     }
 }

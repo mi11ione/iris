@@ -16,7 +16,7 @@ enum SME2VectorOpsDecode {
 
     /// `SEL {Zd...}, PNg, {Zn...}, {Zm...}` — predicate-governed select.
     @_optimize(speed)
-    static func decodeSel(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeSel(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let fourWay = e & 0x0001_0000 != 0
         let count: UInt8 = fourWay ? 4 : 2
         let element = sizeElement(e)
@@ -29,14 +29,9 @@ enum SME2VectorOpsDecode {
             semanticReads: SME2Decode.groupMask(zn, count).union(SME2Decode.groupMask(zm, count)),
             semanticWrites: SME2Decode.groupMask(zd, count),
             category: .sme,
-            operands: [
-                SME2Decode.group(zd, count, element),
-                .scalablePredicate(ScalablePredicateRef(
-                    registerIndex: 8 &+ pn, role: .governing, isCounter: true,
-                )),
-                SME2Decode.group(zn, count, element),
-                SME2Decode.group(zm, count, element),
-            ],
+            operandCount: sink.emit(SME2Decode.group(zd, count, element), .scalablePredicate(ScalablePredicateRef(
+                registerIndex: 8 &+ pn, role: .governing, isCounter: true,
+            )), SME2Decode.group(zn, count, element), SME2Decode.group(zm, count, element)),
             scalableReads: SME2Decode.predMask(8 &+ pn),
             scalableEffect: .readsStreamingMode,
         )
@@ -48,11 +43,11 @@ enum SME2VectorOpsDecode {
     /// or a 2-way permute (ZIP/UZP), else route onward. Called from the 110
     /// (clamp/narrow/permute) group.
     @_optimize(speed)
-    static func decodeClampNarrowPermute(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if let d = decodeClamp(e, a) { return d }
-        if let d = decodePermute(e, a) { return d }
-        if let d = decodeNarrowShift2(e, a) { return d }
-        if let d = decodeNarrowShift4(e, a) { return d }
+    static func decodeClampNarrowPermute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if let d = decodeClamp(e, a, &sink) { return d }
+        if let d = decodePermute(e, a, &sink) { return d }
+        if let d = decodeNarrowShift2(e, a, &sink) { return d }
+        if let d = decodeNarrowShift4(e, a, &sink) { return d }
         return SME2Decode.undefined(e, a)
     }
 
@@ -61,7 +56,7 @@ enum SME2VectorOpsDecode {
     /// gives `.b`←`.s` (const = 64 − field), `tsize>=10` gives `.h`←`.d`
     /// (const = 128 − field). `op`(bit6)/`U`(bit5)/`N`(bit10) pick the variant.
     @inline(__always)
-    private static func decodeNarrowShift4(_ e: UInt32, _ a: UInt64) -> DecodedDraft? {
+    private static func decodeNarrowShift4(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         guard e & 0xFF20_F800 == 0xC120_D800 else { return nil }
         let tsize = UInt8((e >> 22) & 0x3)
         guard tsize != 0 else { return nil } // tsize=00 reserved
@@ -84,11 +79,7 @@ enum SME2VectorOpsDecode {
             semanticReads: SME2Decode.groupMask(zn, 4),
             semanticWrites: SME2Decode.vecMask(zd),
             category: .sme,
-            operands: [
-                SME2Decode.vec(zd, dst),
-                SME2Decode.group(zn, 4, src),
-                .immediate(value: shift, width: 7),
-            ],
+            operandCount: sink.emit(SME2Decode.vec(zd, dst), SME2Decode.group(zn, 4, src), .immediate(value: shift, width: 7)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -96,7 +87,7 @@ enum SME2VectorOpsDecode {
     /// 2-way saturating rounding shift-right narrow: `Zd.h, {Zn.s, Zn+1.s},
     /// #const` where `const = 16 - imm4` (`imm4 == 0` → `#16`).
     @inline(__always)
-    private static func decodeNarrowShift2(_ e: UInt32, _ a: UInt64) -> DecodedDraft? {
+    private static func decodeNarrowShift2(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         let mnemonic: Mnemonic
         // Zn is bits[9:6] (a pair), so bit6 must stay free in the match mask.
         switch e & 0xFFF0_FC20 {
@@ -113,11 +104,7 @@ enum SME2VectorOpsDecode {
             semanticReads: SME2Decode.groupMask(zn, 2),
             semanticWrites: SME2Decode.vecMask(zd),
             category: .sme,
-            operands: [
-                SME2Decode.vec(zd, .h),
-                SME2Decode.group(zn, 2, .s),
-                .immediate(value: shift, width: 6),
-            ],
+            operandCount: sink.emit(SME2Decode.vec(zd, .h), SME2Decode.group(zn, 2, .s), .immediate(value: shift, width: 6)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -128,7 +115,7 @@ enum SME2VectorOpsDecode {
     /// (2-way `{Zd}, Zn`; 4-way `{Zd}, {Zn}`). Shared by the 110 (2-way) and
     /// 111 (4-way / unpk) groups; returns `nil` for a non-permute word.
     @inline(__always)
-    private static func decodePermute(_ e: UInt32, _ a: UInt64) -> DecodedDraft? {
+    private static func decodePermute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // The size field (bits[23:22]) is fixed per tblgen record, so the
         // masks below strip it (and the .q / op selector bits) to match one
         // opcode across all element sizes.
@@ -142,8 +129,12 @@ enum SME2VectorOpsDecode {
             let zm = UInt8((e >> 16) & 0x1F)
             return permuteDraft(
                 e, a, e & 0x1 != 0 ? .uzp : .zip,
-                dest: SME2Decode.group(zd, 2, element), destFirst: zd, destCount: 2,
-                operands: [SME2Decode.vec(zn, element), SME2Decode.vec(zm, element)],
+                destFirst: zd, destCount: 2,
+                operandCount: sink.emit(
+                    SME2Decode.group(zd, 2, element),
+                    SME2Decode.vec(zn, element),
+                    SME2Decode.vec(zm, element),
+                ),
                 reads: SME2Decode.vecMask(zn).union(SME2Decode.vecMask(zm)),
             )
         }
@@ -155,8 +146,10 @@ enum SME2VectorOpsDecode {
             let zn = UInt8((e >> 5) & 0x1C)
             return permuteDraft(
                 e, a, e & 0x2 != 0 ? .uzp : .zip,
-                dest: SME2Decode.group(zd, 4, element), destFirst: zd, destCount: 4,
-                operands: [SME2Decode.group(zn, 4, element)],
+                destFirst: zd, destCount: 4,
+                operandCount: sink.emit(
+                    SME2Decode.group(zd, 4, element), SME2Decode.group(zn, 4, element),
+                ),
                 reads: SME2Decode.groupMask(zn, 4),
             )
         }
@@ -168,8 +161,10 @@ enum SME2VectorOpsDecode {
             let zn = UInt8((e >> 5) & 0x1F)
             return permuteDraft(
                 e, a, e & 0x1 != 0 ? .uunpk : .sunpk,
-                dest: SME2Decode.group(zd, 2, dst), destFirst: zd, destCount: 2,
-                operands: [SME2Decode.vec(zn, halfElement(dst))],
+                destFirst: zd, destCount: 2,
+                operandCount: sink.emit(
+                    SME2Decode.group(zd, 2, dst), SME2Decode.vec(zn, halfElement(dst)),
+                ),
                 reads: SME2Decode.vecMask(zn),
             )
         }
@@ -180,8 +175,10 @@ enum SME2VectorOpsDecode {
             let zn = UInt8((e >> 5) & 0x1E)
             return permuteDraft(
                 e, a, e & 0x1 != 0 ? .uunpk : .sunpk,
-                dest: SME2Decode.group(zd, 4, dst), destFirst: zd, destCount: 4,
-                operands: [SME2Decode.group(zn, 2, halfElement(dst))],
+                destFirst: zd, destCount: 4,
+                operandCount: sink.emit(
+                    SME2Decode.group(zd, 4, dst), SME2Decode.group(zn, 2, halfElement(dst)),
+                ),
                 reads: SME2Decode.groupMask(zn, 2),
             )
         }
@@ -190,14 +187,14 @@ enum SME2VectorOpsDecode {
 
     @inline(__always)
     private static func permuteDraft(
-        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, dest: Operand,
-        destFirst: UInt8, destCount: UInt8, operands: [Operand], reads: RegisterSet,
+        _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic,
+        destFirst: UInt8, destCount: UInt8, operandCount: UInt8, reads: RegisterSet,
     ) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: reads,
             semanticWrites: SME2Decode.groupMask(destFirst, destCount),
-            category: .sme, operands: [dest] + operands,
+            category: .sme, operandCount: operandCount,
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -217,7 +214,7 @@ enum SME2VectorOpsDecode {
     }
 
     @inline(__always)
-    private static func decodeClamp(_ e: UInt32, _ a: UInt64) -> DecodedDraft? {
+    private static func decodeClamp(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         // 2x: (ff20fc01, c120c400 sclamp / c120c401 uclamp / c120c000 fclamp),
         // 4x: +0x800. bf clamp fixes size=00 with mask ffe0fc0x.
         let fourWay = e & 0x800 != 0
@@ -248,11 +245,7 @@ enum SME2VectorOpsDecode {
                 .union(SME2Decode.vecMask(zn)).union(SME2Decode.vecMask(zm)),
             semanticWrites: SME2Decode.groupMask(zd, count),
             category: .sme,
-            operands: [
-                SME2Decode.group(zd, count, element),
-                SME2Decode.vec(zn, element),
-                SME2Decode.vec(zm, element),
-            ],
+            operandCount: sink.emit(SME2Decode.group(zd, count, element), SME2Decode.vec(zn, element), SME2Decode.vec(zm, element)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -276,7 +269,7 @@ enum SME2VectorOpsDecode {
     /// destination is tied to the first source. Decoded from the generated
     /// (mask,value) table below (transcribed from the investigation records).
     @_optimize(speed)
-    static func decodeDestructive(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeDestructive(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let spec = destructiveSpec(e) else { return SME2Decode.undefined(e, a) }
         let zdn = spec.vg == 4 ? UInt8((e >> 2) & 0x7) &* 4 : UInt8((e >> 1) & 0xF) &* 2
         let dest = SME2Decode.group(zdn, spec.vg, spec.element)
@@ -296,7 +289,7 @@ enum SME2VectorOpsDecode {
             semanticReads: SME2Decode.groupMask(zdn, spec.vg).union(src2Reads),
             semanticWrites: SME2Decode.groupMask(zdn, spec.vg),
             category: .sme,
-            operands: [dest, SME2Decode.group(zdn, spec.vg, spec.element), src2],
+            operandCount: sink.emit(dest, SME2Decode.group(zdn, spec.vg, spec.element), src2),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -552,11 +545,11 @@ enum SME2VectorOpsDecode {
     /// (`Zd, {Zn}`), widen (`{Zd}, Zn`), same-count (`{Zd}, {Zn}`), and FMUL
     /// (`{Zd}, {Zn}, Zm|{Zm}`). Decoded from the generated table below.
     @_optimize(speed)
-    static func decodeConvertMisc(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
-        if let d = decodePermute(e, a) { return d }
-        if let d = decodeLuti6ZmZ2(e, a) { return d }
+    static func decodeConvertMisc(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
+        if let d = decodePermute(e, a, &sink) { return d }
+        if let d = decodeLuti6ZmZ2(e, a, &sink) { return d }
         guard let spec = convertSpec(e) else { return SME2Decode.undefined(e, a) }
-        return buildConvert(e, a, spec)
+        return buildConvert(e, a, spec, &sink)
     }
 
     /// The `0xC1` LUTI6 no-`ZT0` form: `luti6 {Zd×4}.h, {Zn, Zn+1}.h,
@@ -564,7 +557,7 @@ enum SME2VectorOpsDecode {
     /// a suffix-less `Zm` pair (mod-32) with a group index (`i1`, bit22).
     /// Consecutive (`c120f400`) or `.S`-strided (`c120fc00`) destination.
     @inline(__always)
-    private static func decodeLuti6ZmZ2(_ e: UInt32, _ a: UInt64) -> DecodedDraft? {
+    private static func decodeLuti6ZmZ2(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         let strided: Bool
         if e & 0xFFA0_FC03 == 0xC120_F400 { strided = false }
         else if e & 0xFFA0_FC0C == 0xC120_FC00 { strided = true }
@@ -584,17 +577,13 @@ enum SME2VectorOpsDecode {
             semanticReads: SME2Decode.groupMask(zn, 2).union(SME2Decode.groupMask(zm, 2)),
             semanticWrites: SME2Decode.groupMask(zdFirst, 4, strided: strided),
             category: .sme,
-            operands: [
-                SME2Decode.group(zdFirst, 4, .h, strided: strided),
-                .scalableVectorGroup(table),
-                .scalableVectorGroup(source),
-            ],
+            operandCount: sink.emit(SME2Decode.group(zdFirst, 4, .h, strided: strided), .scalableVectorGroup(table), .scalableVectorGroup(source)),
             scalableEffect: .readsStreamingMode,
         )
     }
 
     @inline(__always)
-    private static func buildConvert(_ e: UInt32, _ a: UInt64, _ spec: CvtSpec) -> DecodedDraft {
+    private static func buildConvert(_ e: UInt32, _ a: UInt64, _ spec: CvtSpec, _ sink: inout OperandSink) -> DecodedDraft {
         let n = spec.count
         let gd = n == 4 ? UInt8(e & 0x1C) : UInt8(e & 0x1E)
         let gn = n == 4 ? UInt8((e >> 7) & 0x7) &* 4 : UInt8((e >> 6) & 0xF) &* 2
@@ -603,15 +592,15 @@ enum SME2VectorOpsDecode {
         switch spec.shape {
         case .narrow: // Zd.<dst>, {Zn x count}
             return convertDraft(e, a, spec.mnemonic,
-                                operands: [SME2Decode.vec(sd, spec.dst), SME2Decode.group(gn, n, spec.src)],
+                                operandCount: sink.emit(SME2Decode.vec(sd, spec.dst), SME2Decode.group(gn, n, spec.src)),
                                 reads: SME2Decode.groupMask(gn, n), writes: SME2Decode.vecMask(sd))
         case .widen: // {Zd x count}, Zn.<src>
             return convertDraft(e, a, spec.mnemonic,
-                                operands: [SME2Decode.group(gd, n, spec.dst), SME2Decode.vec(sn, spec.src)],
+                                operandCount: sink.emit(SME2Decode.group(gd, n, spec.dst), SME2Decode.vec(sn, spec.src)),
                                 reads: SME2Decode.vecMask(sn), writes: SME2Decode.groupMask(gd, n))
         case .same: // {Zd x count}, {Zn x count}
             return convertDraft(e, a, spec.mnemonic,
-                                operands: [SME2Decode.group(gd, n, spec.dst), SME2Decode.group(gn, n, spec.src)],
+                                operandCount: sink.emit(SME2Decode.group(gd, n, spec.dst), SME2Decode.group(gn, n, spec.src)),
                                 reads: SME2Decode.groupMask(gn, n), writes: SME2Decode.groupMask(gd, n))
         case .fmul: // {Zd}, {Zn}, Zm | {Zm}
             // FMUL's broadcast Zm is bits[20:17] (z0-z15), not the bits[19:16]
@@ -621,7 +610,7 @@ enum SME2VectorOpsDecode {
             let src2: Operand = spec.sub == "zzw" ? SME2Decode.group(zmGroup, n, spec.src) : SME2Decode.vec(zmSingle, spec.src)
             let src2Reads = spec.sub == "zzw" ? SME2Decode.groupMask(zmGroup, n) : SME2Decode.vecMask(zmSingle)
             return convertDraft(e, a, spec.mnemonic,
-                                operands: [SME2Decode.group(gd, n, spec.dst), SME2Decode.group(gn, n, spec.src), src2],
+                                operandCount: sink.emit(SME2Decode.group(gd, n, spec.dst), SME2Decode.group(gn, n, spec.src), src2),
                                 reads: SME2Decode.groupMask(gn, n).union(src2Reads), writes: SME2Decode.groupMask(gd, n))
         }
     }
@@ -629,12 +618,12 @@ enum SME2VectorOpsDecode {
     @inline(__always)
     private static func convertDraft(
         _ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic,
-        operands: [Operand], reads: RegisterSet, writes: RegisterSet,
+        operandCount: UInt8, reads: RegisterSet, writes: RegisterSet,
     ) -> DecodedDraft {
         DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: reads, semanticWrites: writes, category: .sme,
-            operands: operands, scalableEffect: .readsStreamingMode,
+            operandCount: operandCount, scalableEffect: .readsStreamingMode,
         )
     }
 

@@ -12,52 +12,67 @@
 /// Output is normalized: lowercase, single space between tokens, no
 /// leading or trailing whitespace.
 enum DPICanonicalizer {
-    /// Format `instruction` to canonical llvm-mc-compatible disassembly
-    /// text. Empty string means UNDEFINED (a defensive arm — the text
-    /// router renders undefined records as `.long` before dispatching
-    /// here).
-    @_effects(readonly)
-    static func format(_ instruction: Instruction) -> String {
-        if instruction.mnemonic == .undefined { return "" }
+    // Format `instruction` to canonical llvm-mc-compatible disassembly
+    // text. Empty string means UNDEFINED (a defensive arm — the text
+    // router renders undefined records as `.long` before dispatching
+    // here).
+
+    /// The byte path: the same text, written straight into a UTF-8 buffer
+    /// instead of assembled through `String`. No intermediate `String` per
+    /// operand, no `[String]` of parts and no `joined`, and no
+    /// `reserveCapacity` — asking a `String` for capacity forces native
+    /// heap storage even for text that would have fitted in the bytes
+    /// Swift keeps inline for free.
+    static func format(_ instruction: Instruction, into out: inout TextBytes) {
+        if instruction.mnemonic == .undefined { return }
         // MTE ADDG/SUBG flow through DPI's deferred-op1 branch; route
         // crypto/Apple-extension mnemonics to their own canonicalizer.
         if CryptoAppleExtensionsCanonicalizer.owns(instruction.mnemonic) {
-            return CryptoAppleExtensionsCanonicalizer.format(instruction)
+            CryptoAppleExtensionsCanonicalizer.format(instruction, into: &out)
+            return
         }
-        let mn = instruction.mnemonic.name
-        let ops = formatOperands(mnemonic: instruction.mnemonic, operands: instruction.operands)
-        return ops.isEmpty ? mn : "\(mn) \(ops)"
+        putMnemonic(instruction.mnemonic, into: &out)
+        let operands = instruction.operands
+        if operands.isEmpty { return }
+        out.put(UInt8(ascii: " "))
+        for index in 0 ..< operands.count {
+            if index > 0 { out.put(", ") }
+            putOperand(mnemonic: instruction.mnemonic, operand: operands[index], into: &out)
+        }
     }
 
-    @_effects(readonly)
-    private static func formatOperands(mnemonic: Mnemonic, operands: Instruction.Operands) -> String {
-        var parts: [String] = []
-        parts.reserveCapacity(operands.count)
-        for op in operands {
-            parts.append(formatOperand(mnemonic: mnemonic, operand: op))
-        }
-        return parts.joined(separator: ", ")
-    }
-
-    @_effects(readonly)
-    private static func formatOperand(mnemonic: Mnemonic, operand: Operand) -> String {
+    private static func putOperand(
+        mnemonic: Mnemonic, operand: Operand, into out: inout TextBytes,
+    ) {
         switch operand {
         case let .register(reg):
-            reg.name
+            RegisterNames.put(reg, into: &out)
         case let .immediate(value, _):
-            "#\(value)" // signed decimal
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(value)
         case let .unsignedImmediate(value, _):
-            formatUnsignedImmediate(mnemonic: mnemonic, value: value)
+            out.put(UInt8(ascii: "#"))
+            // The hex-versus-decimal rule is the same table the `String`
+            // path uses; only the emission differs.
+            switch mnemonic {
+            case .and, .orr, .eor, .ands, .tst:
+                out.put("0x")
+                out.putHex(value)
+            default:
+                out.putDecimal(value)
+            }
         case let .label(byteOffset):
-            "#\(byteOffset)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(byteOffset)
         case let .pageLabel(byteOffset):
-            "#\(byteOffset)"
+            out.put(UInt8(ascii: "#"))
+            out.putDecimal(byteOffset)
         case let .shiftAmount(kind, amount):
-            "\(shiftKindName(kind)) #\(amount)"
+            putShiftKind(kind, into: &out)
+            out.put(" #")
+            out.putDecimal(UInt64(amount))
         // DPI's decoders never produce these — defensive sentinels so
-        // the @frozen Operand switch stays exhaustive. If one appears,
-        // parity tooling will surface a divergence (since llvm-mc will
-        // not produce text matching "?...").
+        // the @frozen Operand switch stays exhaustive.
         case .vectorRegister, .floatImmediate, .memory, .shiftedRegister,
              .extendedRegister, .systemRegister, .conditionCode,
              .pstateField, .barrierOption, .prefetchOperation,
@@ -66,43 +81,18 @@ enum DPICanonicalizer {
              .predicateGroup, .zaTile, .zaTileSlice, .zaArrayVector,
              .zt0, .scalableMemory, .svePredicatePattern,
              .vectorLengthMultiplier:
-            "?unsupported-operand"
+            out.put("?unsupported-operand")
         }
     }
 
-    /// Hex vs decimal display rule per mnemonic. Matches llvm-mc's
-    /// per-mnemonic conventions.
-    @_effects(readonly)
-    private static func formatUnsignedImmediate(mnemonic: Mnemonic, value: UInt64) -> String {
-        // Logical-immediate forms (AND/ORR/EOR/ANDS and TST alias) display
-        // as `#0xNN`. MOV (bitmask) uses signed decimal (via .immediate
-        // case in the decoder). All other unsigned immediates display
-        // as decimal.
-        switch mnemonic {
-        case .and, .orr, .eor, .ands, .tst:
-            "#\(formatHex(value))"
-        default:
-            "#\(value)"
-        }
-    }
-
-    /// Format a value as llvm-mc-style hex: lowercase `0x...`, no
-    /// leading zeros beyond `0x0`.
     @inline(__always)
-    @_effects(readonly)
-    private static func formatHex(_ value: UInt64) -> String {
-        "0x\(String(value, radix: 16))"
-    }
-
-    @inline(__always)
-    @_effects(readonly)
-    private static func shiftKindName(_ s: ShiftKind) -> String {
+    private static func putShiftKind(_ s: ShiftKind, into out: inout TextBytes) {
         switch s {
-        case .lsl: "lsl"
-        case .lsr: "lsr"
-        case .asr: "asr"
-        case .ror: "ror"
-        case .msl: "msl"
+        case .lsl: out.put("lsl")
+        case .lsr: out.put("lsr")
+        case .asr: out.put("asr")
+        case .ror: out.put("ror")
+        case .msl: out.put("msl")
         }
     }
 }

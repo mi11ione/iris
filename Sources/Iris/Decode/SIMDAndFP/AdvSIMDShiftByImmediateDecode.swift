@@ -15,7 +15,7 @@
 
 enum AdvSIMDShiftByImmediateDecode {
     @_optimize(speed)
-    static func decode(encoding: UInt32, address: UInt64) -> DecodedDraft {
+    static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let Q = UInt8((encoding >> 30) & 0x1)
         let U = UInt8((encoding >> 29) & 0x1)
         let immh = UInt8((encoding >> 19) & 0xF)
@@ -110,11 +110,7 @@ enum AdvSIMDShiftByImmediateDecode {
             semanticWrites: simdfpInsertingVector(Rd, into: .empty),
             branchClass: .none, memoryAccess: .none, memoryOrdering: [],
             flagEffect: .none, category: .simdAndFP,
-            operands: [
-                simdfpVectorOperand(Rd, arrangement: dstArrangement),
-                simdfpVectorOperand(Rn, arrangement: sourceArrangement),
-                .unsignedImmediate(value: UInt64(shift), width: 8),
-            ],
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: dstArrangement), simdfpVectorOperand(Rn, arrangement: sourceArrangement), .unsignedImmediate(value: UInt64(shift), width: 8)),
         )
     }
 

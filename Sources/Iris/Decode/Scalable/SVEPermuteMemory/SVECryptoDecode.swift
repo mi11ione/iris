@@ -13,24 +13,24 @@ extension SVEPermuteMemoryDecode {
     /// 0x45 crypto / LUT dispatch. bits[15:13]=111 → AES/SM4/RAX1/PMULL family;
     /// bits[15:13]=101 → LUTI2/LUTI4.
     @inline(__always)
-    static func decodeCrypto(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCrypto(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch (e >> 13) & 0b111 {
         case 0b111:
             // The AES/SM4/RAX1/PMULL classes fix bits[23:21]=001; other values
             // are holes. (LUTI, below, uses bits[23:22] for its index, so this
             // guard must NOT apply to it.)
             guard (e >> 21) & 0b111 == 0b001 else { return undefined(e, a) }
-            return decodeCryptoCore(e, a)
+            return decodeCryptoCore(e, a, &sink)
         // The crypto/LUT gate fixes bits 15 and 13, so bits[15:13] is 111 above
         // or 101 here — LUTI2/LUTI4 is all that remains, and the dispatch needs
         // no unreachable UNDEFINED arm.
-        default: return decodeLuti(e, a)
+        default: return decodeLuti(e, a, &sink)
         }
     }
 
     /// AES/SM4/RAX1/PMULL family, split by bits[15:10].
     @inline(__always)
-    static func decodeCryptoCore(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeCryptoCore(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), m = rm(e)
         // bits[15:11] classify: 11100 des (AESE/AESD/SM4E), 11100+unary AESMC/
         // AESIMC (bits[20:16]=00000), 11110 SM4EKEY/RAX1, 11101 multi-vector AES,
@@ -45,7 +45,7 @@ extension SVEPermuteMemoryDecode {
                 return DecodedDraft(
                     address: a, encoding: e, mnemonic: mn,
                     semanticReads: vecMask(d), semanticWrites: vecMask(d), category: .sve,
-                    operands: [vec(d, .b), vec(d, .b)],
+                    operandCount: sink.emit(vec(d, .b), vec(d, .b)),
                     scalableEffect: .readsStreamingMode,
                 )
             }
@@ -63,7 +63,7 @@ extension SVEPermuteMemoryDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: mn,
                 semanticReads: vecMask(d).union(vecMask(n)), semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), vec(d, el), vec(n, el)],
+                operandCount: sink.emit(vec(d, el), vec(d, el), vec(n, el)),
                 scalableEffect: .readsStreamingMode,
             )
         case 0b11110:
@@ -73,7 +73,7 @@ extension SVEPermuteMemoryDecode {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: mn,
                 semanticReads: vecMask(n).union(vecMask(m)), semanticWrites: vecMask(d), category: .sve,
-                operands: [vec(d, el), vec(n, el), vec(m, el)],
+                operandCount: sink.emit(vec(d, el), vec(n, el), vec(m, el)),
                 scalableEffect: .readsStreamingMode,
             )
         case 0b11111:
@@ -87,7 +87,7 @@ extension SVEPermuteMemoryDecode {
                 address: a, encoding: e, mnemonic: mn,
                 semanticReads: vecMask(n).union(vecMask(m)),
                 semanticWrites: groupMask(base, count: 2), category: .sve,
-                operands: [group(base, count: 2, .q), vec(n, .d), vec(m, .d)],
+                operandCount: sink.emit(group(base, count: 2, .q), vec(n, .d), vec(m, .d)),
                 scalableEffect: .readsStreamingMode,
             )
         default:
@@ -95,7 +95,7 @@ extension SVEPermuteMemoryDecode {
             // always 111xx and the four arms above are exhaustive — the final
             // arm (0b11101) doubles as the default: SVE-AES2 multi-vector
             // AESE/AESD/AESEMC/AESDIMC (x2 / x4).
-            return decodeAesMulti(e, a)
+            return decodeAesMulti(e, a, &sink)
         }
     }
 
@@ -103,7 +103,7 @@ extension SVEPermuteMemoryDecode {
     /// (×2 / ×4) is bits[18:17]=01/11; the operation is a 3/4-bit opc; the
     /// indexed key is `Zm.q[imm2]`. Destructive multi-vector groups.
     @inline(__always)
-    static func decodeAesMulti(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeAesMulti(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         // bits[18:17] fix the group size: 01 → ×2, 11 → ×4; other values are holes.
         switch (e >> 17) & 0b11 {
         case 0b01, 0b11: break
@@ -140,11 +140,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: mn,
             semanticReads: groupMask(base, count: count).union(vecMask(m)),
             semanticWrites: groupMask(base, count: count), category: .sve,
-            operands: [
-                group(base, count: count, .b),
-                group(base, count: count, .b),
-                vecIndexed(m, .q, lane: imm2),
-            ],
+            operandCount: sink.emit(group(base, count: count, .b), group(base, count: count, .b), vecIndexed(m, .q, lane: imm2)),
             scalableEffect: .readsStreamingMode,
         )
     }
@@ -152,7 +148,7 @@ extension SVEPermuteMemoryDecode {
     /// LUTI2 / LUTI4 — table lookup with 2-bit / 4-bit indices. `Zd.<T>,
     /// { Zn.<T> }, Zm[index]`. LUTI4 with an H element uses a 2-register table.
     @inline(__always)
-    static func decodeLuti(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
+    static func decodeLuti(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let d = rd(e), n = rn(e), m = rm(e)
         let sz = UInt8((e >> 22) & 0b11)
         // The (mnemonic, element, table registers, index) all derive from
@@ -188,7 +184,7 @@ extension SVEPermuteMemoryDecode {
             address: a, encoding: e, mnemonic: mn,
             semanticReads: groupMask(n, count: tableRegs).union(vecMask(m)),
             semanticWrites: vecMask(d), category: .sve,
-            operands: [vec(d, el), table, zm],
+            operandCount: sink.emit(vec(d, el), table, zm),
             scalableEffect: .readsStreamingMode,
         )
     }
