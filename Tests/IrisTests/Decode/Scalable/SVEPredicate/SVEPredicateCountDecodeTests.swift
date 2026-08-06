@@ -12,17 +12,11 @@ private func predicates(_ set: ScalableRegisterSet) -> [UInt8] {
     (0 ..< 16).filter { set.containsPredicate(UInt8($0)) }.map(UInt8.init)
 }
 
-/// Validates the predicate-count group — CNTP and the six accumulate forms
-/// (INCP/DECP plus their four saturating variants) in both their scalar and
-/// vector shapes. The load-bearing distinction is the role of the predicate:
-/// CNTP's is a real governing predicate (it gates which lanes are counted),
-/// while every accumulate form's predicate is a plain data source — it gates
-/// nothing, it *is* the value being counted. Getting that backwards would make
-/// the accumulate forms look conditionally executed to a dataflow consumer.
+/// Validates the predicate-count group.
 @Suite("SVE predicate & control / predicate count")
 struct SVEPredicateCountDecodeTests {
     @Test func countActiveLanesGovernsWithOnePredicateAndCountsAnother() {
-        let d = decode(0x2520_8443) // cntp x3, p1, p2.b
+        let d = decode(0x2520_8443)
         #expect(d.mnemonic == .cntp)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -49,7 +43,7 @@ struct SVEPredicateCountDecodeTests {
     }
 
     @Test func countActiveLanesIntoTheZeroRegisterKeepsNoWrite() {
-        let d = decode(0x25E0_845F) // cntp xzr, p1, p2.d
+        let d = decode(0x25E0_845F)
         #expect(d.mnemonic == .cntp)
         #expect(d.operands[0] == .register(.xzr()))
         #expect(d.semanticWrites == .empty, "a write to the zero register is not a dependency")
@@ -87,18 +81,15 @@ struct SVEPredicateCountDecodeTests {
             #expect(d.mnemonic == .incp)
             #expect(d.operands[0] == .scalableVector(ScalableVectorRef(registerIndex: 3, element: size)))
         }
-        // There is no byte-element vector accumulate.
         #expect(decode(0x252C_8043).mnemonic == .undefined)
     }
 
     @Test func theVectorAccumulateFormsRejectTheScalarWidthBit() {
-        // Bit 10 selects the 32/64-bit view of a *scalar* destination; on the
-        // vector form it is a fixed zero.
         #expect(decode(0x256C_8443).mnemonic == .undefined)
     }
 
     @Test func theVectorAccumulateReachesTheHighestVectorRegister() {
-        let d = decode(0x25EC_805F) // incp z31.d, p2.d
+        let d = decode(0x25EC_805F)
         #expect(d.mnemonic == .incp)
         #expect(d.operands[0] == .scalableVector(ScalableVectorRef(registerIndex: 31, element: .d)))
         let z31 = RegisterSet.empty.inserting(ScalableVectorRef(registerIndex: 31))
@@ -119,12 +110,11 @@ struct SVEPredicateCountDecodeTests {
     }
 
     @Test func theScalarAccumulateFormsRejectTheSaturatingWidthBit() {
-        // The non-saturating scalar forms are 64-bit only; bit 10 is reserved.
         #expect(decode(0x256C_8C43).mnemonic == .undefined)
     }
 
     @Test func theScalarAccumulateIntoTheZeroRegisterKeepsNoDependency() {
-        let d = decode(0x256C_885F) // incp xzr, p2.h
+        let d = decode(0x256C_885F)
         #expect(d.mnemonic == .incp)
         #expect(d.operands[0] == .register(.xzr()))
         #expect(d.semanticReads == .empty)
@@ -132,8 +122,6 @@ struct SVEPredicateCountDecodeTests {
     }
 
     @Test func theSignedSaturatingScalarPrintsATrailingThirtyTwoBitView() {
-        // The signed 32-bit saturating form has one register field but two
-        // views of it: a 64-bit destination and a 32-bit source.
         for (encoding, mnemonic) in [(UInt32(0x2568_8843), Mnemonic.sqincp), (0x256A_8843, .sqdecp)] {
             let d = decode(encoding)
             #expect(d.mnemonic == mnemonic)
@@ -177,7 +165,7 @@ struct SVEPredicateCountDecodeTests {
     }
 
     @Test func theSignedSaturatingScalarIntoTheZeroRegisterKeepsNoDependency() {
-        let d = decode(0x2568_885F) // sqincp xzr, p2.h, wzr
+        let d = decode(0x2568_885F)
         #expect(d.mnemonic == .sqincp)
         #expect(Array(d.operands) == [
             .register(.xzr()),
@@ -189,8 +177,8 @@ struct SVEPredicateCountDecodeTests {
     }
 
     @Test func theAccumulateOpcodeRejectsItsUnallocatedValues() {
-        #expect(decode(0x256E_8043).mnemonic == .undefined) // op 110, vector
-        #expect(decode(0x256F_8843).mnemonic == .undefined) // op 111, scalar
-        #expect(decode(0x256C_8243).mnemonic == .undefined) // bit 9 reserved
+        #expect(decode(0x256E_8043).mnemonic == .undefined)
+        #expect(decode(0x256F_8843).mnemonic == .undefined)
+        #expect(decode(0x256C_8243).mnemonic == .undefined)
     }
 }

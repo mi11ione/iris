@@ -1,22 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// `iris-parity tsv` — diff Iris decode+text against TSV corpora.
-//
-// Row convention (the golden-suite convention): an empty expected cell
-// means the harvest-time oracle rejected the word, so Iris must report
-// UNDEFINED; a non-empty cell must equal Iris's canonical text.
-//
-// Honesty about harvest-era cells: a TSV's expected column is only as
-// feature-complete as the -mattr it was harvested with (recorded in the
-// file's header comment). A cell can be ORACLE-BLIND — empty because
-// the harvest mattr lacked the feature, not because the word is
-// invalid. `--reanchor` re-drives every divergent row through llvm-mc
-// at the family's MAXIMAL mattr and reclassifies rows where Iris
-// matches the live oracle as oracle-blind (reported separately, never
-// as Iris failures). Without `--reanchor`, divergences on a TSV whose
-// header mattr differs from the family maximum are reported with that
-// caveat and still gate — silence is never assumed in Iris's favor.
 
 import Foundation
 import Iris
@@ -90,20 +73,31 @@ func runTSVCommand(_ args: [String]) async -> Int32 {
         }
         jobs = [(family, explicitPath)]
     } else if let familyName {
-        let families = familyName == "all"
-            ? ParityFamily.all.filter { !$0.resolveTSVPaths().isEmpty }
+        let sweepsEveryFamily = familyName == "all"
+        let families = sweepsEveryFamily
+            ? ParityFamily.all
             : ParityFamily.named(familyName).map { [$0] } ?? []
         guard !families.isEmpty else {
             eprint("tsv: unknown family `\(familyName)` (families: \(ParityFamily.all.map(\.name).joined(separator: ", ")), or `all`)")
             return 2
         }
+        var skipped: [String] = []
         for family in families {
             let paths = family.resolveTSVPaths()
             if paths.isEmpty {
                 eprint("tsv: no corpus for family `\(family.name)` (no in-repo fixture and IRIS_DECODE_CORPUS unset or empty)")
-                return 2
+                guard sweepsEveryFamily else { return 2 }
+                skipped.append(family.name)
+                continue
             }
             jobs.append(contentsOf: paths.map { (family, $0) })
+        }
+        if sweepsEveryFamily, !skipped.isEmpty {
+            eprint("tsv: SKIPPED \(skipped.count) of \(families.count) families for want of a corpus: \(skipped.joined(separator: ", ")) — this run diffs \(families.count - skipped.count) of \(families.count)")
+        }
+        guard !jobs.isEmpty else {
+            eprint("tsv: no corpus for any family; nothing was diffed")
+            return 2
         }
     } else {
         eprint("tsv: pass a TSV path or --family <name|all>")
@@ -151,10 +145,6 @@ private func diffTSVFile(
 
     var total = TSVBatchResult()
     var headerMattr: String?
-    // Counters are complete regardless of the detail cap: every batch's
-    // divergent rows are counted (and, with --reanchor, re-driven
-    // through llvm-mc) as they drain; only `details` — the rows
-    // retained for printing — is capped.
     var divergentTotal = 0
     var blindTotal = 0
     var trueTotal = 0
@@ -219,7 +209,6 @@ private func diffTSVFile(
                 }
             }
             if oracleFailed {
-                // Abandon the file: drain what is in flight, read no more.
                 exhausted = true
                 batch.removeAll(keepingCapacity: false)
             }
@@ -275,12 +264,7 @@ private func diffTSVFile(
     return outcome
 }
 
-/// Re-drive divergent rows through llvm-mc at the family's maximal
-/// mattr. A row where Iris matches the live oracle is an oracle-blind
-/// harvest cell (the TSV's expected column could not see the feature),
-/// counted and dropped; the rest remain true divergences. Returns nil
-/// on oracle failure (launch failure or timeout) — the caller must
-/// abort the file, never score it.
+/// Re-drive divergent rows through llvm-mc at the family's maximal mattr.
 private func reanchorDivergences(
     _ divergences: [TSVDivergence], family: ParityFamily, llvmMC: String,
 ) -> (blind: Int, hard: [TSVDivergence])? {
@@ -334,8 +318,7 @@ private func diffBatch(
     return result
 }
 
-/// Parse one TSV line. Synthetic layout: `encoding_hex \t expected`.
-/// Real layout: `binary_path \t file_offset_hex \t encoding_hex \t expected`.
+/// Parse one TSV line.
 private func parseTSVLine(_ line: String, lineNumber: Int, realLayout: Bool) -> TSVRowRecord? {
     let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
     let encodingColumn = realLayout ? 2 : 0

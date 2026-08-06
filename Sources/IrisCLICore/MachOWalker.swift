@@ -1,25 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// The CLI's deliberately minimal Mach-O walker. Purpose-built for one
-// consumer (the `iris` listing) and never public package API (Vision
-// §4.8: the walker stays internal to the CLI; a Mach-O library is a
-// different product). Parsing patterns and constants are copied-and-
-// trimmed from Aperture's MachO/ tree (Header, FatHeaderParser,
-// SliceSelection, SymbolTable, FunctionStartsAddresses,
-// DataInCodeRegions), cut down to exactly the load commands the listing
-// consumes. Every read is bounds-checked: regions are validated once
-// against the slice, then read through guards that degrade (with a
-// diagnostic, or via the same skip a by-design rejection takes) if a
-// bounds proof ever regresses, no force-unwraps on the read path;
-// malformed input degrades with a WalkerDiagnostic, never a crash.
 
 import Iris
 
 /// Walks a Mach-O file (thin or fat) into a ``WalkedBinary``.
 public enum MachOWalker {
-    // Magics, commands, and field constants (values from <mach-o/loader.h>,
-    // <mach-o/fat.h>, <mach-o/nlist.h>; named as in Aperture's MachOConstants).
     static let magic64: UInt32 = 0xFEED_FACF
     static let cigam64: UInt32 = 0xCFFA_EDFE
     static let fatMagic: UInt32 = 0xCAFE_BABE
@@ -39,25 +24,16 @@ public enum MachOWalker {
     static let dataInCodeEntrySize = 8
     static let sAttrPureInstructions: UInt32 = 0x8000_0000
     static let sAttrSomeInstructions: UInt32 = 0x0000_0400
-    // section_64.flags low byte = section type. S_SYMBOL_STUBS marks the
-    // `__stubs`/`__auth_stubs` slabs whose entries each forward to an
-    // imported symbol via the indirect symbol table.
     static let sSymbolStubs: UInt8 = 0x8
     static let sZerofill: UInt8 = 0x1
     static let sGBZerofill: UInt8 = 0xC
     static let sThreadLocalZerofill: UInt8 = 0x12
-    // section type S_CSTRING_LITERALS marks `__cstring`-style sections
-    // whose content is NUL-terminated C strings; a referenced-data target
-    // landing here reads back as a quoted string.
     static let sCStringLiterals: UInt8 = 0x2
     static let nStab: UInt8 = 0xE0
     static let nTypeMask: UInt8 = 0x0E
     static let nSect: UInt8 = 0xE
     static let nAbs: UInt8 = 0x2
     static let nExt: UInt8 = 0x01
-    // Indirect-symbol-table sentinels: an entry equal to either (or their
-    // union) names no symbol (a local/absolute pointer), so its stub slot
-    // carries no import.
     static let indirectSymbolLocal: UInt32 = 0x8000_0000
     static let indirectSymbolAbs: UInt32 = 0x4000_0000
 
@@ -82,8 +58,8 @@ public enum MachOWalker {
     }
 
     /// One `fat_arch` record, decoded host-order, with its windowed view
-    /// (`nil` when the declared byte range does not fit the file, the
-    /// one source of truth for slice eligibility).
+    /// (`nil` when the declared byte range does not fit the file, the one
+    /// source of truth for slice eligibility).
     struct FatSlice {
         let cputype: Int32
         let cpusubtype: Int32
@@ -100,8 +76,8 @@ public enum MachOWalker {
         }
     }
 
-    /// Fat path: enumerate `fat_arch` records, select per policy, walk
-    /// the chosen slice through the thin path.
+    /// Fat path: enumerate `fat_arch` records, select per policy, walk the
+    /// chosen slice through the thin path.
     static func walkFat(file: MappedFile, swapped: Bool, is64: Bool, arch: ArchSelection?) -> WalkOutcome {
         guard let nfatRaw: UInt32 = file.read(at: 4) else {
             return .notMachO(detail: "fat header truncated (no nfat_arch)")
@@ -129,10 +105,6 @@ public enum MachOWalker {
         }
 
         guard let window = selectSlice(from: slices, arch: arch) else {
-            // Distinguish "the architecture is not in the container" from
-            // "the matching slice is declared but its bytes are out of
-            // range" (a truncated fat), the same nil selection, different
-            // cause and different fix.
             let excludedMatch = slices.first { matchesSelection($0, arch: arch) && $0.window == nil }
             if let excludedMatch {
                 return .notMachO(detail: "\(excludedMatch.name) slice's content [\(excludedMatch.offset), +\(excludedMatch.size)) is out of range for the \(file.size)-byte file (truncated fat binary)")
@@ -155,8 +127,8 @@ public enum MachOWalker {
         }
     }
 
-    /// Decode one `fat_arch` / `fat_arch_64` record; `nil` when the
-    /// record itself is past the end of the file.
+    /// Decode one `fat_arch` / `fat_arch_64` record; `nil` when the record
+    /// itself is past the end of the file.
     static func readFatArch(file: MappedFile, at base: Int, swapped: Bool, is64: Bool) -> FatSlice? {
         guard let cputypeRaw: UInt32 = file.read(at: base),
               let cpusubtypeRaw: UInt32 = file.read(at: base + 4)
@@ -176,9 +148,6 @@ public enum MachOWalker {
             offset = UInt64(swapped ? offsetRaw.byteSwapped : offsetRaw)
             size = UInt64(swapped ? sizeRaw.byteSwapped : sizeRaw)
         }
-        // subFile is the eligibility decision: nil exactly when the
-        // declared [offset, offset+size) range does not fit the file
-        // (Int(exactly:) rejects ranges past Int.max before conversion).
         let window = Int(exactly: offset).flatMap { o in
             Int(exactly: size).flatMap { s in file.subFile(at: o, length: s) }
         }
@@ -191,10 +160,7 @@ public enum MachOWalker {
         )
     }
 
-    /// Selection policy over eligible (windowed) slices. Explicit `arch`
-    /// matches strictly; the default prefers arm64e, then plain arm64,
-    /// then any remaining ARM64-cputype slice (an unknown subtype decodes
-    /// as base ISA, and its name reveals the oddity).
+    /// Selection policy over eligible (windowed) slices.
     static func selectSlice(from slices: [FatSlice], arch: ArchSelection?) -> (name: String, file: MappedFile)? {
         func first(where predicate: (FatSlice) -> Bool) -> (String, MappedFile)? {
             for slice in slices {
@@ -211,25 +177,21 @@ public enum MachOWalker {
             ?? first { $0.cputype == ArchitectureName.cpuTypeARM64 }
     }
 
-    /// Whether a slice satisfies the selection criteria regardless of
-    /// whether its bytes fit, an explicit `arch` matches strictly, the
-    /// default accepts any ARM64-cputype slice. Lets the caller tell a
-    /// missing architecture apart from a present-but-truncated one.
+    /// Whether a slice satisfies the selection criteria regardless of whether
+    /// its bytes fit, an explicit `arch` matches strictly, the default accepts
+    /// any ARM64-cputype slice.
     static func matchesSelection(_ slice: FatSlice, arch: ArchSelection?) -> Bool {
         if let arch { return slice.selection == arch }
         return slice.cputype == ArchitectureName.cpuTypeARM64
     }
 
-    /// Thin path (also the selected-fat-slice path): parse the
-    /// `mach_header_64`, check architecture, walk load commands.
+    /// Thin path (also the selected-fat-slice path).
     static func walkThin(
         file: MappedFile,
         swapped: Bool,
         arch: ArchSelection?,
         leadingDiagnostics: [WalkerDiagnostic] = [],
     ) -> WalkOutcome {
-        // Header reads are in bounds once size >= 32; a read miss means
-        // that proof regressed and degrades to the truncation outcome.
         guard file.size >= machHeader64Size,
               let cputypeRaw = u32(file, 4, swapped),
               let cpusubtypeRaw = u32(file, 8, swapped),
@@ -286,7 +248,6 @@ public enum MachOWalker {
             symtab: commands.symtab,
             dysymtab: commands.dysymtab,
             segments: commands.segments,
-            swapped: swapped,
             diagnostics: &diagnostics,
         )
 
@@ -303,16 +264,16 @@ public enum MachOWalker {
         ))
     }
 
-    /// Read a host-order `UInt32` at a bounds-proven offset; `nil` only
-    /// if the caller's proof regressed (the caller's guard degrades).
+    /// Read a host-order `UInt32` at a bounds-proven offset; `nil` only if the
+    /// caller's proof regressed (the caller's guard degrades).
     @inline(__always)
     static func u32(_ file: MappedFile, _ offset: Int, _ swapped: Bool) -> UInt32? {
         let raw: UInt32? = file.read(at: offset)
         return raw.map { swapped ? $0.byteSwapped : $0 }
     }
 
-    /// Read a host-order `UInt64` at a bounds-proven offset; `nil` only
-    /// if the caller's proof regressed (the caller's guard degrades).
+    /// Read a host-order `UInt64` at a bounds-proven offset; `nil` only if the
+    /// caller's proof regressed (the caller's guard degrades).
     @inline(__always)
     static func u64(_ file: MappedFile, _ offset: Int, _ swapped: Bool) -> UInt64? {
         let raw: UInt64? = file.read(at: offset)
@@ -351,15 +312,14 @@ public enum MachOWalker {
         var symtab: LinkeditRegion?
         var functionStarts: LinkeditRegion?
         var dataInCode: LinkeditRegion?
-        /// `LC_DYSYMTAB`'s indirect-symbol-table window: `fieldA` =
-        /// `indirectsymoff`, `fieldB` = `nindirectsyms` (the rest unused).
+        /// `LC_DYSYMTAB`'s indirect-symbol-table window.
         var dysymtab: LinkeditRegion?
         var textSegmentBase: UInt64?
     }
 
-    /// Walk `ncmds` load commands from byte 32, stopping (with a
-    /// diagnostic) at the first command whose size is invalid or which
-    /// runs past the declared region or the slice.
+    /// Walk `ncmds` load commands from byte 32, stopping (with a diagnostic)
+    /// at the first command whose size is invalid or which runs past the
+    /// declared region or the slice.
     static func walkLoadCommands(
         file: MappedFile,
         swapped: Bool,
@@ -378,8 +338,6 @@ public enum MachOWalker {
         }
         var cursor = machHeader64Size
         for index in 0 ..< Int(ncmds) {
-            // Reads are in bounds once cursor + 8 <= regionEnd <=
-            // file.size; a read miss degrades to the same stop.
             guard cursor + 8 <= regionEnd,
                   let cmd = u32(file, cursor, swapped),
                   let cmdsizeRaw = u32(file, cursor + 4, swapped)
@@ -412,11 +370,9 @@ public enum MachOWalker {
         return collected
     }
 
-    /// Decode one load command into `collected` when it is one of the
-    /// four the listing consumes; anything else is skipped by design
-    /// (the walker is minimal, not a Mach-O library). All reads below
-    /// are within `[start, start + size)`, which the caller proved is
-    /// inside the slice.
+    /// Decode one load command into `collected` when it is one of the four the
+    /// listing consumes; anything else is skipped by design (the walker is
+    /// minimal, not a Mach-O library).
     static func record(
         cmd: UInt32,
         at start: Int,
@@ -470,9 +426,6 @@ public enum MachOWalker {
                 diagnostics: &diagnostics,
             )
         case lcDysymtab:
-            // dysymtab_command: 18 UInt32 fields after (cmd, cmdsize).
-            // The listing needs only indirectsymoff (+56) and
-            // nindirectsyms (+60) for stub symbolication.
             guard size >= 80,
                   let indirectsymoff = u32(file, start + 56, swapped),
                   let nindirectsyms = u32(file, start + 60, swapped)
@@ -548,8 +501,6 @@ public enum MachOWalker {
                 nsects = budget
             }
             for i in 0 ..< nsects {
-                // Each section_64 lies inside the segment command's
-                // validated extent: start + 72 + (i+1)*80 <= start + cmdsize.
                 let base = segment.commandStart + segmentCommand64Size + i * section64Size
                 appendIfCode(
                     file: file,
@@ -563,9 +514,9 @@ public enum MachOWalker {
         return sections
     }
 
-    /// Decode one `section_64` (proven in bounds by the caller); append
-    /// it when its attributes claim instructions and it has file-backed
-    /// content, clamping a lying size to the bytes that exist.
+    /// Decode one `section_64` (proven in bounds by the caller); append it
+    /// when its attributes claim instructions and it has file-backed content,
+    /// clamping a lying size to the bytes that exist.
     static func appendIfCode(
         file: MappedFile,
         sectionBase: Int,
@@ -573,8 +524,6 @@ public enum MachOWalker {
         into sections: inout [CodeSection],
         diagnostics: inout [WalkerDiagnostic],
     ) {
-        // Reads are inside the caller-proven section_64 extent; a read
-        // miss degrades to the same skip a non-code section takes.
         guard let sectname = file.readFixedString(at: sectionBase, length: 16),
               let segname = file.readFixedString(at: sectionBase + 16, length: 16),
               let addr = u64(file, sectionBase + 32, swapped),
@@ -624,9 +573,7 @@ public enum MachOWalker {
 
     /// Walk every segment's `section_64` array and keep the non-code,
     /// file-backed sections (`__cstring`, `__const`, `__data`, …) as
-    /// ``DataSection``s, clamped to the slice. These are the targets an
-    /// address-forming instruction's referenced-data annotation resolves
-    /// against; they are not disassembled.
+    /// ``DataSection``s, clamped to the slice.
     static func collectDataSections(
         file: MappedFile,
         segments: [SegmentRecord],
@@ -643,12 +590,10 @@ public enum MachOWalker {
         return sections
     }
 
-    /// Decode one `section_64` (proven in bounds by the caller); append it
-    /// as a ``DataSection`` when it is non-code, file-backed, and non-empty
-    /// , clamping a lying size to the bytes that exist, dropping anything
-    /// out of range. Silent: data sections feed an annotation, so a
-    /// malformed one yields no annotation rather than a disassembly
-    /// diagnostic.
+    /// Decode one `section_64` (proven in bounds by the caller); append it as
+    /// a ``DataSection`` when it is non-code, file-backed, and non-empty ,
+    /// clamping a lying size to the bytes that exist, dropping anything out of
+    /// range.
     static func appendIfData(
         file: MappedFile,
         sectionBase: Int,
@@ -661,12 +606,9 @@ public enum MachOWalker {
               let size = u64(file, sectionBase + 40, swapped),
               let offsetRaw = u32(file, sectionBase + 48, swapped),
               let flags = u32(file, sectionBase + 64, swapped),
-              // Non-code only: a section with instruction attributes is a
-              // CodeSection, collected separately and disassembled.
               flags & (sAttrPureInstructions | sAttrSomeInstructions) == 0
         else { return }
         let type = UInt8(truncatingIfNeeded: flags)
-        // Zerofill sections have no file content to read a string from.
         guard type != sZerofill, type != sGBZerofill, type != sThreadLocalZerofill else { return }
         guard size > 0 else { return }
         let offset = UInt64(offsetRaw)
@@ -688,17 +630,9 @@ public enum MachOWalker {
         ))
     }
 
-    /// Decode `LC_DATA_IN_CODE` entries and rebase each into the buffer
-    /// space of the code section containing it; entries outside every
-    /// code section are dropped, straddling entries clamped, each with
-    /// a diagnostic.
-    ///
-    /// Entry-offset semantics differ by filetype (verified against the
-    /// fixture corpus): in linked images `data_in_code_entry.offset` is
-    /// a file offset from the mach header; in `MH_OBJECT` files the
-    /// assembler emits *section-address-space* offsets (there is no
-    /// final file layout yet), so `addressBased` switches the rebase
-    /// origin from `fileOffset` to `address`.
+    /// Decode `LC_DATA_IN_CODE` entries and rebase each into its containing
+    /// code section's buffer space; entries outside every code section are
+    /// dropped and straddling ones clamped, each with a diagnostic.
     static func rebaseDataInCode(
         file: MappedFile,
         command: LinkeditRegion?,
@@ -727,9 +661,6 @@ public enum MachOWalker {
         }
         var spansPerSection: [[DataInCodeSpan]] = Array(repeating: [], count: sections.count)
         for i in 0 ..< entryCount {
-            // Entry reads are in bounds (dataoff + entryCount*8 <=
-            // dataoff + datasize <= file.size); a read miss degrades to
-            // the same skip a zero-length entry takes.
             let base = dataoff + i * dataInCodeEntrySize
             guard let entryOffsetRaw = u32(file, base, swapped),
                   let lengthRaw: UInt16 = file.read(at: base + 4),
@@ -781,11 +712,7 @@ public enum MachOWalker {
         }
     }
 
-    /// Decode `LC_SYMTAB`'s `nlist_64` entries into a ``SymbolIndex``:
-    /// non-stab, section-defined or absolute, named symbols only.
-    /// External symbols are fed to the index ahead of locals so an
-    /// address shared by both (e.g. `_main` and the assembler's `ltmp0`
-    /// in an object file) labels as the external name.
+    /// Decode `LC_SYMTAB`'s `nlist_64` entries into a ``SymbolIndex``.
     static func parseSymbols(
         file: MappedFile,
         command: LinkeditRegion?,
@@ -816,8 +743,6 @@ public enum MachOWalker {
         var externalPairs: [(address: UInt64, name: String)] = []
         var localPairs: [(address: UInt64, name: String)] = []
         for i in 0 ..< nsyms {
-            // Entry reads are in bounds (symoff + nsyms*16 <= file.size);
-            // a read miss degrades to the same skip a stab entry takes.
             let base = symoff + i * nlist64Size
             guard let nStrx = u32(file, base, swapped),
                   let nType: UInt8 = file.read(at: base + 4),
@@ -853,24 +778,12 @@ public enum MachOWalker {
     }
 
     /// Resolve every `S_SYMBOL_STUBS` section's entries to their imported
-    /// symbol names, keyed by stub VM address, the map the listing uses
-    /// to annotate a branch to a stub as `; symbol stub for: _name`.
-    ///
-    /// A stub section's `reserved1` is its first entry's index into the
-    /// indirect symbol table; entry N maps to indirect-symtab slot
-    /// `reserved1 + N`, whose value is an index into `LC_SYMTAB`'s
-    /// `nlist_64` array (the imported symbol, undefined in this image).
-    /// Entries flagged LOCAL/ABS name no symbol and are skipped. Both the
-    /// symtab and the indirect table are required; either absent yields an
-    /// empty map (a fully-static binary has no stubs). Every read is
-    /// bounds-guarded against the slice; a regressed proof drops the one
-    /// entry, never crashes.
+    /// symbol names, keyed by stub VM address.
     static func parseStubTargets(
         file: MappedFile,
         symtab: LinkeditRegion?,
         dysymtab: LinkeditRegion?,
         segments: [SegmentRecord],
-        swapped _: Bool,
         diagnostics: inout [WalkerDiagnostic],
     ) -> [UInt64: String] {
         guard let symtab, let dysymtab else { return [:] }
@@ -888,8 +801,6 @@ public enum MachOWalker {
             ))
             return [:]
         }
-        // The symtab/string-table bounds gate name lookups; if they don't
-        // fit, parseSymbols already diagnosed it, so stay silent here.
         guard symoff + nsyms * nlist64Size <= file.size, stroff + strsize <= file.size else {
             return [:]
         }
@@ -913,9 +824,9 @@ public enum MachOWalker {
         return stubTargets
     }
 
-    /// Decode one `section_64` (proven in bounds by the caller); when it
-    /// is an `S_SYMBOL_STUBS` section, resolve each entry to its imported
-    /// name and record `stubAddress → name`.
+    /// Decode one `section_64` (proven in bounds by the caller); when it is an
+    /// `S_SYMBOL_STUBS` section, resolve each entry to its imported name and
+    /// record `stubAddress → name`.
     static func appendStubSection(
         file: MappedFile,
         sectionBase: Int,
@@ -924,8 +835,6 @@ public enum MachOWalker {
         indirectsymoff: Int, nindirectsyms: Int,
         into stubTargets: inout [UInt64: String],
     ) {
-        // Reads lie inside the caller-proven section_64 extent; a miss
-        // degrades to the skip a non-stub section takes.
         guard let addr = u64(file, sectionBase + 32, swapped),
               let size = u64(file, sectionBase + 40, swapped),
               let flags = u32(file, sectionBase + 64, swapped),
@@ -934,16 +843,12 @@ public enum MachOWalker {
               UInt8(truncatingIfNeeded: flags) == sSymbolStubs
         else { return }
         let stride = UInt64(reserved2)
-        // A zero stub size cannot enumerate entries; nothing to resolve.
         guard stride > 0, size > 0 else { return }
         let entryCount = Int(size / stride)
         let firstIndirect = Int(reserved1)
         for entry in 0 ..< entryCount {
             let indirectSlot = firstIndirect + entry
             guard indirectSlot < nindirectsyms else { break }
-            // The slot read lies inside the caller-proven indirect table;
-            // LOCAL/ABS slots and out-of-range indices name no symbol and
-            // share this skip.
             guard let symbolIndexRaw = u32(file, indirectsymoff + indirectSlot * 4, swapped),
                   symbolIndexRaw & (indirectSymbolLocal | indirectSymbolAbs) == 0,
                   Int(symbolIndexRaw) < nsyms
@@ -958,9 +863,8 @@ public enum MachOWalker {
         }
     }
 
-    /// The string-table name of the `nlist_64` at `index`, or `nil` when
-    /// the entry has no in-bounds, non-empty name. Used to resolve an
-    /// indirect-symbol-table slot to its imported symbol.
+    /// The string-table name of the `nlist_64` at `index`, or `nil` when the
+    /// entry has no in-bounds, non-empty name.
     static func symbolName(
         file: MappedFile,
         symoff: Int,
@@ -969,7 +873,6 @@ public enum MachOWalker {
         strsize: Int,
         swapped: Bool,
     ) -> String? {
-        // symoff + nsyms*16 <= file.size and index < nsyms (caller-proven).
         let base = symoff + index * nlist64Size
         guard let nStrx = u32(file, base, swapped), nStrx != 0, Int(nStrx) < strsize else { return nil }
         guard let name = file.readCString(at: stroff + Int(nStrx), maxLength: strsize - Int(nStrx)),
@@ -978,8 +881,8 @@ public enum MachOWalker {
         return name
     }
 
-    /// Decode the `LC_FUNCTION_STARTS` ULEB128 delta chain into ascending
-    /// VM addresses anchored at the `__TEXT` segment's vmaddr.
+    /// Decode the `LC_FUNCTION_STARTS` ULEB128 delta chain into ascending VM
+    /// addresses anchored at the `__TEXT` segment's vmaddr.
     static func parseFunctionStarts(
         file: MappedFile,
         command: LinkeditRegion?,
@@ -1011,9 +914,6 @@ public enum MachOWalker {
             var delta: UInt64 = 0
             var shift: UInt64 = 0
             var terminated = false
-            // Byte reads are in bounds (cursor < datasize and dataoff +
-            // datasize <= file.size); a read miss exits the scan into
-            // the mid-value arm below.
             while cursor < datasize, let byte: UInt8 = file.read(at: dataoff + cursor) {
                 cursor += 1
                 if shift >= 64 {

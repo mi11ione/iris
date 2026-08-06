@@ -6,10 +6,7 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates the walker's no-crash contract over the malformed fixture
-/// set and synthetic hostile binaries: every malformation degrades to a
-/// typed diagnostic and an honest partial result — never a crash, never
-/// a guess.
+/// Validates the walker's no-crash contract.
 @Suite("Walker on malformed binaries")
 struct MalformedBinaryTests {
     @Test func truncatedHeaderIsNotMachO() throws {
@@ -57,7 +54,6 @@ struct MalformedBinaryTests {
         let binary = try #require(walkedBinary(cliFixturePath("hostile-dic-entry")))
         #expect(binary.diagnostics.map(\.kind).contains(.dataInCodeEntryOutsideCode))
         let text = try #require(binary.codeSections.first { $0.sectionName == "__text" })
-        // The surgered first entry is dropped; the second (data kind) survives.
         #expect(text.dataInCode.count == 1)
         #expect(text.dataInCode[0].kind == .data)
     }
@@ -76,9 +72,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func fatWithBadSliceRefusesItExplicitly() throws {
-        // The arm64e slice IS declared but its bytes are out of range, so
-        // the refusal names the truncation, not a missing architecture
-        // (the slice exists, so "no arm64e slice" would be misleading).
         let outcome = MachOWalker.walk(path: cliFixturePath("fat-bad-slice"), arch: .arm64e)
         let detail = try #require(notMachOOutcome(outcome))
         #expect(detail.contains("arm64e slice's content"))
@@ -87,9 +80,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func fatWithEverySliceOutOfBoundsNamesTheTruncation() throws {
-        // Both fat slices point past EOF: the default-slice refusal still
-        // names the real cause (a truncated fat binary), never a
-        // misleading "no slice available".
         let detail = try #require(notMachOOutcome(MachOWalker.walk(path: cliFixturePath("fat-all-oob"), arch: nil)))
         #expect(detail.contains("slice's content"))
         #expect(detail.contains("out of range"))
@@ -97,9 +87,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func badIndirectSymbolTableDropsStubsOnly() throws {
-        // LC_DYSYMTAB.indirectsymoff past EOF: stub symbolication is
-        // unavailable with a typed diagnostic, but the listing still
-        // renders (the stub branch just carries no annotation).
         let binary = try #require(walkedBinary(cliFixturePath("bad-indirectsym")))
         #expect(binary.diagnostics.map(\.kind).contains(.indirectSymbolTableOutOfBounds))
         #expect(binary.stubTargets.isEmpty)
@@ -126,7 +113,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func fatHeaderWithoutCountIsNotMachO() throws {
-        // Big-endian CAFEBABE then EOF before nfat_arch.
         let detail = try #require(notMachODetail(bytes: [0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x00]))
         #expect(detail == "fat header truncated (no nfat_arch)")
     }
@@ -141,14 +127,13 @@ struct MalformedBinaryTests {
     @Test func fatArchTableTruncated() {
         var a = MachOAssembler(bigEndian: true)
         a.u32(0xCAFE_BABE)
-        a.u32(2) // declares two fat_arch records, provides half of one
+        a.u32(2)
         a.u32(0x0100_000C)
         a.u32(0)
         #expect(notMachODetail(bytes: a.bytes) == "fat arch table truncated (entry 0 of 2 past end of file)")
     }
 
     @Test func fatArchTableEndsInsideCputype() {
-        // The record's leading cputype/cpusubtype pair is itself cut off.
         var a = MachOAssembler(bigEndian: true)
         a.u32(0xCAFE_BABE)
         a.u32(1)
@@ -157,14 +142,12 @@ struct MalformedBinaryTests {
     }
 
     @Test func fat64ArchTableEndsInsideOffset() {
-        // fat_arch_64: the 64-bit offset/size pair is cut off after the
-        // cputype pair survived.
         var a = MachOAssembler(bigEndian: true)
         a.u32(0xCAFE_BABF)
         a.u32(1)
         a.u32(0x0100_000C)
         a.u32(0)
-        a.u32(0) // half of the 64-bit offset
+        a.u32(0)
         #expect(notMachODetail(bytes: a.bytes) == "fat arch table truncated (entry 0 of 1 past end of file)")
     }
 
@@ -195,15 +178,14 @@ struct MalformedBinaryTests {
     }
 
     @Test func fatSliceShorterThanMagic() {
-        // One in-bounds slice of 2 bytes: selected, then too short to read.
         var a = MachOAssembler(bigEndian: true)
         a.u32(0xCAFE_BABE)
         a.u32(1)
-        a.u32(0x0100_000C) // cputype arm64
-        a.u32(0) // subtype
-        a.u32(28) // offset
-        a.u32(2) // size
-        a.u32(0) // align
+        a.u32(0x0100_000C)
+        a.u32(0)
+        a.u32(28)
+        a.u32(2)
+        a.u32(0)
         a.u8(0xAA)
         a.u8(0xBB)
         #expect(notMachODetail(bytes: a.bytes) == "selected arm64 slice is shorter than 4 bytes")
@@ -223,10 +205,7 @@ struct MalformedBinaryTests {
     }
 
     @Test func loadCommandRegionPastSlice() throws {
-        // sizeofcmds claims more bytes than the file holds; the walk
-        // covers the in-bounds prefix and still finds the section.
         var bytes = minimalBinary(words: [0xD503_201F])
-        // sizeofcmds at offset 20 (LE): inflate to 1 MiB.
         bytes.replaceSubrange(20 ..< 24, with: [0x00, 0x00, 0x10, 0x00])
         let binary = try #require(walkedBinary(bytes: bytes))
         #expect(binary.diagnostics.map(\.kind).contains(.loadCommandRegionTruncated))
@@ -234,8 +213,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func commandCountPastRegion() throws {
-        // ncmds = 2 but the region only holds one command: the walk stops
-        // with a diagnostic after the first.
         var bytes = minimalBinary(words: [0xD503_201F])
         bytes.replaceSubrange(16 ..< 20, with: [2, 0, 0, 0])
         let binary = try #require(walkedBinary(bytes: bytes))
@@ -245,7 +222,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func commandSizeTooSmall() throws {
-        // cmdsize = 4 (< 8) is structurally invalid; the walk stops at it.
         var a = MachOAssembler()
         a.machHeader64(ncmds: 1, sizeofcmds: 8)
         a.u32(0x19)
@@ -257,8 +233,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func segmentCommandSmallerThanItsHeader() throws {
-        // An LC_SEGMENT_64 whose cmdsize (16) cannot hold the 72-byte
-        // struct is skipped with a diagnostic; the walk continues.
         var a = MachOAssembler()
         a.machHeader64(ncmds: 1, sizeofcmds: 16)
         a.u32(0x19)
@@ -271,7 +245,7 @@ struct MalformedBinaryTests {
 
     @Test func symtabCommandTooSmall() throws {
         let bytes = minimalBinary(words: [0xD503_201F], extraSize: 16, extraCommands: { a in
-            a.u32(0x2) // LC_SYMTAB with cmdsize 16 < 24
+            a.u32(0x2)
             a.u32(16)
             a.u64(0)
         })
@@ -283,7 +257,7 @@ struct MalformedBinaryTests {
 
     @Test func linkeditCommandTooSmall() throws {
         let bytes = minimalBinary(words: [0xD503_201F], extraSize: 8, extraCommands: { a in
-            a.u32(0x26) // LC_FUNCTION_STARTS with cmdsize 8 < 16
+            a.u32(0x26)
             a.u32(8)
         })
         let binary = try #require(walkedBinary(bytes: bytes))
@@ -293,7 +267,7 @@ struct MalformedBinaryTests {
 
     @Test func dysymtabCommandTooSmall() throws {
         let bytes = minimalBinary(words: [0xD503_201F], extraSize: 16, extraCommands: { a in
-            a.u32(0xB) // LC_DYSYMTAB with cmdsize 16 < 80
+            a.u32(0xB)
             a.u32(16)
             a.u64(0)
         })
@@ -303,7 +277,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func duplicateCommandsKeepTheFirst() throws {
-        // Two LC_DATA_IN_CODE commands: the second draws a diagnostic.
         let bytes = minimalBinary(words: [0xD503_201F], extraSize: 32, extraCount: 2, extraCommands: { a in
             a.linkeditDataCommand(cmd: 0x29, dataoff: 0, datasize: 0)
             a.linkeditDataCommand(cmd: 0x29, dataoff: 0, datasize: 0)
@@ -314,7 +287,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func sectionContentStartingPastSlice() throws {
-        // section_64.offset points past EOF entirely: skipped, diagnosed.
         var a = MachOAssembler()
         a.machHeader64(ncmds: 1, sizeofcmds: 72 + 80)
         a.segmentCommand64(name: "__TEXT", vmaddr: 0x1000, nsects: 1, cmdsize: 72 + 80)
@@ -332,8 +304,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func sectionSizeOverflowingUInt64IsClamped() throws {
-        // offset + size overflows UInt64: the addition is checked, the
-        // section is clamped to the bytes that exist.
         var a = MachOAssembler()
         a.machHeader64(ncmds: 1, sizeofcmds: 72 + 80)
         a.segmentCommand64(name: "__TEXT", vmaddr: 0x1000, nsects: 1, cmdsize: 72 + 80)
@@ -354,9 +324,6 @@ struct MalformedBinaryTests {
     }
 
     @Test func zerofillCodeSectionIsExcluded() throws {
-        // S_ZEROFILL type with an instructions attribute has no file
-        // content to decode; the walker excludes it without a diagnostic
-        // (nothing was lost — there are no bytes).
         var a = MachOAssembler()
         a.machHeader64(ncmds: 1, sizeofcmds: 72 + 80)
         a.segmentCommand64(name: "__TEXT", vmaddr: 0x1000, nsects: 1, cmdsize: 72 + 80)
@@ -400,16 +367,14 @@ struct MalformedBinaryTests {
     }
 
     @Test func walkerNeverCrashesOnFuzzedTruncations() throws {
-        // Every prefix of a real small Mach-O walks to *some* typed
-        // outcome — the totality net for the load-command machinery.
         let whole = try #require(FileManager.default.contents(atPath: cliFixturePath("dic-arm64.o")))
         var verdicts: Set<String> = []
         for length in 0 ... whole.count {
             verdicts.insert(verdictName(walkBytes(Array(whole.prefix(length)))))
         }
-        #expect(verdicts.contains("unreadable")) // length 0
-        #expect(verdicts.contains("notMachO")) // 1 ..< 32
-        #expect(verdicts.contains("binary")) // the whole file
-        #expect(!verdicts.contains("archUnavailable")) // cputype is always arm64
+        #expect(verdicts.contains("unreadable"))
+        #expect(verdicts.contains("notMachO"))
+        #expect(verdicts.contains("binary"))
+        #expect(!verdicts.contains("archUnavailable"))
     }
 }

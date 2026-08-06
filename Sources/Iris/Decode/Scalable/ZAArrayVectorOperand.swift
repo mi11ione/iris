@@ -1,24 +1,16 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// ZA-array vector operand (SME2) — za.T[Wv, #imm{:hi}{, vgx2|vgx4}].
-// The tile-agnostic view of ZA as an array of SVL-bit vectors; the
-// vector-select register Wv is a GPR read (W8-W11). Because the row index is
-// dynamic (Wv) and tile-agnostic, the touched ZA storage is the whole array.
 
 /// An SME2 `ZA`-array vector operand — `za.<T>[Wv, #imm]`, optionally a range
-/// `#lo:hi` and/or a vector-group qualifier `vgx2`/`vgx4`.
+/// `#lo:hi` and a vector-group qualifier.
 ///
-/// Carried by ``Operand/zaArrayVector(_:)``. ``selectRegister`` (`Wv`) is a
-/// GPR read; ``zaMask`` is ``ZATileMask/whole`` (tile-agnostic dynamic
-/// access touches the whole array).
+/// ``selectRegister`` is a GPR read; ``zaMask`` is ``ZATileMask/whole``, since
+/// tile-agnostic dynamic access touches the whole array.
 @frozen
 public struct ZAArrayVectorOperand: Sendable, Hashable {
     /// Element size of the array vectors; `nil` for the size-less whole-array
-    /// view `za[Wv, #imm]` that `LDR`/`STR ZA` spill and fill
-    /// — mirroring ``Operand/zaTile(index:element:)`` where `element == nil`
-    /// is the suffix-less whole `za`. SME2 supplies the sized
-    /// `za.<T>[Wv, #imm]` forms.
+    /// view that `LDR`/`STR ZA` use, mirroring ``Operand/zaTile(index:element:)``
+    /// where a nil element is the suffix-less whole `za`.
     public let element: ScalarSize?
     /// Vector-select GPR `Wv` — a semantic read.
     public let selectRegister: RegisterRef

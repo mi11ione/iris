@@ -1,14 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Bitfield (BFM, SBFM, UBFM) decode.
-// Encoding bits 28:23 = 100110, op0=0x9, op1=0b110. Alias precedence
-// (first match wins): SXTB/SXTH/SXTW/UXTB/UXTH > ASR/LSR/LSL >
-// SBFIZ/SBFX > UBFIZ/UBFX > BFC > BFI > BFXIL > base BFM/SBFM/UBFM.
-//
-// Reserved: opc=11; N != sf; 32-bit immr[5]=1 OR
-// imms[5]=1. BFM/BFI/BFXIL/BFC are read-modify-write on Rd;
-// SBFM/UBFM fully overwrite.
 
 enum BitfieldDecode {
     @inline(__always)
@@ -23,7 +14,6 @@ enum BitfieldDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // Reserved encodings.
         if opc == 0b11 { return .undefined(at: address, encoding: encoding) }
         if n != sf { return .undefined(at: address, encoding: encoding) }
         if sf == 0, (immr & 0x20) != 0 || (imms & 0x20) != 0 {
@@ -32,13 +22,9 @@ enum BitfieldDecode {
 
         let regSize: UInt8 = sf == 1 ? 64 : 32
         let width: RegisterWidth = sf == 1 ? .x64 : .w32
-        // Bitfield Rd and Rn are both ZR-form (ARM ARM `<Xd>` / `<Xn>`
-        // operand syntax).
         let rdRef = gprOperand(encoding: Rd, width: width, form: .zrOrGeneral)
         let rnRef = gprOperand(encoding: Rn, width: width, form: .zrOrGeneral)
 
-        // BFM family (opc=01) inserts into Rd and preserves the rest —
-        // read-modify-write Rd; SBFM/UBFM fully overwrite (write-only).
         let isBFMFamily = opc == 0b01
         let isFullWidthBFM = isBFMFamily && immr == 0 && imms == (regSize &- 1)
         let baseReads = isBFMFamily && !isFullWidthBFM
@@ -46,16 +32,8 @@ enum BitfieldDecode {
             : insertingNonZero(reg: rnRef, into: .empty)
         let baseWrites = insertingNonZero(reg: rdRef, into: .empty)
 
-        // Alias precedence follows llvm-mc's preferred-alias chain: the
-        // most specific alias wins, tested in the order below (extension
-        // aliases, then shift forms, then bitfield insert/extract).
-
-        // SBFM extension aliases (opc=00, immr=0, imms ∈ {7,15,31}).
-        // SXTB/SXTH apply at both widths (with sf=1 producing the mixed
-        // `sxtb Xd, Wn` form); SXTW only when sf=1.
         if opc == 0b00, immr == 0 {
             if imms == 7 {
-                // SXTB Rd, Wn (Rd width per sf; Rn rendered as Wn always).
                 let rnWn = gprOperand(encoding: Rn, width: .w32, form: .zrOrGeneral)
                 return DecodedDraft(
                     address: address,
@@ -82,8 +60,6 @@ enum BitfieldDecode {
                 )
             }
             if imms == 31, sf == 1 {
-                // SXTW Xd, Wn — only valid with sf=1 (would otherwise be
-                // SBFX w0,w1,#0,#32 which is reserved for sf=0 imms=31).
                 let rnWn = gprOperand(encoding: Rn, width: .w32, form: .zrOrGeneral)
                 return DecodedDraft(
                     address: address,
@@ -98,9 +74,6 @@ enum BitfieldDecode {
             }
         }
 
-        // UBFM extension aliases (opc=10, immr=0, imms ∈ {7,15}, sf=0 ONLY).
-        // 64-bit UBFM with imms=7/15 immr=0 disassembles as `ubfx x_, x_, #0, #N`
-        // (no UXTB/UXTH at 64-bit per LLVM behavior; UXTW does not exist).
         if opc == 0b10, sf == 0, immr == 0 {
             if imms == 7 {
                 return DecodedDraft(
@@ -128,7 +101,6 @@ enum BitfieldDecode {
             }
         }
 
-        // ASR alias (opc=00, imms=regsize-1): asr Rd, Rn, #immr.
         if opc == 0b00, imms == regSize &- 1 {
             return DecodedDraft(
                 address: address,
@@ -142,7 +114,6 @@ enum BitfieldDecode {
             )
         }
 
-        // LSR alias (opc=10, imms=regsize-1): lsr Rd, Rn, #immr.
         if opc == 0b10, imms == regSize &- 1 {
             return DecodedDraft(
                 address: address,
@@ -156,7 +127,6 @@ enum BitfieldDecode {
             )
         }
 
-        // LSL alias (opc=10, imms != regsize-1, imms+1 == immr).
         if opc == 0b10, imms != (regSize &- 1), imms &+ 1 == immr {
             let shift: UInt8 = regSize &- 1 &- imms
             return DecodedDraft(
@@ -171,7 +141,6 @@ enum BitfieldDecode {
             )
         }
 
-        // SBFIZ alias (opc=00, imms < immr).
         if opc == 0b00, imms < immr {
             let lsb: UInt8 = (regSize &- immr) & (regSize &- 1)
             let widthOp: UInt8 = imms &+ 1
@@ -187,8 +156,6 @@ enum BitfieldDecode {
             )
         }
 
-        // SBFX alias (opc=00, imms >= immr; the imms=regsize-1 / immr=0
-        // sub-cases already routed via ASR / SXTB/H/W above).
         if opc == 0b00, imms >= immr {
             return DecodedDraft(
                 address: address,
@@ -202,7 +169,6 @@ enum BitfieldDecode {
             )
         }
 
-        // UBFIZ alias (opc=10, imms < immr; LSL sub-case already routed).
         if opc == 0b10, imms < immr {
             let lsb: UInt8 = (regSize &- immr) & (regSize &- 1)
             let widthOp: UInt8 = imms &+ 1
@@ -218,8 +184,6 @@ enum BitfieldDecode {
             )
         }
 
-        // UBFX alias (opc=10, imms >= immr; LSR / UXTB / UXTH sub-cases
-        // already routed).
         if opc == 0b10, imms >= immr {
             return DecodedDraft(
                 address: address,
@@ -233,9 +197,6 @@ enum BitfieldDecode {
             )
         }
 
-        // BFC alias (opc=01, Rn=31, (immr==0 OR imms<immr)).
-        // Apple-binary parity target is -mattr=+v8.2a which gates this
-        // alias. Operand list drops Rn.
         if opc == 0b01, Rn == 31, immr == 0 || imms < immr {
             let lsb: UInt8 = (regSize &- immr) & (regSize &- 1)
             let widthOp: UInt8 = imms &+ 1
@@ -251,7 +212,6 @@ enum BitfieldDecode {
             )
         }
 
-        // BFI alias (opc=01, imms < immr; not BFC).
         if opc == 0b01, imms < immr {
             let lsb: UInt8 = (regSize &- immr) & (regSize &- 1)
             let widthOp: UInt8 = imms &+ 1
@@ -267,15 +227,6 @@ enum BitfieldDecode {
             )
         }
 
-        // BFXIL alias is the catch-all for everything that reached this
-        // point. By construction:
-        //   - opc=11 was rejected as reserved at the top.
-        //   - opc=00 paths returned via SBFIZ/SBFX/SXTB/SXTH/SXTW/ASR.
-        //   - opc=10 paths returned via UBFIZ/UBFX/UXTB/UXTH/LSR/LSL.
-        //   - opc=01 paths returned via BFC/BFI for imms<immr (or Rn=XZR).
-        // The only opc=01 remainder is `imms >= immr`, which is BFXIL.
-        // The guard is dropped (the condition is structurally guaranteed)
-        // so there is no dead final-fallback branch.
         return DecodedDraft(
             address: address,
             encoding: encoding,

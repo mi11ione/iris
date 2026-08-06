@@ -1,40 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// The per-family parity registry: encoding partitions, the MAXIMAL
-// llvm-mc -mattr per family, decode features, fixture resolution, word
-// generation, and semantic-checker routing.
-//
-// The mattr table is the oracle contract. Each entry is the maximal
-// feature set the family decoder was proven against (zero-divergence
-// exhaustive op0-partition sweeps in the parent project, llvm-mc
-// 22.1.4) — NOT the harvest-era TSV mattr, which for some corpora is
-// narrower (the real_text TSV headers record what their expected-text
-// column was captured with; `tsv --reanchor` resolves the gap live).
-// DPI runs at the maximal mattr: the family decoder covers the CSSC
-// immediate forms (SMAX/SMIN/UMAX/UMIN #imm, via MinMaxImmDecode) and the
-// MTE ADDG/SUBG words in its op1=0b011 row, so the oracle can carry the
-// full feature set with no blind spot. The scalable tiers carry no decode
-// feature at all (op0=2 SVE and the op0=0 bit31=1 SME region always
-// decode), so every family whose partitions reach them — the dedicated
-// `sve`/`sme` families and the `reserved` slab that shares op0=0 — runs
-// its oracle at the maximal scalable mattr.
 
 import Foundation
 import Iris
 import IrisValidation
 
-/// One word-generation template: `fixed` bits plus a random fill of
-/// `freeMask` bits. Tiers whose discriminant is not a pure op0 slab
-/// (crypto / PAC / MTE / AMX) enumerate their row shapes this way.
-///
-/// `mattr` overrides the family mattr for the live oracle on this
-/// tier's words. The crypto/PAC/MTE tiers live INSIDE other families'
-/// op0 partitions, and a random fill of a tier's free bits legitimately
-/// strays onto neighboring rows of the host partition (a word next to
-/// MTE SUBP is CRC32/CSSC territory) — so the live oracle must carry
-/// the host partition's maximal feature set: maximal mattr per
-/// encoding PARTITION, the oracle contract.
+/// One word-generation template.
 struct GenerationTier: Sendable {
     let fixed: UInt32
     let freeMask: UInt32
@@ -50,55 +21,37 @@ struct ParityFamily: Sendable {
     /// op0 (bits[28:25]) partitions the family owns; empty for
     /// mask-discriminated families (crypto-apple).
     let op0Partitions: [UInt8]
-    /// Maximal llvm-mc -mattr (see the table note above).
+    /// Maximal llvm-mc -mattr (see ``maximalMattr``).
     let mattr: String
-    /// Decode features. Only the LDRAA/LDRAB tier is feature-gated, but
-    /// each family mirrors the parent validator's CPU-subtype choice.
+    /// Decode features. Only the LDRAA/LDRAB tier is feature-gated, but each
+    /// family mirrors the parent validator's CPU-subtype choice.
     let features: Features
-    /// In-repo synthetic fixture name under Tests/Fixtures/Decode, or
-    /// nil when the family has no tracked synthetic corpus.
+    /// In-repo synthetic fixture name under Tests/Fixtures/Decode, or nil when
+    /// the family has no tracked synthetic corpus.
     let syntheticFixture: String?
     /// Word-generation tiers for the live/semantic sweeps.
     let generationTiers: [GenerationTier]
 
-    /// Per-family maximal mattr strings (the oracle contract — see the
-    /// header note). Named so the crypto-apple tiers can reference their
-    /// HOST partition's mattr without duplication.
-    static let dpiMattr = scalableMattr
-    static let besMattr = "+v9.6a,+sme,+sme2,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,"
-        + "+predres,+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+sve"
-    static let lsMattr = besMattr + ",+lse,+lor,+rcpc,+rcpc-immo,+rcpc3,+mops,+ls64,+lse128"
-    static let dprMattr = besMattr
-    static let simdFPMattr = "+v9.6a,+fullfp16,+bf16,+i8mm,+fp8,+fp8fma,+fp8dot2,+fp8dot4,+faminmax,"
-        + "+lut,+sve,+sve2,+aes,+sha2,+sha3,+sm4,+ssbs,+mte,+xs,+spe,+pauth"
-    static let cryptoAppleMattr = "+aes,+sha2,+sha3,+sm4,+pauth,+mte"
-    static let reservedMattr = "+v9.6a,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,"
-        + "+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+lse,+lor,"
-        + "+rcpc,+rcpc-immo,+rcpc3,+mops,+ls64,+lse128,+fullfp16,+bf16,+i8mm,"
-        + "+aes,+sha2,+sha3,+sm4"
-    /// The maximal Apple-ISA decode mattr INCLUDING SVE/SME — Aperture's
-    /// single-source-of-truth oracle contract (`appleMaximalDecodeMattr`),
-    /// copied verbatim (every SVE/SME/f8 feature llvm-mc 22.1.4 accepts), so
-    /// the oracle can never scope below a decoded scalable feature.
-    static let scalableMattr = "+v9.6a,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,+specres2,"
-        + "+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+lse,+lor,+rcpc,+rcpc-immo,"
-        + "+rcpc3,+mops,+ls64,+lse128,+fullfp16,+bf16,+i8mm,+aes,+sha2,+sha3,+sm4,"
-        + "+sve,+sve2,+sme,+sme2,+sme-i16i64,+sme-f64f64,"
-        + "+faminmax,+lut,+fp8,+fp8fma,+fp8dot2,+fp8dot4,+f8f16mm,+f8f32mm,+cpa,"
-        + "+sve2p1,+sve2p2,+sve2p3,+sve-aes,+sve-aes2,+sve2-aes,+sve-bitperm,"
-        + "+sve2-bitperm,+sve-sha3,+sve2-sha3,+sve-sm4,+sve2-sm4,+sve-b16b16,"
-        + "+sve-b16mm,+sve-bfscale,+sve-f16f32mm,+sme2p1,+sme2p2,+sme2p3,"
-        + "+sme-b16b16,+sme-f16f16,+sme-f8f16,+sme-f8f32,+sme-fa64,+sme-lutv2,"
-        + "+sme-mop4,+sme-tmop,+ssve-aes,+ssve-bitperm,+ssve-fexpa,"
-        + "+ssve-fp8dot2,+ssve-fp8dot4,+ssve-fp8fma,"
-        + "+f16mm,+f32mm,+f64mm"
+    /// The maximal oracle mattr, shared by every family.
+    ///
+    /// `+all` turns on every llvm-mc *feature* but leaves the
+    /// architecture-*version* predicates clear, and some alias printing is
+    /// gated on those: at bare `+all` llvm-mc renders `0x331c13e0` as
+    /// `bfi w0, wzr, #4, #5`, and only with `+v9.6a` does it render the
+    /// ARM-ARM-preferred `bfc w0, #4, #5` that iris emits. `+all,+v9.7a`
+    /// decodes identically to `+all,+v9.6a` over 400,000 random words, so
+    /// `+all,+v9.6a` is the strongest oracle this llvm-mc offers and every
+    /// family is held to it. A per-family mattr can only hide instructions
+    /// the family's own partitions contain, which is how whole missing
+    /// instruction families used to read as agreement.
+    static let maximalMattr = "+all,+v9.6a"
 
     /// All registered families, keyed by `--family` name.
     static let all: [ParityFamily] = [
         ParityFamily(
             name: "dpi",
             op0Partitions: [0x8, 0x9],
-            mattr: dpiMattr,
+            mattr: maximalMattr,
             features: [],
             syntheticFixture: "synthetic-dpi.tsv",
             generationTiers: op0Tiers([0x8, 0x9]),
@@ -106,7 +59,7 @@ struct ParityFamily: Sendable {
         ParityFamily(
             name: "bes",
             op0Partitions: [0xA, 0xB],
-            mattr: besMattr,
+            mattr: maximalMattr,
             features: .arm64e,
             syntheticFixture: "synthetic-bes.tsv",
             generationTiers: op0Tiers([0xA, 0xB]),
@@ -114,7 +67,7 @@ struct ParityFamily: Sendable {
         ParityFamily(
             name: "ls",
             op0Partitions: [0x4, 0x6, 0xC, 0xE],
-            mattr: lsMattr,
+            mattr: maximalMattr,
             features: .arm64e,
             syntheticFixture: "synthetic-ls.tsv",
             generationTiers: op0Tiers([0x4, 0x6, 0xC, 0xE]),
@@ -122,7 +75,7 @@ struct ParityFamily: Sendable {
         ParityFamily(
             name: "dpr",
             op0Partitions: [0x5, 0xD],
-            mattr: dprMattr,
+            mattr: maximalMattr,
             features: [],
             syntheticFixture: "synthetic-dpr.tsv",
             generationTiers: op0Tiers([0x5, 0xD]),
@@ -130,76 +83,55 @@ struct ParityFamily: Sendable {
         ParityFamily(
             name: "simd-fp",
             op0Partitions: [0x7, 0xF],
-            mattr: simdFPMattr,
+            mattr: maximalMattr,
             features: [],
-            syntheticFixture: nil,
+            syntheticFixture: "synthetic-simd-fp.tsv",
             generationTiers: op0Tiers([0x7, 0xF]),
         ),
         ParityFamily(
             name: "crypto-apple",
             op0Partitions: [],
-            // The family mattr is the synthetic corpus's harvest/reanchor
-            // contract; each LIVE tier overrides it with its host
-            // partition's maximal mattr (see `GenerationTier.mattr`).
-            mattr: cryptoAppleMattr,
+            mattr: maximalMattr,
             features: .arm64e,
             syntheticFixture: "synthetic-crypto-apple.tsv",
-            // Tier templates derived from the IrisValidation partition pre-filter
-            // masks (CryptoAppleExtensionsCommon). Each free mask is the
-            // complement of the predicate's fixed-bit mask, so the sweep
-            // hits in-row valid words AND the row's reserved arms.
             generationTiers: [
-                GenerationTier(fixed: 0x4E28_0800, freeMask: 0x0000_F3FF, mattr: simdFPMattr), // AES
-                GenerationTier(fixed: 0x5E00_0000, freeMask: 0x001F_73FF, mattr: simdFPMattr), // SHA1/256 3-reg
-                GenerationTier(fixed: 0x5E28_0800, freeMask: 0x0000_F3FF, mattr: simdFPMattr), // SHA1/256 2-reg
-                GenerationTier(fixed: 0xCE00_0000, freeMask: 0x00FF_FFFF, mattr: simdFPMattr), // SHA3/512/SM3/SM4
-                GenerationTier(fixed: 0xDAC1_0000, freeMask: 0x0000_FFFF, mattr: dprMattr), // PAC one-source
-                GenerationTier(fixed: 0x9AC0_3000, freeMask: 0x001F_03FF, mattr: dprMattr), // PACGA
-                GenerationTier(fixed: 0x9180_0000, freeMask: 0x607F_FFFF, mattr: dpiMattr), // MTE ADDG/SUBG
-                GenerationTier(fixed: 0x9AC0_0000, freeMask: 0x201F_FFFF, mattr: dprMattr), // MTE DPR
-                GenerationTier(fixed: 0xD920_0000, freeMask: 0x00DF_FFFF, mattr: lsMattr), // MTE L/S
-                GenerationTier(fixed: 0x0020_1000, freeMask: 0x0000_03FF, mattr: reservedMattr), // AMX
+                GenerationTier(fixed: 0x4E28_0800, freeMask: 0x0000_F3FF),
+                GenerationTier(fixed: 0x5E00_0000, freeMask: 0x001F_73FF),
+                GenerationTier(fixed: 0x5E28_0800, freeMask: 0x0000_F3FF),
+                GenerationTier(fixed: 0xCE00_0000, freeMask: 0x00FF_FFFF),
+                GenerationTier(fixed: 0xDAC1_0000, freeMask: 0x0000_FFFF),
+                GenerationTier(fixed: 0x9AC0_3000, freeMask: 0x001F_03FF),
+                GenerationTier(fixed: 0x9180_0000, freeMask: 0x607F_FFFF),
+                GenerationTier(fixed: 0x9AC0_0000, freeMask: 0x201F_FFFF),
+                GenerationTier(fixed: 0xD920_0000, freeMask: 0x00DF_FFFF),
+                GenerationTier(fixed: 0x0020_1000, freeMask: 0x0000_03FF),
             ],
         ),
         ParityFamily(
             name: "reserved",
             op0Partitions: [0x0, 0x1, 0x3],
-            // op0=1,3 are architecturally unallocated and decode UNDEFINED on
-            // both sides. op0=0 is shared: its bit31=1 half is the SME region,
-            // which iris decodes unconditionally, so the oracle must carry the
-            // scalable mattr here too or every SME word this slab reaches would
-            // read as a divergence. The `sve`/`sme` families own those tiers
-            // deliberately; this one only has to agree where they overlap.
-            mattr: scalableMattr,
+            mattr: maximalMattr,
             features: .arm64e,
-            syntheticFixture: nil,
-            // op0 slabs plus focused UDF (bits[31:16] == 0) and AMX
-            // tiers — both far too sparse for uniform sampling to reach.
+            syntheticFixture: "synthetic-reserved.tsv",
             generationTiers: op0Tiers([0x0, 0x1, 0x3]) + [
-                GenerationTier(fixed: 0x0000_0000, freeMask: 0x0000_FFFF), // UDF
-                GenerationTier(fixed: 0x0020_1000, freeMask: 0x0000_03FF), // AMX
+                GenerationTier(fixed: 0x0000_0000, freeMask: 0x0000_FFFF),
+                GenerationTier(fixed: 0x0020_1000, freeMask: 0x0000_03FF),
             ],
         ),
         ParityFamily(
             name: "sve",
             op0Partitions: [],
-            mattr: scalableMattr,
+            mattr: maximalMattr,
             features: [],
             syntheticFixture: "synthetic-sve.tsv",
-            // The whole op0=0b0010 SVE / SVE2 tier (bit31=1 is the memory
-            // region). No decode feature gates it; the oracle carries the
-            // maximal scalable mattr.
             generationTiers: op0Tiers([0x2]),
         ),
         ParityFamily(
             name: "sme",
             op0Partitions: [],
-            mattr: scalableMattr,
+            mattr: maximalMattr,
             features: [],
             syntheticFixture: "synthetic-sme.tsv",
-            // SME lives at op0=0 with bit31=1 (disjoint from AMX's magic mask
-            // and UDF's bits[31:16]==0). Target it directly — an op0=0 slab
-            // sweep would spend nearly every word on holes.
             generationTiers: [GenerationTier(fixed: 0x8000_0000, freeMask: 0x61FF_FFFF)],
         ),
     ]
@@ -208,8 +140,7 @@ struct ParityFamily: Sendable {
         all.first { $0.name == name }
     }
 
-    /// Build uniform-random tiers over op0 slabs: bits[28:25] forced,
-    /// the remaining 28 bits free.
+    /// Build uniform-random tiers over op0 slabs.
     private static func op0Tiers(_ op0s: [UInt8]) -> [GenerationTier] {
         op0s.map { op0 in
             GenerationTier(fixed: UInt32(op0) << 25, freeMask: ~(UInt32(0xF) << 25))
@@ -227,11 +158,8 @@ struct ParityFamily: Sendable {
         return words
     }
 
-    /// Generate `count` seeded words grouped by the live-oracle mattr
-    /// each tier requires (tier override, else the family mattr). Same
-    /// generator discipline as `generateWords`, so a given (count,
-    /// seed) produces the same word multiset. Group order is
-    /// first-appearance — deterministic.
+    /// Generate `count` seeded words grouped by the live-oracle mattr each
+    /// tier requires (tier override, else the family mattr).
     func generateWordGroups(count: Int, seed: UInt64) -> [(mattr: String, words: [UInt32])] {
         var generator = SplitMix64(seed: seed)
         var order: [String] = []
@@ -245,12 +173,7 @@ struct ParityFamily: Sendable {
         return order.map { ($0, groups[$0] ?? []) }
     }
 
-    /// Resolve TSV inputs for this family. In-repo fixture by default;
-    /// an external corpus tree (`decode-<family>/{synthetic.tsv,
-    /// real_text.tsv}`, the parent project's `Corpus/` layout) when
-    /// `IRIS_DECODE_CORPUS` is set. `real_amx.tsv` is deliberately not
-    /// consumed: its expected column is a `.long` sentinel (no llvm-mc
-    /// AMX support), validated structurally in the parent project.
+    /// Resolve TSV inputs for this family.
     func resolveTSVPaths() -> [String] {
         let fm = FileManager.default
         if let external = ProcessInfo.processInfo.environment["IRIS_DECODE_CORPUS"] {
@@ -278,11 +201,10 @@ struct ParityFamily: Sendable {
     }
 }
 
-/// Route a decoded record to its family's `IrisValidation` semantic
-/// checker by category attribution (each record self-identifies; PAC /
-/// MTE / crypto / AMX records carry their own categories regardless of
-/// which op0 slab routed them). Returns nil for clean or undefined
-/// records.
+/// Route a decoded record to its family's `IrisValidation` semantic checker by
+/// category attribution (each record self-identifies; PAC / MTE / crypto / AMX
+/// records carry their own categories regardless of which op0 slab routed
+/// them).
 func semanticIssue(for instruction: Instruction) -> (field: String, actual: String, expected: String)? {
     switch instruction.category {
     case .dataProcessingImmediate:

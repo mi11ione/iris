@@ -1,25 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FlagEffect. The PSTATE.NZCV read/write effect, modeled as a
-// packed byte: bits 0-3 are the four flags this instruction WRITES, bits 4-7
-// the four it READS. A bitmask — not an enum with an associated value — keeps
-// the type one byte, so it fits the existing slot in the 57-byte
-// InstructionRecord layout while expressing both which flags are written
-// (exactly, including the strict-subset writers RMIF / SETF8 / SETF16, which
-// preserve C) and which are consumed (ADC/SBC read C; CCMP/CCMN, the CSEL
-// family, B.cond, FCSEL/FCCMP, and the flag-format converters read the
-// condition). Flag-consuming is a first-class def-use signal downstream
-// dataflow and control-flow analyses depend on.
 
-/// PSTATE.NZCV read/write effect of an instruction.
-///
-/// Each of N, Z, C, V is tracked independently for both directions. The write
-/// half records which flags the instruction sets; the read half which it
-/// consumes (the condition it evaluates, or the carry it adds in). Pure
-/// arithmetic/logical `S` forms, `CMP`/`CMN`/`TST`, and the FP compares write
-/// all four and read none (``nzcv``); most instructions touch no flags
-/// (``none``).
+/// PSTATE.NZCV read/write effect, each of N, Z, C and V tracked
+/// independently in both directions. The `S` forms, `CMP`/`CMN`/`TST` and the
+/// FP compares write all four and read none; most instructions touch none.
 @frozen
 public struct FlagEffect: OptionSet, Sendable, Hashable {
     public let rawValue: UInt8
@@ -67,13 +51,13 @@ public struct FlagEffect: OptionSet, Sendable, Hashable {
         intersection(.readsNZCV)
     }
 
-    /// True iff the instruction writes any condition flag.
+    /// Whether the instruction writes any condition flag.
     @inlinable
     public var writesAnyFlag: Bool {
         !writtenFlags.isEmpty
     }
 
-    /// True iff the instruction reads any condition flag.
+    /// Whether the instruction reads any condition flag.
     @inlinable
     public var readsAnyFlag: Bool {
         !readFlags.isEmpty

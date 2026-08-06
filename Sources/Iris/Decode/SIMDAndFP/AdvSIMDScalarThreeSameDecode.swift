@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD scalar three-same per ARM ARM § C4.1.96.16
-// (+ .12 extra + .10 FP16 merged). Encoding:
-// `0 1 U 1 1110 size 1 Rm opcode 1 Rn Rd`. Bit[30] = 1 marks the scalar
-// form (vs vector's bit[30] = Q). The operand triple is scalar registers
-// at the size-determined width (B/H/S/D).
 
 enum AdvSIMDScalarThreeSameDecode {
     @_optimize(speed)
@@ -36,8 +30,6 @@ enum AdvSIMDScalarThreeSameDecode {
         U: UInt8, size: UInt8, opcode: UInt8,
         Rm: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
-        // Scalar three-same only operates on D-element typically (size=11);
-        // some ops (SQADD/SQSUB/etc.) accept all element sizes B/H/S/D.
         let elementSize = scalarElementFromSize(size)
         let m: Mnemonic
         switch (U, opcode) {
@@ -65,9 +57,6 @@ enum AdvSIMDScalarThreeSameDecode {
         case (1, 0b10110): m = .sqrdmulh
         default: return .undefined(at: address, encoding: encoding)
         }
-        // Scalar three-same size validity: comparison/shift/add ops are
-        // D-element only; SQDMULH/SQRDMULH are H/S only; the saturating
-        // add/sub/shift ops accept all element sizes.
         let sizeOK: Bool = switch opcode {
         case 0b00110, 0b00111, 0b01000, 0b01010, 0b10000, 0b10001:
             size == 0b11
@@ -128,7 +117,7 @@ enum AdvSIMDScalarThreeSameDecode {
 }
 
 /// Map a 2-bit `size` field to the corresponding scalar element size
-/// (B/H/S/D). Total over the 2-bit input space.
+/// (B/H/S/D).
 @inline(__always)
 @_effects(readonly)
 func scalarElementFromSize(_ size: UInt8) -> ScalarSize {

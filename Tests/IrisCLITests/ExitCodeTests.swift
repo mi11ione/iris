@@ -4,10 +4,7 @@
 import IrisCLICore
 import Testing
 
-/// Validates the CLI's exit-code contract (0 success / 1 usage /
-/// 2 unreadable-or-not-Mach-O / 3 nothing-to-decode) and its stream
-/// discipline: listings on stdout, errors and diagnostics on stderr,
-/// `--quiet` silencing diagnostics but never errors.
+/// Validates the exit-code contract (0/1/2/3) and stream discipline.
 @Suite("Exit codes and stream discipline")
 struct ExitCodeTests {
     @Test func successIsZero() {
@@ -32,8 +29,6 @@ struct ExitCodeTests {
     }
 
     @Test func verbHelpPrintsThatVerbsTextAndSucceeds() {
-        // `iris <verb> --help` prints the verb's own help, distinct from
-        // the top-level overview, on stdout at exit 0.
         for (arguments, expected): ([String], String) in [
             (["disasm", "--help"], CLI.disasmHelpText),
             (["decode", "--help"], CLI.decodeHelpText),
@@ -52,7 +47,7 @@ struct ExitCodeTests {
         let run = runCLI(["--version"])
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stdout == "iris \(CLI.version)\n")
-        #expect(CLI.version == "0.7.0")
+        #expect(CLI.version == "1.0.0")
         #expect(run.stderr.isEmpty)
     }
 
@@ -85,8 +80,6 @@ struct ExitCodeTests {
     }
 
     @Test func defaultSelectionOnForeignBinaryIsThree() {
-        // No --arch given and nothing ARM64-flavored in the file: the
-        // error names the default preference and the available slices.
         var a = MachOAssembler()
         a.machHeader64(cputype: 0x0100_0007, ncmds: 0, sizeofcmds: 0)
         let run = withTemporaryFile(bytes: a.bytes) { runCLI([$0]) }

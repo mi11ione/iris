@@ -1,24 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// MemoryOrdering. OptionSet because acquire and
-// release are independent dimensions; an acquire-release load-or-store
-// pairs both.
 
-/// Memory ordering of a memory-accessing instruction.
-///
-/// Most ARM64 memory instructions carry no ordering bits (relaxed access).
-/// Acquire / release ordering is signaled by mnemonic suffixes (`LDAR`,
-/// `STLR`, `LDAXR`, `STLXR`) and tracked here in addition to ``MemoryAccess``.
-///
-/// Ordering is a property of an *access*. It qualifies the acquire/release
-/// semantics of the load or store the instruction performs, so it is
-/// non-empty only when ``MemoryAccess`` is non-`none`. A standalone barrier
-/// (`DMB`, `DSB`, `ISB`, and the `DMB ISHLD`-style scoped forms) performs no
-/// access — its ``MemoryAccess`` is `none`, so its ordering is `[]` and its
-/// scope rides on the instruction's barrier-option operand, not here. Do not
-/// read a barrier's reach off this set: it describes load/store ordering, not
-/// fence scope.
+/// Memory ordering of a memory-accessing instruction, non-empty only when
+/// ``MemoryAccess`` is non-`none`. A standalone barrier performs no access, so
+/// its ordering is `[]` and its scope rides on the barrier-option operand —
+/// this set describes load/store ordering, never fence scope.
 @frozen
 public struct MemoryOrdering: OptionSet, Sendable, Hashable {
     /// Raw bitmask of the ordering bits.

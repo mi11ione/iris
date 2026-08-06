@@ -1,12 +1,6 @@
-/// Copyright (c) 2026 Roman Zhuzhgov
-/// Licensed under the Apache License, Version 2.0
-///
-/// AdvSIMD scalar three-same FP16 and scalar three-same-extra (RDM). Both
-/// live in the scalar 0x5E/0x7E tier at bit21=0. Scalar three-same FP16:
-/// `01 U 11110 a 10 Rm 00 op3 1 Rn Rd` (bit22=1, bits[15:14]=00, bit10=1),
-/// half-precision scalar (.h). Scalar three-same-extra: `01 1 11110 size 0
-/// Rm 1000 x 1 Rn Rd` (bit15=1, bit10=1) — SQRDMLAH/SQRDMLSH, scalar .h
-/// (size=01) or .s (size=10).
+// Copyright (c) 2026 Roman Zhuzhgov
+// Licensed under the Apache License, Version 2.0
+
 enum AdvSIMDScalarThreeSameFP16Decode {
     @_optimize(speed)
     static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {

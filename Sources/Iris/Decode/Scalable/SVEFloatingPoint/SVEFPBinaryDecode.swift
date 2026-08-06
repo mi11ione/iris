@@ -1,19 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// predicated FP binary arithmetic: G1 register form
-// (`sve_fp_2op_p_zds` — FADD…FDIV, FABD, FAMIN/FAMAX, FSCALE, FMULX, and the
-// B16B16 bf16 twins occupying the sz=00 slots), G2 immediate form
-// (`sve_fp_2op_i_p_zds` — the two-constant `#0.5/#1.0/#2.0/#0.0` family),
-// and G16 pairwise (`sve2_fp_pairwise_pred`). All are destructive
-// `<Zdn>, <Pg>/m, <Zdn>, <Zm|#const>` with the second source at bits[9:5]
-// and the operation selector at bits[19:16] (register/pairwise) or
-// bits[18:16] (immediate). Merging predication: destination read +
-// `partialWrite`.
 
 extension SVEFloatingPointDecode {
-    // MARK: G1 — predicated binary register (0x65, bits[15:13]=100, bits[20:19]=0x)
-
     @inline(__always)
     static func decodePredicatedBinary(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let sz = (e >> 22) & 0b11
@@ -21,8 +9,6 @@ extension SVEFloatingPointDecode {
         let mnemonic: Mnemonic
         var size: ScalarSize = .h
         if sz == 0b00 {
-            // The bf16 (B16B16 / BFSCALE) twins own these sz=00 slots; the
-            // rest are architectural holes.
             switch opc {
             case 0b0000: mnemonic = .bfadd
             case 0b0001: mnemonic = .bfsub
@@ -52,7 +38,7 @@ extension SVEFloatingPointDecode {
             case 0b1101: mnemonic = .fdiv
             case 0b1110: mnemonic = .famax
             case 0b1111: mnemonic = .famin
-            default: return undefined(e, a) // opc 1011 — hole
+            default: return undefined(e, a)
             }
         }
         let dn = zd(e), m = zn(e), g = pg3(e)
@@ -66,11 +52,8 @@ extension SVEFloatingPointDecode {
         )
     }
 
-    // MARK: G2 — arith immediate (0x65, bits[15:13]=100, bits[20:19]=11)
-
     @inline(__always)
     static func decodeArithImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // bits[9:6] are a fixed zero field in this class.
         if (e >> 6) & 0xF != 0 { return undefined(e, a) }
         guard let size = fpSize(e) else { return undefined(e, a) }
         let i1 = (e >> 5) & 1
@@ -111,14 +94,7 @@ extension SVEFloatingPointDecode {
     }
 
     /// IEEE 754 binary16 bit pattern of `value`, by re-biasing the double's
-    /// own exponent — exact for every value this family carries (0.0, 0.5,
-    /// 1.0, 2.0, all powers of two with an empty mantissa) and for any
-    /// half-representable normal.
-    ///
-    /// Hand-rolled rather than `Float16(value).bitPattern` for the same
-    /// reason ``SIMDFPCanonicalizer/halfBitsToDouble(_:)`` decodes halves by
-    /// hand: `Float16` is macOS 11 / iOS 14 and up, so referencing it sets
-    /// the package's deployment floors and drops Intel macOS.
+    /// own exponent.
     @inline(__always)
     static func halfBits(of value: Double) -> UInt16 {
         if value == 0 { return 0 }
@@ -128,8 +104,6 @@ extension SVEFloatingPointDecode {
         let mantissa = UInt16(truncatingIfNeeded: (doubleBits >> 42) & 0x3FF)
         return sign | UInt16(unbiasedExponent + 15) << 10 | mantissa
     }
-
-    // MARK: G16 — pairwise (0x64, bits[15:13]=100, bits[20:19]=10)
 
     @inline(__always)
     static func decodePairwise(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {

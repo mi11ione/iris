@@ -4,9 +4,8 @@
 import Iris
 import Testing
 
-/// Validates that the SIMD/FP mnemonic constants declared in
-/// Mnemonic+SIMDAndFP.swift fall within the SIMD/FP slab (6144..12287)
-/// allocated by Mnemonic.allocations.
+/// Validates that the SIMD/FP mnemonic constants fall within the 6144...12287
+/// slab allocated by `Mnemonic.allocations`.
 @Suite("SIMD/FP / Mnemonic slab membership")
 struct SIMDFPMnemonicSlabTests {
     @Test func slabRangeIsRegistered() {
@@ -17,7 +16,6 @@ struct SIMDFPMnemonicSlabTests {
     }
 
     @Test func everyNewMnemonicFallsInSlab() {
-        // Sample several from each sub-slab to confirm range membership.
         let samples: [Mnemonic] = [
             .sqadd, .uqadd, .sqsub, .uqsub, .cmtst, .sshl, .sqdmulh,
             .sshr, .ssra, .srshr, .srsra, .shl, .ushr, .sxtl, .uxtl,
@@ -54,7 +52,6 @@ struct SIMDFPMnemonicSlabTests {
     }
 
     @Test func samplesAreUniqueRawValues() {
-        // Spot-check that distinct mnemonics have distinct raw values.
         var seen: [UInt16: Mnemonic] = [:]
         for m: Mnemonic in [.sqadd, .uqadd, .sqsub, .uqsub, .cmtst, .cmgt, .cmge, .cmeq, .cmhi, .cmhs] {
             #expect(seen[m.rawValue] == nil, "duplicate raw value \(m.rawValue)")

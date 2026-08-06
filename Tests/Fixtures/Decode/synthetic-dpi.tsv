@@ -1,4 +1,4 @@
-# encoding_hex_be	expected_text  (-mattr=+v8.2a)
+# encoding_hex_be	expected_text  (-mattr=+all,+v9.6a)
 11000000	add w0, w0, #0
 11000020	add w0, w1, #0
 11000200	add w0, w16, #0

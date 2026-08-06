@@ -1,20 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SYS / SYSL / SYSP alias tables. Shared between the per-encoding decoders
-// (which gate `semanticReads` / `semanticWrites` on whether the alias takes
-// an Rt operand) and the text canonicalizer (which renders the friendly
-// `ic iallu` / `dc cvac, xN` / `tlbi vae1is, xN` / `tlbip vae1, xN, xN+1`
-// forms).
-//
-// The (op1, CRn, CRm, op2) → operation-name mappings are sourced from ARM's
-// machine-readable architecture spec (the A64 ISA SystemOp data: IC / DC /
-// AT / TLBI / TLBIP groups plus the dedicated CFP / DVP / COSP / CPP /
-// TRCIT / APAS / GCS* / GCSPOP* operations). NOT sourced from any
-// disassembler, so the parity sweep stays an independent check. The table is
-// limited to the operations enabled at the parity sweep's maximal feature
-// set; operations gated behind disabled features fall through to the generic
-// `sys #op1, c<n>, c<m>, #op2 {, xN}` form, matching the oracle.
 
 /// How an alias renders its operand(s) and how the decoder models Rt.
 public enum BESSysAliasKind: Sendable {
@@ -29,6 +14,12 @@ public enum BESSysAliasKind: Sendable {
     /// SYSL-only: alias always used; renders `name xN` when Rt != 31 and
     /// bare `name` when Rt == 31 (e.g. `gcspopm` / `gcspopm x0`).
     case optReg
+    /// `name, xN` when Rt != 31 and bare `name` when Rt == 31
+    /// (e.g. `tlbi vmalle1os, x2` / `tlbi vmalle1os`).
+    case optCommaReg
+    /// SYSL-only: `name xN, <operation>` — the register precedes the operation
+    /// name (e.g. `gicr x2, cdia`); the payload is that operation name.
+    case regThenName(String)
 }
 
 /// One entry in the SYS / SYSL / SYSP alias tables.
@@ -40,13 +31,14 @@ public struct BESSysAlias: Sendable {
     public let kind: BESSysAliasKind
 
     /// Whether the alias reads/writes Rt for a given encoded Rt value.
-    /// `.reg` / `.bareReg` always touch Rt; `.noreg` never does (it's only
-    /// selected when Rt == 31 = XZR); `.optReg` touches Rt only when != 31.
+    /// `.reg` / `.bareReg` / `.regThenName` always touch Rt; `.noreg` never
+    /// does (it's only selected when Rt == 31 = XZR); `.optReg` and
+    /// `.optCommaReg` touch Rt only when it is not 31.
     public func touchesRt(_ rt: UInt8) -> Bool {
         switch kind {
-        case .reg, .bareReg: true
+        case .reg, .bareReg, .regThenName: true
         case .noreg: false
-        case .optReg: rt != 31
+        case .optReg, .optCommaReg: rt != 31
         }
     }
 }
@@ -82,7 +74,9 @@ public enum BESSysAliasTable {
         case (0, 7, 14, 2): BESSysAlias(name: "dc cisw", kind: .reg)
         case (0, 7, 14, 4): BESSysAlias(name: "dc cigsw", kind: .reg)
         case (0, 7, 14, 6): BESSysAlias(name: "dc cigdsw", kind: .reg)
-        case (0, 8, 1, 0): BESSysAlias(name: "tlbi vmalle1os", kind: .noreg)
+        case (0, 7, 15, 1): BESSysAlias(name: "dc civaps", kind: .reg)
+        case (0, 7, 15, 5): BESSysAlias(name: "dc cigdvaps", kind: .reg)
+        case (0, 8, 1, 0): BESSysAlias(name: "tlbi vmalle1os", kind: .optCommaReg)
         case (0, 8, 1, 1): BESSysAlias(name: "tlbi vae1os", kind: .reg)
         case (0, 8, 1, 2): BESSysAlias(name: "tlbi aside1os", kind: .reg)
         case (0, 8, 1, 3): BESSysAlias(name: "tlbi vaae1os", kind: .reg)
@@ -92,7 +86,7 @@ public enum BESSysAliasTable {
         case (0, 8, 2, 3): BESSysAlias(name: "tlbi rvaae1is", kind: .reg)
         case (0, 8, 2, 5): BESSysAlias(name: "tlbi rvale1is", kind: .reg)
         case (0, 8, 2, 7): BESSysAlias(name: "tlbi rvaale1is", kind: .reg)
-        case (0, 8, 3, 0): BESSysAlias(name: "tlbi vmalle1is", kind: .noreg)
+        case (0, 8, 3, 0): BESSysAlias(name: "tlbi vmalle1is", kind: .optCommaReg)
         case (0, 8, 3, 1): BESSysAlias(name: "tlbi vae1is", kind: .reg)
         case (0, 8, 3, 2): BESSysAlias(name: "tlbi aside1is", kind: .reg)
         case (0, 8, 3, 3): BESSysAlias(name: "tlbi vaae1is", kind: .reg)
@@ -112,7 +106,7 @@ public enum BESSysAliasTable {
         case (0, 8, 7, 3): BESSysAlias(name: "tlbi vaae1", kind: .reg)
         case (0, 8, 7, 5): BESSysAlias(name: "tlbi vale1", kind: .reg)
         case (0, 8, 7, 7): BESSysAlias(name: "tlbi vaale1", kind: .reg)
-        case (0, 9, 1, 0): BESSysAlias(name: "tlbi vmalle1osnxs", kind: .noreg)
+        case (0, 9, 1, 0): BESSysAlias(name: "tlbi vmalle1osnxs", kind: .optCommaReg)
         case (0, 9, 1, 1): BESSysAlias(name: "tlbi vae1osnxs", kind: .reg)
         case (0, 9, 1, 2): BESSysAlias(name: "tlbi aside1osnxs", kind: .reg)
         case (0, 9, 1, 3): BESSysAlias(name: "tlbi vaae1osnxs", kind: .reg)
@@ -122,7 +116,7 @@ public enum BESSysAliasTable {
         case (0, 9, 2, 3): BESSysAlias(name: "tlbi rvaae1isnxs", kind: .reg)
         case (0, 9, 2, 5): BESSysAlias(name: "tlbi rvale1isnxs", kind: .reg)
         case (0, 9, 2, 7): BESSysAlias(name: "tlbi rvaale1isnxs", kind: .reg)
-        case (0, 9, 3, 0): BESSysAlias(name: "tlbi vmalle1isnxs", kind: .noreg)
+        case (0, 9, 3, 0): BESSysAlias(name: "tlbi vmalle1isnxs", kind: .optCommaReg)
         case (0, 9, 3, 1): BESSysAlias(name: "tlbi vae1isnxs", kind: .reg)
         case (0, 9, 3, 2): BESSysAlias(name: "tlbi aside1isnxs", kind: .reg)
         case (0, 9, 3, 3): BESSysAlias(name: "tlbi vaae1isnxs", kind: .reg)
@@ -142,6 +136,43 @@ public enum BESSysAliasTable {
         case (0, 9, 7, 3): BESSysAlias(name: "tlbi vaae1nxs", kind: .reg)
         case (0, 9, 7, 5): BESSysAlias(name: "tlbi vale1nxs", kind: .reg)
         case (0, 9, 7, 7): BESSysAlias(name: "tlbi vaale1nxs", kind: .reg)
+        case (0, 10, 1, 0): BESSysAlias(name: "plbi vmalle1os", kind: .optCommaReg)
+        case (0, 10, 1, 1): BESSysAlias(name: "plbi perme1os", kind: .reg)
+        case (0, 10, 1, 2): BESSysAlias(name: "plbi aside1os", kind: .reg)
+        case (0, 10, 1, 3): BESSysAlias(name: "plbi permae1os", kind: .reg)
+        case (0, 10, 3, 0): BESSysAlias(name: "plbi vmalle1is", kind: .optCommaReg)
+        case (0, 10, 3, 1): BESSysAlias(name: "plbi perme1is", kind: .reg)
+        case (0, 10, 3, 2): BESSysAlias(name: "plbi aside1is", kind: .reg)
+        case (0, 10, 3, 3): BESSysAlias(name: "plbi permae1is", kind: .reg)
+        case (0, 10, 7, 0): BESSysAlias(name: "plbi vmalle1", kind: .noreg)
+        case (0, 10, 7, 1): BESSysAlias(name: "plbi perme1", kind: .reg)
+        case (0, 10, 7, 2): BESSysAlias(name: "plbi aside1", kind: .reg)
+        case (0, 10, 7, 3): BESSysAlias(name: "plbi permae1", kind: .reg)
+        case (0, 10, 9, 0): BESSysAlias(name: "plbi vmalle1osnxs", kind: .optCommaReg)
+        case (0, 10, 9, 1): BESSysAlias(name: "plbi perme1osnxs", kind: .reg)
+        case (0, 10, 9, 2): BESSysAlias(name: "plbi aside1osnxs", kind: .reg)
+        case (0, 10, 9, 3): BESSysAlias(name: "plbi permae1osnxs", kind: .reg)
+        case (0, 10, 11, 0): BESSysAlias(name: "plbi vmalle1isnxs", kind: .optCommaReg)
+        case (0, 10, 11, 1): BESSysAlias(name: "plbi perme1isnxs", kind: .reg)
+        case (0, 10, 11, 2): BESSysAlias(name: "plbi aside1isnxs", kind: .reg)
+        case (0, 10, 11, 3): BESSysAlias(name: "plbi permae1isnxs", kind: .reg)
+        case (0, 10, 15, 0): BESSysAlias(name: "plbi vmalle1nxs", kind: .noreg)
+        case (0, 10, 15, 1): BESSysAlias(name: "plbi perme1nxs", kind: .reg)
+        case (0, 10, 15, 2): BESSysAlias(name: "plbi aside1nxs", kind: .reg)
+        case (0, 10, 15, 3): BESSysAlias(name: "plbi permae1nxs", kind: .reg)
+        case (0, 12, 0, 0): BESSysAlias(name: "gsb sys", kind: .noreg)
+        case (0, 12, 0, 1): BESSysAlias(name: "gsb ack", kind: .noreg)
+        case (0, 12, 1, 0): BESSysAlias(name: "gic cddis", kind: .reg)
+        case (0, 12, 1, 1): BESSysAlias(name: "gic cden", kind: .reg)
+        case (0, 12, 1, 2): BESSysAlias(name: "gic cdpri", kind: .reg)
+        case (0, 12, 1, 3): BESSysAlias(name: "gic cdaff", kind: .reg)
+        case (0, 12, 1, 4): BESSysAlias(name: "gic cdpend", kind: .reg)
+        case (0, 12, 1, 5): BESSysAlias(name: "gic cdrcfg", kind: .reg)
+        case (0, 12, 1, 7): BESSysAlias(name: "gic cdeoi", kind: .noreg)
+        case (0, 12, 2, 0): BESSysAlias(name: "gic cddi", kind: .reg)
+        case (0, 12, 2, 1): BESSysAlias(name: "gic cdhm", kind: .reg)
+        case (1, 7, 2, 4): BESSysAlias(name: "brb iall", kind: .noreg)
+        case (1, 7, 2, 5): BESSysAlias(name: "brb inj", kind: .noreg)
         case (3, 7, 2, 7): BESSysAlias(name: "trcit", kind: .bareReg)
         case (3, 7, 3, 4): BESSysAlias(name: "cfp rctx", kind: .reg)
         case (3, 7, 3, 5): BESSysAlias(name: "dvp rctx", kind: .reg)
@@ -150,6 +181,8 @@ public enum BESSysAliasTable {
         case (3, 7, 4, 1): BESSysAlias(name: "dc zva", kind: .reg)
         case (3, 7, 4, 3): BESSysAlias(name: "dc gva", kind: .reg)
         case (3, 7, 4, 4): BESSysAlias(name: "dc gzva", kind: .reg)
+        case (3, 7, 4, 5): BESSysAlias(name: "dc zgbva", kind: .reg)
+        case (3, 7, 4, 7): BESSysAlias(name: "dc gbva", kind: .reg)
         case (3, 7, 5, 1): BESSysAlias(name: "ic ivau", kind: .reg)
         case (3, 7, 7, 0): BESSysAlias(name: "gcspushm", kind: .bareReg)
         case (3, 7, 7, 2): BESSysAlias(name: "gcsss1", kind: .bareReg)
@@ -170,6 +203,10 @@ public enum BESSysAliasTable {
         case (3, 7, 14, 5): BESSysAlias(name: "dc cigdvac", kind: .reg)
         case (3, 7, 15, 0): BESSysAlias(name: "dc civaoc", kind: .reg)
         case (3, 7, 15, 7): BESSysAlias(name: "dc cigdvaoc", kind: .reg)
+        case (4, 7, 0, 4): BESSysAlias(name: "mlbi alle1", kind: .noreg)
+        case (4, 7, 0, 5): BESSysAlias(name: "mlbi vmalle1", kind: .noreg)
+        case (4, 7, 0, 6): BESSysAlias(name: "mlbi vpide1", kind: .reg)
+        case (4, 7, 0, 7): BESSysAlias(name: "mlbi vpmge1", kind: .reg)
         case (4, 7, 8, 0): BESSysAlias(name: "at s1e2r", kind: .reg)
         case (4, 7, 8, 1): BESSysAlias(name: "at s1e2w", kind: .reg)
         case (4, 7, 8, 4): BESSysAlias(name: "at s12e1r", kind: .reg)
@@ -177,23 +214,25 @@ public enum BESSysAliasTable {
         case (4, 7, 8, 6): BESSysAlias(name: "at s12e0r", kind: .reg)
         case (4, 7, 8, 7): BESSysAlias(name: "at s12e0w", kind: .reg)
         case (4, 7, 9, 2): BESSysAlias(name: "at s1e2a", kind: .reg)
+        case (4, 7, 14, 0): BESSysAlias(name: "dc cipae", kind: .reg)
+        case (4, 7, 14, 7): BESSysAlias(name: "dc cigdpae", kind: .reg)
         case (4, 8, 0, 1): BESSysAlias(name: "tlbi ipas2e1is", kind: .reg)
         case (4, 8, 0, 2): BESSysAlias(name: "tlbi ripas2e1is", kind: .reg)
         case (4, 8, 0, 5): BESSysAlias(name: "tlbi ipas2le1is", kind: .reg)
         case (4, 8, 0, 6): BESSysAlias(name: "tlbi ripas2le1is", kind: .reg)
-        case (4, 8, 1, 0): BESSysAlias(name: "tlbi alle2os", kind: .noreg)
+        case (4, 8, 1, 0): BESSysAlias(name: "tlbi alle2os", kind: .optCommaReg)
         case (4, 8, 1, 1): BESSysAlias(name: "tlbi vae2os", kind: .reg)
-        case (4, 8, 1, 4): BESSysAlias(name: "tlbi alle1os", kind: .noreg)
+        case (4, 8, 1, 4): BESSysAlias(name: "tlbi alle1os", kind: .optCommaReg)
         case (4, 8, 1, 5): BESSysAlias(name: "tlbi vale2os", kind: .reg)
-        case (4, 8, 1, 6): BESSysAlias(name: "tlbi vmalls12e1os", kind: .noreg)
+        case (4, 8, 1, 6): BESSysAlias(name: "tlbi vmalls12e1os", kind: .optCommaReg)
         case (4, 8, 2, 1): BESSysAlias(name: "tlbi rvae2is", kind: .reg)
-        case (4, 8, 2, 2): BESSysAlias(name: "tlbi vmallws2e1is", kind: .noreg)
+        case (4, 8, 2, 2): BESSysAlias(name: "tlbi vmallws2e1is", kind: .optCommaReg)
         case (4, 8, 2, 5): BESSysAlias(name: "tlbi rvale2is", kind: .reg)
-        case (4, 8, 3, 0): BESSysAlias(name: "tlbi alle2is", kind: .noreg)
+        case (4, 8, 3, 0): BESSysAlias(name: "tlbi alle2is", kind: .optCommaReg)
         case (4, 8, 3, 1): BESSysAlias(name: "tlbi vae2is", kind: .reg)
-        case (4, 8, 3, 4): BESSysAlias(name: "tlbi alle1is", kind: .noreg)
+        case (4, 8, 3, 4): BESSysAlias(name: "tlbi alle1is", kind: .optCommaReg)
         case (4, 8, 3, 5): BESSysAlias(name: "tlbi vale2is", kind: .reg)
-        case (4, 8, 3, 6): BESSysAlias(name: "tlbi vmalls12e1is", kind: .noreg)
+        case (4, 8, 3, 6): BESSysAlias(name: "tlbi vmalls12e1is", kind: .optCommaReg)
         case (4, 8, 4, 0): BESSysAlias(name: "tlbi ipas2e1os", kind: .reg)
         case (4, 8, 4, 1): BESSysAlias(name: "tlbi ipas2e1", kind: .reg)
         case (4, 8, 4, 2): BESSysAlias(name: "tlbi ripas2e1", kind: .reg)
@@ -203,7 +242,7 @@ public enum BESSysAliasTable {
         case (4, 8, 4, 6): BESSysAlias(name: "tlbi ripas2le1", kind: .reg)
         case (4, 8, 4, 7): BESSysAlias(name: "tlbi ripas2le1os", kind: .reg)
         case (4, 8, 5, 1): BESSysAlias(name: "tlbi rvae2os", kind: .reg)
-        case (4, 8, 5, 2): BESSysAlias(name: "tlbi vmallws2e1os", kind: .noreg)
+        case (4, 8, 5, 2): BESSysAlias(name: "tlbi vmallws2e1os", kind: .optCommaReg)
         case (4, 8, 5, 5): BESSysAlias(name: "tlbi rvale2os", kind: .reg)
         case (4, 8, 6, 1): BESSysAlias(name: "tlbi rvae2", kind: .reg)
         case (4, 8, 6, 2): BESSysAlias(name: "tlbi vmallws2e1", kind: .noreg)
@@ -217,19 +256,19 @@ public enum BESSysAliasTable {
         case (4, 9, 0, 2): BESSysAlias(name: "tlbi ripas2e1isnxs", kind: .reg)
         case (4, 9, 0, 5): BESSysAlias(name: "tlbi ipas2le1isnxs", kind: .reg)
         case (4, 9, 0, 6): BESSysAlias(name: "tlbi ripas2le1isnxs", kind: .reg)
-        case (4, 9, 1, 0): BESSysAlias(name: "tlbi alle2osnxs", kind: .noreg)
+        case (4, 9, 1, 0): BESSysAlias(name: "tlbi alle2osnxs", kind: .optCommaReg)
         case (4, 9, 1, 1): BESSysAlias(name: "tlbi vae2osnxs", kind: .reg)
-        case (4, 9, 1, 4): BESSysAlias(name: "tlbi alle1osnxs", kind: .noreg)
+        case (4, 9, 1, 4): BESSysAlias(name: "tlbi alle1osnxs", kind: .optCommaReg)
         case (4, 9, 1, 5): BESSysAlias(name: "tlbi vale2osnxs", kind: .reg)
-        case (4, 9, 1, 6): BESSysAlias(name: "tlbi vmalls12e1osnxs", kind: .noreg)
+        case (4, 9, 1, 6): BESSysAlias(name: "tlbi vmalls12e1osnxs", kind: .optCommaReg)
         case (4, 9, 2, 1): BESSysAlias(name: "tlbi rvae2isnxs", kind: .reg)
-        case (4, 9, 2, 2): BESSysAlias(name: "tlbi vmallws2e1isnxs", kind: .noreg)
+        case (4, 9, 2, 2): BESSysAlias(name: "tlbi vmallws2e1isnxs", kind: .optCommaReg)
         case (4, 9, 2, 5): BESSysAlias(name: "tlbi rvale2isnxs", kind: .reg)
-        case (4, 9, 3, 0): BESSysAlias(name: "tlbi alle2isnxs", kind: .noreg)
+        case (4, 9, 3, 0): BESSysAlias(name: "tlbi alle2isnxs", kind: .optCommaReg)
         case (4, 9, 3, 1): BESSysAlias(name: "tlbi vae2isnxs", kind: .reg)
-        case (4, 9, 3, 4): BESSysAlias(name: "tlbi alle1isnxs", kind: .noreg)
+        case (4, 9, 3, 4): BESSysAlias(name: "tlbi alle1isnxs", kind: .optCommaReg)
         case (4, 9, 3, 5): BESSysAlias(name: "tlbi vale2isnxs", kind: .reg)
-        case (4, 9, 3, 6): BESSysAlias(name: "tlbi vmalls12e1isnxs", kind: .noreg)
+        case (4, 9, 3, 6): BESSysAlias(name: "tlbi vmalls12e1isnxs", kind: .optCommaReg)
         case (4, 9, 4, 0): BESSysAlias(name: "tlbi ipas2e1osnxs", kind: .reg)
         case (4, 9, 4, 1): BESSysAlias(name: "tlbi ipas2e1nxs", kind: .reg)
         case (4, 9, 4, 2): BESSysAlias(name: "tlbi ripas2e1nxs", kind: .reg)
@@ -239,7 +278,7 @@ public enum BESSysAliasTable {
         case (4, 9, 4, 6): BESSysAlias(name: "tlbi ripas2le1nxs", kind: .reg)
         case (4, 9, 4, 7): BESSysAlias(name: "tlbi ripas2le1osnxs", kind: .reg)
         case (4, 9, 5, 1): BESSysAlias(name: "tlbi rvae2osnxs", kind: .reg)
-        case (4, 9, 5, 2): BESSysAlias(name: "tlbi vmallws2e1osnxs", kind: .noreg)
+        case (4, 9, 5, 2): BESSysAlias(name: "tlbi vmallws2e1osnxs", kind: .optCommaReg)
         case (4, 9, 5, 5): BESSysAlias(name: "tlbi rvale2osnxs", kind: .reg)
         case (4, 9, 6, 1): BESSysAlias(name: "tlbi rvae2nxs", kind: .reg)
         case (4, 9, 6, 2): BESSysAlias(name: "tlbi vmallws2e1nxs", kind: .noreg)
@@ -249,40 +288,96 @@ public enum BESSysAliasTable {
         case (4, 9, 7, 4): BESSysAlias(name: "tlbi alle1nxs", kind: .noreg)
         case (4, 9, 7, 5): BESSysAlias(name: "tlbi vale2nxs", kind: .reg)
         case (4, 9, 7, 6): BESSysAlias(name: "tlbi vmalls12e1nxs", kind: .noreg)
+        case (4, 10, 1, 0): BESSysAlias(name: "plbi alle2os", kind: .optCommaReg)
+        case (4, 10, 1, 1): BESSysAlias(name: "plbi perme2os", kind: .reg)
+        case (4, 10, 1, 4): BESSysAlias(name: "plbi alle1os", kind: .optCommaReg)
+        case (4, 10, 3, 0): BESSysAlias(name: "plbi alle2is", kind: .optCommaReg)
+        case (4, 10, 3, 1): BESSysAlias(name: "plbi perme2is", kind: .reg)
+        case (4, 10, 3, 4): BESSysAlias(name: "plbi alle1is", kind: .optCommaReg)
+        case (4, 10, 7, 0): BESSysAlias(name: "plbi alle2", kind: .noreg)
+        case (4, 10, 7, 1): BESSysAlias(name: "plbi perme2", kind: .reg)
+        case (4, 10, 7, 4): BESSysAlias(name: "plbi alle1", kind: .noreg)
+        case (4, 10, 9, 0): BESSysAlias(name: "plbi alle2osnxs", kind: .optCommaReg)
+        case (4, 10, 9, 1): BESSysAlias(name: "plbi perme2osnxs", kind: .reg)
+        case (4, 10, 9, 4): BESSysAlias(name: "plbi alle1osnxs", kind: .optCommaReg)
+        case (4, 10, 11, 0): BESSysAlias(name: "plbi alle2isnxs", kind: .optCommaReg)
+        case (4, 10, 11, 1): BESSysAlias(name: "plbi perme2isnxs", kind: .reg)
+        case (4, 10, 11, 4): BESSysAlias(name: "plbi alle1isnxs", kind: .optCommaReg)
+        case (4, 10, 15, 0): BESSysAlias(name: "plbi alle2nxs", kind: .noreg)
+        case (4, 10, 15, 1): BESSysAlias(name: "plbi perme2nxs", kind: .reg)
+        case (4, 10, 15, 4): BESSysAlias(name: "plbi alle1nxs", kind: .noreg)
+        case (4, 12, 1, 0): BESSysAlias(name: "gic vddis", kind: .reg)
+        case (4, 12, 1, 1): BESSysAlias(name: "gic vden", kind: .reg)
+        case (4, 12, 1, 2): BESSysAlias(name: "gic vdpri", kind: .reg)
+        case (4, 12, 1, 3): BESSysAlias(name: "gic vdaff", kind: .reg)
+        case (4, 12, 1, 4): BESSysAlias(name: "gic vdpend", kind: .reg)
+        case (4, 12, 1, 5): BESSysAlias(name: "gic vdrcfg", kind: .reg)
+        case (4, 12, 2, 0): BESSysAlias(name: "gic vddi", kind: .reg)
+        case (4, 12, 2, 1): BESSysAlias(name: "gic vdhm", kind: .reg)
         case (6, 7, 0, 0): BESSysAlias(name: "apas", kind: .bareReg)
         case (6, 7, 8, 0): BESSysAlias(name: "at s1e3r", kind: .reg)
         case (6, 7, 8, 1): BESSysAlias(name: "at s1e3w", kind: .reg)
         case (6, 7, 9, 2): BESSysAlias(name: "at s1e3a", kind: .reg)
-        case (6, 8, 1, 0): BESSysAlias(name: "tlbi alle3os", kind: .noreg)
+        case (6, 7, 14, 1): BESSysAlias(name: "dc cipapa", kind: .reg)
+        case (6, 7, 14, 5): BESSysAlias(name: "dc cigdpapa", kind: .reg)
+        case (6, 8, 1, 0): BESSysAlias(name: "tlbi alle3os", kind: .optCommaReg)
         case (6, 8, 1, 1): BESSysAlias(name: "tlbi vae3os", kind: .reg)
+        case (6, 8, 1, 4): BESSysAlias(name: "tlbi paallos", kind: .noreg)
         case (6, 8, 1, 5): BESSysAlias(name: "tlbi vale3os", kind: .reg)
         case (6, 8, 2, 1): BESSysAlias(name: "tlbi rvae3is", kind: .reg)
         case (6, 8, 2, 5): BESSysAlias(name: "tlbi rvale3is", kind: .reg)
-        case (6, 8, 3, 0): BESSysAlias(name: "tlbi alle3is", kind: .noreg)
+        case (6, 8, 3, 0): BESSysAlias(name: "tlbi alle3is", kind: .optCommaReg)
         case (6, 8, 3, 1): BESSysAlias(name: "tlbi vae3is", kind: .reg)
         case (6, 8, 3, 5): BESSysAlias(name: "tlbi vale3is", kind: .reg)
+        case (6, 8, 4, 3): BESSysAlias(name: "tlbi rpaos", kind: .reg)
+        case (6, 8, 4, 7): BESSysAlias(name: "tlbi rpalos", kind: .reg)
         case (6, 8, 5, 1): BESSysAlias(name: "tlbi rvae3os", kind: .reg)
         case (6, 8, 5, 5): BESSysAlias(name: "tlbi rvale3os", kind: .reg)
         case (6, 8, 6, 1): BESSysAlias(name: "tlbi rvae3", kind: .reg)
         case (6, 8, 6, 5): BESSysAlias(name: "tlbi rvale3", kind: .reg)
         case (6, 8, 7, 0): BESSysAlias(name: "tlbi alle3", kind: .noreg)
         case (6, 8, 7, 1): BESSysAlias(name: "tlbi vae3", kind: .reg)
+        case (6, 8, 7, 4): BESSysAlias(name: "tlbi paall", kind: .noreg)
         case (6, 8, 7, 5): BESSysAlias(name: "tlbi vale3", kind: .reg)
-        case (6, 9, 1, 0): BESSysAlias(name: "tlbi alle3osnxs", kind: .noreg)
+        case (6, 9, 1, 0): BESSysAlias(name: "tlbi alle3osnxs", kind: .optCommaReg)
         case (6, 9, 1, 1): BESSysAlias(name: "tlbi vae3osnxs", kind: .reg)
+        case (6, 9, 1, 4): BESSysAlias(name: "tlbi paallosnxs", kind: .noreg)
         case (6, 9, 1, 5): BESSysAlias(name: "tlbi vale3osnxs", kind: .reg)
         case (6, 9, 2, 1): BESSysAlias(name: "tlbi rvae3isnxs", kind: .reg)
         case (6, 9, 2, 5): BESSysAlias(name: "tlbi rvale3isnxs", kind: .reg)
-        case (6, 9, 3, 0): BESSysAlias(name: "tlbi alle3isnxs", kind: .noreg)
+        case (6, 9, 3, 0): BESSysAlias(name: "tlbi alle3isnxs", kind: .optCommaReg)
         case (6, 9, 3, 1): BESSysAlias(name: "tlbi vae3isnxs", kind: .reg)
         case (6, 9, 3, 5): BESSysAlias(name: "tlbi vale3isnxs", kind: .reg)
+        case (6, 9, 4, 3): BESSysAlias(name: "tlbi rpaosnxs", kind: .reg)
+        case (6, 9, 4, 7): BESSysAlias(name: "tlbi rpalosnxs", kind: .reg)
         case (6, 9, 5, 1): BESSysAlias(name: "tlbi rvae3osnxs", kind: .reg)
         case (6, 9, 5, 5): BESSysAlias(name: "tlbi rvale3osnxs", kind: .reg)
         case (6, 9, 6, 1): BESSysAlias(name: "tlbi rvae3nxs", kind: .reg)
         case (6, 9, 6, 5): BESSysAlias(name: "tlbi rvale3nxs", kind: .reg)
         case (6, 9, 7, 0): BESSysAlias(name: "tlbi alle3nxs", kind: .noreg)
         case (6, 9, 7, 1): BESSysAlias(name: "tlbi vae3nxs", kind: .reg)
+        case (6, 9, 7, 4): BESSysAlias(name: "tlbi paallnxs", kind: .noreg)
         case (6, 9, 7, 5): BESSysAlias(name: "tlbi vale3nxs", kind: .reg)
+        case (6, 10, 1, 0): BESSysAlias(name: "plbi alle3os", kind: .noreg)
+        case (6, 10, 1, 1): BESSysAlias(name: "plbi perme3os", kind: .reg)
+        case (6, 10, 3, 0): BESSysAlias(name: "plbi alle3is", kind: .noreg)
+        case (6, 10, 3, 1): BESSysAlias(name: "plbi perme3is", kind: .reg)
+        case (6, 10, 7, 0): BESSysAlias(name: "plbi alle3", kind: .noreg)
+        case (6, 10, 7, 1): BESSysAlias(name: "plbi perme3", kind: .reg)
+        case (6, 10, 9, 0): BESSysAlias(name: "plbi alle3osnxs", kind: .noreg)
+        case (6, 10, 9, 1): BESSysAlias(name: "plbi perme3osnxs", kind: .reg)
+        case (6, 10, 11, 0): BESSysAlias(name: "plbi alle3isnxs", kind: .noreg)
+        case (6, 10, 11, 1): BESSysAlias(name: "plbi perme3isnxs", kind: .reg)
+        case (6, 10, 15, 0): BESSysAlias(name: "plbi alle3nxs", kind: .noreg)
+        case (6, 10, 15, 1): BESSysAlias(name: "plbi perme3nxs", kind: .reg)
+        case (6, 12, 1, 0): BESSysAlias(name: "gic lddis", kind: .reg)
+        case (6, 12, 1, 1): BESSysAlias(name: "gic lden", kind: .reg)
+        case (6, 12, 1, 2): BESSysAlias(name: "gic ldpri", kind: .reg)
+        case (6, 12, 1, 3): BESSysAlias(name: "gic ldaff", kind: .reg)
+        case (6, 12, 1, 4): BESSysAlias(name: "gic ldpend", kind: .reg)
+        case (6, 12, 1, 5): BESSysAlias(name: "gic ldrcfg", kind: .reg)
+        case (6, 12, 2, 0): BESSysAlias(name: "gic lddi", kind: .reg)
+        case (6, 12, 2, 1): BESSysAlias(name: "gic ldhm", kind: .reg)
         default:
             nil
         }
@@ -296,6 +391,8 @@ public enum BESSyslAliasTable {
         op1: UInt8, CRn: UInt8, CRm: UInt8, op2: UInt8,
     ) -> BESSysAlias? {
         switch (op1, CRn, CRm, op2) {
+        case (0, 12, 3, 0): BESSysAlias(name: "gicr", kind: .regThenName("cdia"))
+        case (0, 12, 3, 1): BESSysAlias(name: "gicr", kind: .regThenName("cdnmia"))
         case (3, 7, 7, 1): BESSysAlias(name: "gcspopm", kind: .optReg)
         case (3, 7, 7, 3): BESSysAlias(name: "gcsss2", kind: .reg)
         default:

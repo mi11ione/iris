@@ -1,4 +1,4 @@
-# encoding_hex_be	expected_text  (-mattr=+v9.6a,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+lse,+lor,+rcpc,+rcpc-immo,+rcpc3,+mops,+ls64,+lse128,+fullfp16,+bf16,+i8mm,+aes,+sha2,+sha3,+sm4,+sve,+sve2,+sme,+sme2,+sme-i16i64,+sme-f64f64,+faminmax,+lut,+fp8,+fp8fma,+fp8dot2,+fp8dot4,+f8f16mm,+f8f32mm,+cpa,+sve2p1,+sve2p2,+sve2p3,+sve-aes,+sve-aes2,+sve2-aes,+sve-bitperm,+sve2-bitperm,+sve-sha3,+sve2-sha3,+sve-sm4,+sve2-sm4,+sve-b16b16,+sve-b16mm,+sve-bfscale,+sve-f16f32mm,+sme2p1,+sme2p2,+sme2p3,+sme-b16b16,+sme-f16f16,+sme-f8f16,+sme-f8f32,+sme-fa64,+sme-lutv2,+sme-mop4,+sme-tmop,+ssve-aes,+ssve-bitperm,+ssve-fexpa,+ssve-fp8dot2,+ssve-fp8dot4,+ssve-fp8fma,+f16mm,+f32mm,+f64mm)
+# encoding_hex_be	expected_text  (-mattr=+all,+v9.6a)
 2518e001	ptrue p1.b, pow2
 2518e020	ptrue p0.b, vl1
 2518e02f	ptrue p15.b, vl1
@@ -18058,25 +18058,20 @@
 25004421	and p1.b, p1/z, p1.b, p0.b
 25005c21	and p1.b, p7/z, p1.b, p0.b
 25014021	mov p1.b, p0/z, p1.b
-25014421	mov p1.b, p1/z, p1.b
 25015c21	mov p1.b, p7/z, p1.b
 250f4021	and p1.b, p0/z, p1.b, p15.b
 250f4421	and p1.b, p1/z, p1.b, p15.b
 250f5c21	and p1.b, p7/z, p1.b, p15.b
 25104021	brka p1.b, p0/z, p1.b
-25104421	brka p1.b, p1/z, p1.b
 25105c21	brka p1.b, p7/z, p1.b
 251f4021	
 251f4421	
 251f5c21	
 25404021	ands p1.b, p0/z, p1.b, p0.b
-25404421	ands p1.b, p1/z, p1.b, p0.b
 25405c21	ands p1.b, p7/z, p1.b, p0.b
-25414021	movs p1.b, p0/z, p1.b
 25414421	movs p1.b, p1/z, p1.b
 25415c21	movs p1.b, p7/z, p1.b
 254f4021	ands p1.b, p0/z, p1.b, p15.b
-254f4421	ands p1.b, p1/z, p1.b, p15.b
 254f5c21	ands p1.b, p7/z, p1.b, p15.b
 25504021	brkas p1.b, p0/z, p1.b
 25504421	brkas p1.b, p1/z, p1.b
@@ -18084,16 +18079,13 @@
 255f4021	
 255f4421	
 255f5c21	
-25804021	orr p1.b, p0/z, p1.b, p0.b
 25804421	orr p1.b, p1/z, p1.b, p0.b
 25805c21	orr p1.b, p7/z, p1.b, p0.b
 25814021	orr p1.b, p0/z, p1.b, p1.b
 25814421	mov p1.b, p1.b
 25815c21	orr p1.b, p7/z, p1.b, p1.b
-258f4021	orr p1.b, p0/z, p1.b, p15.b
 258f4421	orr p1.b, p1/z, p1.b, p15.b
 258f5c21	orr p1.b, p7/z, p1.b, p15.b
-25904021	brkb p1.b, p0/z, p1.b
 25904421	brkb p1.b, p1/z, p1.b
 25905c21	brkb p1.b, p7/z, p1.b
 259f4021	
@@ -18103,43 +18095,34 @@
 25c04421	orrs p1.b, p1/z, p1.b, p0.b
 25c05c21	orrs p1.b, p7/z, p1.b, p0.b
 25c14021	orrs p1.b, p0/z, p1.b, p1.b
-25c14421	movs p1.b, p1.b
 25c15c21	orrs p1.b, p7/z, p1.b, p1.b
 25cf4021	orrs p1.b, p0/z, p1.b, p15.b
 25cf4421	orrs p1.b, p1/z, p1.b, p15.b
 25cf5c21	orrs p1.b, p7/z, p1.b, p15.b
 25d04021	brkbs p1.b, p0/z, p1.b
-25d04421	brkbs p1.b, p1/z, p1.b
 25d05c21	brkbs p1.b, p7/z, p1.b
 25df4021	
 25df4421	
 25df5c21	
 25004031	bic p1.b, p0/z, p1.b, p0.b
-25004431	bic p1.b, p1/z, p1.b, p0.b
 25005c31	bic p1.b, p7/z, p1.b, p0.b
-25014031	bic p1.b, p0/z, p1.b, p1.b
 25014431	bic p1.b, p1/z, p1.b, p1.b
 25015c31	bic p1.b, p7/z, p1.b, p1.b
 250f4031	bic p1.b, p0/z, p1.b, p15.b
-250f4431	bic p1.b, p1/z, p1.b, p15.b
 250f5c31	bic p1.b, p7/z, p1.b, p15.b
-25104031	brka p1.b, p0/m, p1.b
 25104431	brka p1.b, p1/m, p1.b
 25105c31	brka p1.b, p7/m, p1.b
 251f4031	
 251f4431	
 251f5c31	
-25404031	bics p1.b, p0/z, p1.b, p0.b
 25404431	bics p1.b, p1/z, p1.b, p0.b
 25405c31	bics p1.b, p7/z, p1.b, p0.b
 25414031	bics p1.b, p0/z, p1.b, p1.b
 25414431	bics p1.b, p1/z, p1.b, p1.b
 25415c31	bics p1.b, p7/z, p1.b, p1.b
-254f4031	bics p1.b, p0/z, p1.b, p15.b
 254f4431	bics p1.b, p1/z, p1.b, p15.b
 254f5c31	bics p1.b, p7/z, p1.b, p15.b
 25504031	
-25504431	
 25505c31	
 255f4031	
 255f4431	
@@ -18148,7 +18131,6 @@
 25804431	orn p1.b, p1/z, p1.b, p0.b
 25805c31	orn p1.b, p7/z, p1.b, p0.b
 25814031	orn p1.b, p0/z, p1.b, p1.b
-25814431	orn p1.b, p1/z, p1.b, p1.b
 25815c31	orn p1.b, p7/z, p1.b, p1.b
 258f4031	orn p1.b, p0/z, p1.b, p15.b
 258f4431	orn p1.b, p1/z, p1.b, p15.b
@@ -18160,15 +18142,11 @@
 259f4431	
 259f5c31	
 25c04031	orns p1.b, p0/z, p1.b, p0.b
-25c04431	orns p1.b, p1/z, p1.b, p0.b
 25c05c31	orns p1.b, p7/z, p1.b, p0.b
-25c14031	orns p1.b, p0/z, p1.b, p1.b
 25c14431	orns p1.b, p1/z, p1.b, p1.b
 25c15c31	orns p1.b, p7/z, p1.b, p1.b
 25cf4031	orns p1.b, p0/z, p1.b, p15.b
-25cf4431	orns p1.b, p1/z, p1.b, p15.b
 25cf5c31	orns p1.b, p7/z, p1.b, p15.b
-25d04031	
 25d04431	
 25d05c31	
 25df4031	
@@ -18194,7 +18172,6 @@
 25407c21	ands p1.b, p15/z, p1.b, p0.b
 25416021	movs p1.b, p8/z, p1.b
 25416421	movs p1.b, p9/z, p1.b
-25417c21	movs p1.b, p15/z, p1.b
 254f6021	ands p1.b, p8/z, p1.b, p15.b
 254f6421	ands p1.b, p9/z, p1.b, p15.b
 254f7c21	ands p1.b, p15/z, p1.b, p15.b
@@ -18206,16 +18183,13 @@
 255f7c21	
 25806021	orr p1.b, p8/z, p1.b, p0.b
 25806421	orr p1.b, p9/z, p1.b, p0.b
-25807c21	orr p1.b, p15/z, p1.b, p0.b
 25816021	orr p1.b, p8/z, p1.b, p1.b
 25816421	orr p1.b, p9/z, p1.b, p1.b
 25817c21	orr p1.b, p15/z, p1.b, p1.b
 258f6021	orr p1.b, p8/z, p1.b, p15.b
 258f6421	orr p1.b, p9/z, p1.b, p15.b
-258f7c21	orr p1.b, p15/z, p1.b, p15.b
 25906021	brkb p1.b, p8/z, p1.b
 25906421	brkb p1.b, p9/z, p1.b
-25907c21	brkb p1.b, p15/z, p1.b
 259f6021	
 259f6421	
 259f7c21	
@@ -18239,25 +18213,21 @@
 25007c31	bic p1.b, p15/z, p1.b, p0.b
 25016031	bic p1.b, p8/z, p1.b, p1.b
 25016431	bic p1.b, p9/z, p1.b, p1.b
-25017c31	bic p1.b, p15/z, p1.b, p1.b
 250f6031	bic p1.b, p8/z, p1.b, p15.b
 250f6431	bic p1.b, p9/z, p1.b, p15.b
 250f7c31	bic p1.b, p15/z, p1.b, p15.b
 25106031	brka p1.b, p8/m, p1.b
 25106431	brka p1.b, p9/m, p1.b
-25107c31	brka p1.b, p15/m, p1.b
 251f6031	
 251f6431	
 251f7c31	
 25406031	bics p1.b, p8/z, p1.b, p0.b
 25406431	bics p1.b, p9/z, p1.b, p0.b
-25407c31	bics p1.b, p15/z, p1.b, p0.b
 25416031	bics p1.b, p8/z, p1.b, p1.b
 25416431	bics p1.b, p9/z, p1.b, p1.b
 25417c31	bics p1.b, p15/z, p1.b, p1.b
 254f6031	bics p1.b, p8/z, p1.b, p15.b
 254f6431	bics p1.b, p9/z, p1.b, p15.b
-254f7c31	bics p1.b, p15/z, p1.b, p15.b
 25506031	
 25506431	
 25507c31	
@@ -18284,13 +18254,11 @@
 25c07c31	orns p1.b, p15/z, p1.b, p0.b
 25c16031	orns p1.b, p8/z, p1.b, p1.b
 25c16431	orns p1.b, p9/z, p1.b, p1.b
-25c17c31	orns p1.b, p15/z, p1.b, p1.b
 25cf6031	orns p1.b, p8/z, p1.b, p15.b
 25cf6431	orns p1.b, p9/z, p1.b, p15.b
 25cf7c31	orns p1.b, p15/z, p1.b, p15.b
 25d06031	
 25d06431	
-25d07c31	
 25df6031	
 25df6431	
 25df7c31	
@@ -18534,13 +18502,11 @@
 25dfa031	
 25dfa431	
 25dfbc31	
-2500c021	brkpa p1.b, p0/z, p1.b, p0.b
 2500c421	brkpa p1.b, p1/z, p1.b, p0.b
 2500dc21	brkpa p1.b, p7/z, p1.b, p0.b
 2501c021	brkpa p1.b, p0/z, p1.b, p1.b
 2501c421	brkpa p1.b, p1/z, p1.b, p1.b
 2501dc21	brkpa p1.b, p7/z, p1.b, p1.b
-250fc021	brkpa p1.b, p0/z, p1.b, p15.b
 250fc421	brkpa p1.b, p1/z, p1.b, p15.b
 250fdc21	brkpa p1.b, p7/z, p1.b, p15.b
 2510c021	
@@ -18550,13 +18516,10 @@
 251fc421	
 251fdc21	
 2540c021	brkpas p1.b, p0/z, p1.b, p0.b
-2540c421	brkpas p1.b, p1/z, p1.b, p0.b
 2540dc21	brkpas p1.b, p7/z, p1.b, p0.b
-2541c021	brkpas p1.b, p0/z, p1.b, p1.b
 2541c421	brkpas p1.b, p1/z, p1.b, p1.b
 2541dc21	brkpas p1.b, p7/z, p1.b, p1.b
 254fc021	brkpas p1.b, p0/z, p1.b, p15.b
-254fc421	brkpas p1.b, p1/z, p1.b, p15.b
 254fdc21	brkpas p1.b, p7/z, p1.b, p15.b
 2550c021	
 2550c421	
@@ -18598,7 +18561,6 @@
 2500c431	brkpb p1.b, p1/z, p1.b, p0.b
 2500dc31	brkpb p1.b, p7/z, p1.b, p0.b
 2501c031	brkpb p1.b, p0/z, p1.b, p1.b
-2501c431	brkpb p1.b, p1/z, p1.b, p1.b
 2501dc31	brkpb p1.b, p7/z, p1.b, p1.b
 250fc031	brkpb p1.b, p0/z, p1.b, p15.b
 250fc431	brkpb p1.b, p1/z, p1.b, p15.b
@@ -18609,13 +18571,11 @@
 251fc031	
 251fc431	
 251fdc31	
-2540c031	brkpbs p1.b, p0/z, p1.b, p0.b
 2540c431	brkpbs p1.b, p1/z, p1.b, p0.b
 2540dc31	brkpbs p1.b, p7/z, p1.b, p0.b
 2541c031	brkpbs p1.b, p0/z, p1.b, p1.b
 2541c431	brkpbs p1.b, p1/z, p1.b, p1.b
 2541dc31	brkpbs p1.b, p7/z, p1.b, p1.b
-254fc031	brkpbs p1.b, p0/z, p1.b, p15.b
 254fc431	brkpbs p1.b, p1/z, p1.b, p15.b
 254fdc31	brkpbs p1.b, p7/z, p1.b, p15.b
 2550c031	
@@ -18656,13 +18616,11 @@
 25dfdc31	
 2500e021	brkpa p1.b, p8/z, p1.b, p0.b
 2500e421	brkpa p1.b, p9/z, p1.b, p0.b
-2500fc21	brkpa p1.b, p15/z, p1.b, p0.b
 2501e021	brkpa p1.b, p8/z, p1.b, p1.b
 2501e421	brkpa p1.b, p9/z, p1.b, p1.b
 2501fc21	brkpa p1.b, p15/z, p1.b, p1.b
 250fe021	brkpa p1.b, p8/z, p1.b, p15.b
 250fe421	brkpa p1.b, p9/z, p1.b, p15.b
-250ffc21	brkpa p1.b, p15/z, p1.b, p15.b
 2510e021	
 2510e421	
 2510fc21	
@@ -18674,7 +18632,6 @@
 2540fc21	brkpas p1.b, p15/z, p1.b, p0.b
 2541e021	brkpas p1.b, p8/z, p1.b, p1.b
 2541e421	brkpas p1.b, p9/z, p1.b, p1.b
-2541fc21	brkpas p1.b, p15/z, p1.b, p1.b
 254fe021	brkpas p1.b, p8/z, p1.b, p15.b
 254fe421	brkpas p1.b, p9/z, p1.b, p15.b
 254ffc21	brkpas p1.b, p15/z, p1.b, p15.b
@@ -18731,13 +18688,11 @@
 251ffc31	
 2540e031	brkpbs p1.b, p8/z, p1.b, p0.b
 2540e431	brkpbs p1.b, p9/z, p1.b, p0.b
-2540fc31	brkpbs p1.b, p15/z, p1.b, p0.b
 2541e031	brkpbs p1.b, p8/z, p1.b, p1.b
 2541e431	brkpbs p1.b, p9/z, p1.b, p1.b
 2541fc31	brkpbs p1.b, p15/z, p1.b, p1.b
 254fe031	brkpbs p1.b, p8/z, p1.b, p15.b
 254fe431	brkpbs p1.b, p9/z, p1.b, p15.b
-254ffc31	brkpbs p1.b, p15/z, p1.b, p15.b
 2550e031	
 2550e431	
 2550fc31	
@@ -22693,7 +22648,6 @@
 25208fff	
 2560801f	cntp xzr, p0, p0.h
 2560901f	cntp xzr, p4, p0.h
-25a0803f	cntp xzr, p0, p1.s
 25a09fff	
 25e08fff	
 2520a01f	cntp xzr, p8, p0.b
@@ -22906,9 +22860,7 @@
 2528803f	
 25289fff	
 25688fff	
-25a8801f	sqincp z31.s, p0.s
 25a8901f	
-25e8803f	sqincp z31.d, p1.d
 25e89fff	
 2528afff	
 2568a01f	
@@ -22986,9 +22938,7 @@
 252b803f	
 252b9fff	
 256b8fff	
-25ab801f	uqdecp z31.s, p0.s
 25ab901f	
-25eb803f	uqdecp z31.d, p1.d
 25eb9fff	
 252bafff	
 256ba01f	
@@ -23038,10 +22988,8 @@
 25ecefff	
 252d801f	
 252d901f	
-256d803f	decp z31.h, p1.h
 256d9fff	
 25ad8fff	
-25ed801f	decp z31.d, p0.d
 25ed901f	
 252da03f	
 252dbfff	
@@ -43427,7 +43375,6 @@
 64ffe821	
 64fff05f	
 64fffbe0	
-040ca7e1	
 040dbc3f	
 041da020	
 044ca401	fabs z1.h, p1/z, z0.h
@@ -43436,7 +43383,6 @@
 048ca021	fabs z1.s, p0/z, z1.s
 048da41f	fneg z31.s, p1/z, z0.s
 049cbc00	fabs z0.s, p7/m, z0.s
-049dbfe1	fneg z1.s, p7/m, z31.s
 04cda03f	fneg z31.d, p0/z, z1.d
 04dca420	fabs z0.d, p1/m, z1.d
 04ddbc01	fneg z1.d, p7/m, z0.d
@@ -51692,7 +51638,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 0524d3c1	sel z1.b, p4, z30.b, z4.b
 0524ec20	sel z0.b, p11, z1.b, z4.b
 052507df	ext z31.b, z31.b, z30.b, #41
-05252021	mov z1.b, z1.b[2]
 05253be0	
 0525543f	
 05256fe1	uzp2 z1.b, z31.b, z5.b
@@ -52112,7 +52057,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 054fb3c1	
 054fcc20	
 054fe7df	
-05500021	mov z1.h, p0/z, #1
 05501be0	mov z0.h, p0/z, #-33
 0550343f	mov z31.h, p0/z, #-24320
 05504fe1	mov z1.h, p0/m, #127
@@ -53132,7 +53076,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 05b7d3c1	sel z1.s, p4, z30.s, z23.s
 05b7ec20	sel z0.s, p11, z1.s, z23.s
 05b807df	zip2 z31.q, z30.q, z24.q
-05b82021	mov z1.d, z1.d[5]
 05b83be0	rev z0.s, z31.s
 05b8543f	
 05b86fe1	uzp2 z1.s, z31.s, z24.s
@@ -53612,7 +53555,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 05e8d3c1	sel z1.d, p4, z30.d, z8.d
 05e8ec20	sel z0.d, p11, z1.d, z8.d
 05e907df	
-05e92021	mov z1.b, z1.b[52]
 05e93be0	
 05e9543f	
 05e96fe1	uzp2 z1.d, z31.d, z9.d
@@ -53842,7 +53784,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44004c3f	
 440067e1	
 44008040	
-44009bff	
 4400b441	
 4400d000	
 4400e85f	uzpq1 z31.b, z2.b, z0.b
@@ -54037,7 +53978,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4414343f	sqrdcmlah z31.b, z1.b, z20.b, #90
 44144fe1	
 44146840	
-441483ff	srhadd z31.b, p0/m, z31.b, z31.b
 44149c41	srhadd z1.b, p7/m, z1.b, z2.b
 4414b800	smaxp z0.b, p6/m, z0.b, z0.b
 4414d05f	
@@ -54097,7 +54037,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 441a543f	
 441a6fe1	
 441a8840	sqsub z0.b, p2/m, z0.b, z2.b
-441aa3ff	
 441abc41	
 441ad800	
 441af05f	
@@ -54142,7 +54081,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 441eec3f	uzpq2 z31.b, z1.b, z30.b
 441f07e1	
 441f2040	cmla z0.b, z2.b, z31.b, #0
-441f3bff	sqrdcmlah z31.b, z31.b, z31.b, #180
 441f5441	
 441f7000	sqrdmlah z0.b, z0.b, z31.b
 441f885f	uqsubr z31.b, p2/m, z31.b, z2.b
@@ -54157,7 +54095,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4420743f	
 44208fe1	
 4420a840	
-4420c3ff	
 4420dc41	
 4420f800	mul z0.h, z0.h, z0.h[0]
 4421105f	sqrdmlah z31.h, z2.h, z1.h[0]
@@ -54232,7 +54169,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44281c3f	
 442837e1	
 44285040	
-44286bff	
 44288441	
 4428a000	
 4428b85f	
@@ -54247,7 +54183,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4429a43f	
 4429bfe1	
 4429d840	
-4429f3ff	sqdmulh z31.h, z31.h, z1.h[1]
 442a0c41	mls z1.h, z2.h, z2.h[1]
 442a2800	
 442a405f	
@@ -54307,7 +54242,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 442fc43f	
 442fdfe1	
 442ff840	mul z0.h, z2.h, z7.h[1]
-443013ff	sqrdmlah z31.h, z31.h, z0.h[2]
 44302c41	
 44304800	
 4430605f	
@@ -54322,7 +54256,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44314c3f	
 443167e1	
 44318040	
-44319bff	
 4431b441	
 4431d000	
 4431e85f	
@@ -54382,7 +54315,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44376c3f	
 443787e1	
 4437a040	
-4437bbff	
 4437d441	
 4437f000	sqdmulh z0.h, z0.h, z7.h[2]
 4438085f	mla z31.h, z2.h, z0.h[3]
@@ -54397,7 +54329,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4438f43f	sqrdmulh z31.h, z1.h, z0.h[3]
 44390fe1	mls z1.h, z31.h, z1.h[3]
 44392840	
-443943ff	
 44395c41	
 44397800	
 4439905f	
@@ -54457,7 +54388,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 443f143f	sqrdmlsh z31.h, z1.h, z7.h[3]
 443f2fe1	
 443f4840	
-443f63ff	
 443f7c41	
 443f9800	
 443fb05f	
@@ -54472,7 +54402,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44409c3f	
 4440b7e1	
 4440d040	
-4440ebff	uzpq1 z31.h, z31.h, z0.h
 44410441	udot z1.h, z2.b, z1.b
 44412000	cmla z0.h, z0.h, z1.h, #0
 4441385f	sqrdcmlah z31.h, z2.h, z1.h, #180
@@ -54517,7 +54446,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4445343f	sqrdcmlah z31.h, z1.h, z5.h, #90
 44454fe1	umlalt z1.h, z31.b, z5.b
 44456840	sqdmlslb z0.h, z2.b, z5.b
-444583ff	
 44459c41	
 4445b800	uadalp z0.h, p6/m, z0.b
 4445d05f	
@@ -54577,7 +54505,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 444b543f	smlslt z31.h, z1.b, z11.b
 444b6fe1	sqdmlslt z1.h, z31.b, z11.b
 444b8840	uqrshl z0.h, p2/m, z0.h, z2.h
-444ba3ff	sqneg z31.h, p0/z, z31.h
 444bbc41	sqneg z1.h, p7/z, z2.h
 444bd800	
 444bf05f	
@@ -54772,7 +54699,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 445f3c3f	sqrdcmlah z31.h, z1.h, z31.h, #270
 445f57e1	smlslt z1.h, z31.b, z31.b
 445f7040	sqrdmlah z0.h, z2.h, z31.h
-445f8bff	uqsubr z31.h, p2/m, z31.h, z31.h
 445fa441	
 445fc000	sclamp z0.h, z0.h, z31.h
 445fd85f	
@@ -54787,7 +54713,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4460c43f	
 4460dfe1	
 4460f840	mul z0.h, z2.h, z0.h[4]
-446113ff	sqrdmlah z31.h, z31.h, z1.h[4]
 44612c41	
 44614800	
 4461605f	
@@ -54847,7 +54772,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4466e43f	
 4466ffe1	
 44671840	
-446733ff	
 44674c41	
 44676800	
 4467805f	
@@ -54862,7 +54786,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44686c3f	
 446887e1	
 4468a040	
-4468bbff	
 4468d441	
 4468f000	sqdmulh z0.h, z0.h, z0.h[5]
 4469085f	mla z31.h, z2.h, z1.h[5]
@@ -54937,7 +54860,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4470143f	sqrdmlsh z31.h, z1.h, z0.h[6]
 44702fe1	
 44704840	
-447063ff	
 44707c41	
 44709800	
 4470b05f	
@@ -54952,7 +54874,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44719c3f	
 4471b7e1	
 4471d040	
-4471ebff	
 44720441	udot z1.h, z2.b, z2.b[6]
 44722000	
 4472385f	
@@ -55012,7 +54933,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4477bc3f	
 4477d7e1	
 4477f040	sqdmulh z0.h, z2.h, z7.h[6]
-44780bff	mla z31.h, z31.h, z0.h[7]
 44782441	
 44784000	
 4478585f	
@@ -55027,7 +54947,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4479443f	
 44795fe1	
 44797840	
-447993ff	
 4479ac41	
 4479c800	
 4479e05f	
@@ -55087,7 +55006,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 447f643f	
 447f7fe1	
 447f9840	
-447fb3ff	
 447fcc41	
 447fe800	
 4480005f	sdot z31.s, z2.b, z0.b
@@ -55102,7 +55020,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4480ec3f	uzpq2 z31.s, z1.s, z0.s
 448107e1	udot z1.s, z31.b, z1.b
 44812040	cmla z0.s, z2.s, z1.s, #0
-44813bff	sqrdcmlah z31.s, z31.s, z1.s, #180
 44815441	smlslt z1.s, z2.h, z1.h
 44817000	sqrdmlah z0.s, z0.s, z1.s
 4481885f	
@@ -55402,7 +55319,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 449f8c3f	uqsubr z31.s, p3/m, z31.s, z1.s
 449fa7e1	
 449fc040	sclamp z0.s, z2.s, z31.s
-449fdbff	
 449ff441	
 44a01000	sqrdmlah z0.s, z0.s, z0.s[0]
 44a0285f	sqdmlalb z31.s, z2.h, z0.h[1]
@@ -55417,7 +55333,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44a1143f	sqrdmlsh z31.s, z1.s, z1.s[0]
 44a12fe1	sqdmlalt z1.s, z31.h, z1.h[1]
 44a14840	cdot z0.s, z2.b, z1.b[0], #180
-44a163ff	cmla z31.h, z31.h, z1.h[0], #0
 44a17c41	sqrdcmlah z1.h, z2.h, z1.h[0], #270
 44a19800	umlalb z0.s, z0.h, z1.h[1]
 44a1b05f	umlslb z31.s, z2.h, z1.h[0]
@@ -55477,7 +55392,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44a7343f	sqdmlslt z31.s, z1.h, z7.h[0]
 44a74fe1	cdot z1.s, z31.b, z7.b[0], #270
 44a76840	cmla z0.h, z2.h, z7.h[0], #180
-44a783ff	smlalb z31.s, z31.h, z7.h[0]
 44a79c41	umlalt z1.s, z2.h, z7.h[1]
 44a7b800	umlslb z0.s, z0.h, z7.h[1]
 44a7d05f	umullb z31.s, z2.h, z7.h[0]
@@ -55492,7 +55406,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44a8bc3f	umlslt z31.s, z1.h, z0.h[3]
 44a8d7e1	umullt z1.s, z31.h, z0.h[2]
 44a8f040	sqdmulh z0.s, z2.s, z0.s[1]
-44a90bff	mla z31.s, z31.s, z1.s[1]
 44a92441	sqdmlalt z1.s, z2.h, z1.h[2]
 44a94000	cdot z0.s, z0.b, z1.b[1], #0
 44a9585f	
@@ -55552,7 +55465,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44aedc3f	umullt z31.s, z1.h, z6.h[3]
 44aef7e1	sqrdmulh z1.s, z31.s, z6.s[1]
 44af1040	sqrdmlah z0.s, z2.s, z7.s[1]
-44af2bff	sqdmlalb z31.s, z31.h, z7.h[3]
 44af4441	cdot z1.s, z2.b, z7.b[1], #90
 44af6000	cmla z0.h, z0.h, z7.h[1], #0
 44af785f	sqrdcmlah z31.h, z2.h, z7.h[1], #180
@@ -55567,7 +55479,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44b0643f	cmla z31.h, z1.h, z0.h[2], #90
 44b07fe1	sqrdcmlah z1.h, z31.h, z0.h[2], #270
 44b09840	umlalb z0.s, z2.h, z0.h[5]
-44b0b3ff	umlslb z31.s, z31.h, z0.h[4]
 44b0cc41	smullt z1.s, z2.h, z0.h[5]
 44b0e800	sqdmullb z0.s, z0.h, z0.h[5]
 44b1005f	sdot z31.s, z2.b, z1.b[2]
@@ -55642,7 +55553,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44b80c3f	mls z31.s, z1.s, z0.s[3]
 44b827e1	sqdmlalt z1.s, z31.h, z0.h[6]
 44b84040	cdot z0.s, z2.b, z0.b[3], #0
-44b85bff	
 44b87441	sqrdcmlah z1.h, z2.h, z0.h[3], #90
 44b89000	umlalb z0.s, z0.h, z0.h[6]
 44b8a85f	smlslb z31.s, z2.h, z0.h[7]
@@ -55657,7 +55567,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44b9943f	umlalt z31.s, z1.h, z1.h[6]
 44b9afe1	smlslt z1.s, z31.h, z1.h[7]
 44b9c840	smullb z0.s, z2.h, z1.h[7]
-44b9e3ff	sqdmullb z31.s, z31.h, z1.h[6]
 44b9fc41	
 44ba1800	usdot z0.s, z0.b, z2.b[3]
 44ba305f	sqdmlslb z31.s, z2.h, z2.h[6]
@@ -55717,7 +55626,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44bfb43f	umlslt z31.s, z1.h, z7.h[6]
 44bfcfe1	smullt z1.s, z31.h, z7.h[7]
 44bfe840	sqdmullb z0.s, z2.h, z7.h[7]
-44c003ff	sdot z31.d, z31.h, z0.h
 44c01c41	cdot z1.d, z2.h, z0.h, #270
 44c03800	sqrdcmlah z0.d, z0.d, z0.d, #180
 44c0505f	smlslb z31.d, z2.s, z0.s
@@ -55732,7 +55640,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44c13c3f	sqrdcmlah z31.d, z1.d, z1.d, #270
 44c157e1	smlslt z1.d, z31.s, z1.s
 44c17040	sqrdmlah z0.d, z2.d, z1.d
-44c18bff	
 44c1a441	
 44c1c000	sclamp z0.d, z0.d, z1.d
 44c1d85f	madpt z31.d, z1.d, z2.d
@@ -55957,7 +55864,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44d8343f	sqrdcmlah z31.d, z1.d, z24.d, #90
 44d84fe1	umlalt z1.d, z31.s, z24.s
 44d86840	sqdmlslb z0.d, z2.s, z24.s
-44d883ff	sqadd z31.d, p0/m, z31.d, z31.d
 44d89c41	sqadd z1.d, p7/m, z1.d, z2.d
 44d8b800	
 44d8d05f	mlapt z31.d, z2.d, z24.d
@@ -56017,7 +55923,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44de543f	smlslt z31.d, z1.s, z30.s
 44de6fe1	sqdmlslt z1.d, z31.s, z30.s
 44de8840	sqsubr z0.d, p2/m, z0.d, z2.d
-44dea3ff	
 44debc41	
 44ded800	madpt z0.d, z30.d, z0.d
 44def05f	
@@ -56032,7 +55937,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44dfdc3f	uabal z31.d, z1.s, z31.s
 44dff7e1	
 44e01040	sqrdmlah z0.d, z2.d, z0.d[0]
-44e02bff	sqdmlalb z31.d, z31.s, z0.s[1]
 44e04441	cdot z1.d, z2.h, z0.h[0], #90
 44e06000	cmla z0.s, z0.s, z0.s[0], #0
 44e0785f	sqrdcmlah z31.s, z2.s, z0.s[0], #180
@@ -56047,7 +55951,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44e1643f	cmla z31.s, z1.s, z1.s[0], #90
 44e17fe1	sqrdcmlah z1.s, z31.s, z1.s[0], #270
 44e19840	umlalb z0.d, z2.s, z1.s[1]
-44e1b3ff	umlslb z31.d, z31.s, z1.s[0]
 44e1cc41	smullt z1.d, z2.s, z1.s[1]
 44e1e800	sqdmullb z0.d, z0.s, z1.s[1]
 44e2005f	sdot z31.d, z2.h, z2.h[0]
@@ -56182,7 +56085,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44ef2c3f	sqdmlalt z31.d, z1.s, z15.s[1]
 44ef47e1	cdot z1.d, z31.h, z15.h[0], #90
 44ef6040	cmla z0.s, z2.s, z15.s[0], #0
-44ef7bff	sqrdcmlah z31.s, z31.s, z15.s[0], #180
 44ef9441	umlalt z1.d, z2.s, z15.s[0]
 44efb000	umlslb z0.d, z0.s, z15.s[0]
 44efc85f	smullb z31.d, z2.s, z15.s[1]
@@ -56197,7 +56099,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 44f0b43f	umlslt z31.d, z1.s, z0.s[2]
 44f0cfe1	smullt z1.d, z31.s, z0.s[3]
 44f0e840	sqdmullb z0.d, z2.s, z0.s[3]
-44f103ff	sdot z31.d, z31.h, z1.h[1]
 44f11c41	
 44f13800	sqdmlslb z0.d, z0.s, z1.s[3]
 44f1505f	
@@ -56347,7 +56248,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4500043f	
 45001fe1	
 45003840	
-450053ff	
 45006c41	pmullt z1.q, z2.d, z0.d
 45008800	
 4500a05f	
@@ -56362,7 +56262,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 45018c3f	
 4501a7e1	
 4501c040	
-4501dbff	sqcadd z31.b, z31.b, z31.b, #90
 4501f441	
 45021000	
 4502285f	
@@ -56497,7 +56396,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 450f543f	
 450f6fe1	pmullt z1.q, z31.d, z15.d
 450f8840	
-450fa3ff	sshllb z31.h, z31.b, #7
 450fbc41	
 450fd800	
 450ff05f	sri z31.b, z2.b, #1
@@ -56662,7 +56560,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 45202c3f	
 452047e1	
 45206040	
-45207bff	
 45209441	match p1.b, p5/z, z2.b, z0.b
 4520b000	luti2 z0.b, { z0.b }, z0[0]
 4520c85f	
@@ -56737,7 +56634,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4527d43f	
 4527efe1	
 45280840	sqrshrunb z0.b, z2.h, #8
-452823ff	sqshrnb z31.b, z31.h, #8
 45283c41	uqrshrnt z1.b, z2.h, #8
 45285800	
 4528705f	
@@ -56962,7 +56858,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 453ecc3f	
 453ee7e1	
 453f0040	sqshrunb z0.h, z2.s, #1
-453f1bff	rshrnb z31.h, z31.s, #1
 453f3441	uqshrnt z1.h, z2.s, #1
 453f5000	
 453f685f	
@@ -56977,7 +56872,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4540543f	ssubwt z31.h, z1.h, z0.b
 45406fe1	pmullt z1.h, z31.b, z0.b
 45408840	ssublbt z0.h, z2.b, z0.b
-4540a3ff	sshllb z31.d, z31.s, #0
 4540bc41	
 4540d800	cadd z0.h, z0.h, z0.h, #90
 4540f05f	sri z31.s, z2.s, #32
@@ -57127,7 +57021,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 454fa43f	sshllt z31.d, z1.s, #15
 454fbfe1	
 454fd840	
-454ff3ff	sri z31.s, z31.s, #17
 45500c41	uaddlt z1.h, z2.b, z16.b
 45502800	
 4550405f	saddwb z31.h, z2.h, z16.b
@@ -57277,7 +57170,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 455ef43f	sli z31.s, z1.s, #30
 455f0fe1	uaddlt z1.h, z31.b, z31.b
 455f2840	
-455f43ff	saddwb z31.h, z31.h, z31.b
 455f5c41	usubwt z1.h, z2.h, z31.b
 455f7800	umullb z0.h, z0.b, z31.b
 455f905f	eorbt z31.h, z2.h, z31.h
@@ -57592,7 +57484,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 457f1c3f	rshrnt z31.s, z1.d, #1
 457f37e1	uqshrnt z1.s, z31.d, #1
 457f5040	
-457f6bff	raddhnb z31.b, z31.h, z31.h
 457f8441	match p1.h, p1/z, z2.h, z31.h
 457fa000	
 457fb85f	luti2 z31.h, { z2.h }, z31[3]
@@ -57607,7 +57498,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 4580a43f	
 4580bfe1	
 4580d840	cadd z0.s, z0.s, z2.s, #90
-4580f3ff	sri z31.d, z31.d, #64
 45810c41	uaddlt z1.s, z2.h, z1.h
 45812800	
 4581405f	saddwb z31.s, z2.s, z1.h
@@ -57907,7 +57797,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 459f443f	saddwt z31.s, z1.s, z31.h
 459f5fe1	usubwt z1.s, z31.s, z31.h
 459f7840	umullb z0.s, z2.h, z31.h
-459f93ff	eorbt z31.s, z31.s, z31.s
 459fac41	
 459fc800	uabalb z0.s, z0.h, z31.h
 459fe05f	ssra z31.d, z2.d, #33
@@ -58237,7 +58126,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 45c0f43f	sli z31.d, z1.d, #32
 45c10fe1	uaddlt z1.d, z31.s, z1.s
 45c12840	
-45c143ff	saddwb z31.d, z31.d, z1.s
 45c15c41	usubwt z1.d, z2.d, z1.s
 45c17800	umullb z0.d, z0.s, z1.s
 45c1905f	eorbt z31.d, z2.d, z1.d
@@ -58537,7 +58425,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 45df943f	eortb z31.d, z1.d, z31.d
 45dfafe1	
 45dfc840	uabalb z0.d, z2.s, z31.s
-45dfe3ff	ssra z31.d, z31.d, #1
 45dffc41	uaba z1.d, z2.d, z31.d
 45e01800	
 45e0305f	
@@ -58552,7 +58439,6 @@ e5ffe41f	st4d { z31.d, z0.d, z1.d, z2.d }, p1, [x0, #-4, mul vl]
 45e11c3f	
 45e137e1	
 45e15040	
-45e16bff	raddhnb z31.s, z31.d, z1.d
 45e18441	
 45e1a000	
 45e1b85f	luti2 z31.h, { z2.h }, z1[7]

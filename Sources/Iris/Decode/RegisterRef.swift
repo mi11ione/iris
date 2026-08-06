@@ -1,28 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// RegisterRef + RegisterRole + RegisterWidth.
-// Together they carry the full operand-level register identity that the
-// disassembler display layer needs: which named register, in which role
-// (SP vs ZR vs general at encoding-31), and at which width (W32 vs X64
-// for GPR, vector-implied for SIMD).
-//
-// The role+width fields exist on the operand because operand display and
-// semantic interpretation depend on both. The RegisterSet bitset, by
-// contrast, tracks only the canonical-index so dataflow analysis sees a
-// single bit per named register regardless of write width or role
-// disambiguation.
 
-/// Reference to a named ARM64 architectural register.
-///
-/// `RegisterRef` is the value carried by ``Operand/register(_:)``,
-/// ``Operand/shiftedRegister(reg:shift:amount:)``,
-/// ``Operand/extendedRegister(reg:extend:shift:)``, and
-/// ``MemoryBase/register(_:)``. It comprises a canonical-index (0..63
-/// across GPR + SIMD), a ``RegisterRole`` (general / SP / ZR — the only
-/// dimension where encoding 31 has ambiguous meaning), and a
-/// ``RegisterWidth`` (W32 / X64 for GPR; ``RegisterWidth/vectorImplied``
-/// for SIMD whose actual width lives on the ``VectorRegisterRef``).
+/// Reference to a named ARM64 architectural register: a canonical index
+/// (0...63 across GPR and SIMD), a ``RegisterRole`` (the one dimension where
+/// encoding 31 is ambiguous), and a ``RegisterWidth``. A SIMD register's real
+/// width lives on ``VectorRegisterRef``.
 @frozen
 public struct RegisterRef: Sendable, Hashable {
     /// Canonical register index. 0..30 → X0..X30; 31 → SP/XZR (role
@@ -41,23 +23,17 @@ public struct RegisterRef: Sendable, Hashable {
         self.width = width
     }
 
-    /// `Wn` for n in 0..30 — 32-bit general-purpose register view.
-    /// Index 31 is the dual-meaning SP/ZR slot; for that slot use
-    /// ``wsp()`` or ``wzr()`` to disambiguate role. Inputs `>= 31` are
-    /// masked to 5 bits, so `w(31)` produces a `.general`-role
-    /// reference at canonical-index 31 — usually not what the caller
-    /// wants.
+    /// `Wn` for n in 0...30. Index 31 is the dual-meaning SP/ZR slot — use
+    /// ``wsp()`` or ``wzr()`` there; inputs are masked to 5 bits, so `w(31)`
+    /// yields a `.general`-role reference, usually not what a caller wants.
     @inlinable
     public static func w(_ n: UInt8) -> RegisterRef {
         RegisterRef(canonicalIndex: n & 0b11111, role: .general, width: .w32)
     }
 
-    /// `Xn` for n in 0..30 — 64-bit general-purpose register view.
-    /// Index 31 is the dual-meaning SP/ZR slot; for that slot use
-    /// ``sp()`` or ``xzr()`` to disambiguate role. Inputs `>= 31` are
-    /// masked to 5 bits, so `x(31)` produces a `.general`-role
-    /// reference at canonical-index 31 — usually not what the caller
-    /// wants.
+    /// `Xn` for n in 0...30. Index 31 is the dual-meaning SP/ZR slot — use
+    /// ``sp()`` or ``xzr()`` there; inputs are masked to 5 bits, so `x(31)`
+    /// yields a `.general`-role reference, usually not what a caller wants.
     @inlinable
     public static func x(_ n: UInt8) -> RegisterRef {
         RegisterRef(canonicalIndex: n & 0b11111, role: .general, width: .x64)
@@ -128,14 +104,9 @@ public struct RegisterRef: Sendable, Hashable {
 }
 
 extension RegisterRef: CustomStringConvertible {
-    /// Canonical lowercase register name: `"x0"`…`"x30"`,
-    /// `"w0"`…`"w30"`, `"sp"`, `"wsp"`, `"xzr"`, `"wzr"`,
-    /// `"v0"`…`"v31"`.
-    ///
-    /// Total: a `.general`-role reference at the encoding-31 slot names
-    /// the zero register (the architectural meaning of encoding 31 in a
-    /// register-operand position); hand-built impossible indices
-    /// (canonical index ≥ 64) render `"?<index>"`.
+    /// Canonical lowercase register name. Total: a `.general`-role reference at
+    /// the encoding-31 slot names the zero register, and hand-built indices at
+    /// or past 64 render `"?<index>"`.
     public var name: String {
         switch (canonicalIndex, role, width) {
         case (31, .stackPointer, .x64): return "sp"

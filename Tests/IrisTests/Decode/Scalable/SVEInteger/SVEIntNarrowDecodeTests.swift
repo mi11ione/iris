@@ -16,14 +16,7 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the SVE2 narrowing families at top byte 0x45. Every bottom form
-/// writes the even destination elements and zeroes the odd ones — a full
-/// fresh write; every top form writes the odd elements and preserves the even
-/// ones, so it reads its destination and marks the write partial. The three
-/// single-vector shapes differ in how they carry the size (plain sz for the
-/// narrow-high adds, a strictly one-hot tsz for the saturating extracts, the
-/// joint tsz-and-shift scheme for the shift-narrows), and the two SVE2p1
-/// multi-vector shapes read a consecutive even-aligned register pair.
+/// Validates the SVE2 narrowing families at 0x45.
 @Suite("SVE integer / SVE2 narrowing")
 struct SVEIntNarrowDecodeTests {
     @Test func theNarrowHighAddsSplitBottomFromTopOnBit10() {
@@ -46,10 +39,10 @@ struct SVEIntNarrowDecodeTests {
     }
 
     @Test func aTopNarrowReadsItsDestinationAndABottomOneDoesNot() {
-        let bottom = decode(0x4562_6020) // addhnb
+        let bottom = decode(0x4562_6020)
         #expect(canonicalIndices(bottom.semanticReads) == [33, 34])
         #expect(bottom.scalableEffect == .readsStreamingMode)
-        let top = decode(0x4562_6420) // addhnt
+        let top = decode(0x4562_6420)
         #expect(canonicalIndices(top.semanticReads) == [32, 33, 34], "the top half preserves Zd")
         #expect(top.scalableEffect == [.readsStreamingMode, .partialWrite])
         #expect(canonicalIndices(top.semanticWrites) == [32])
@@ -71,10 +64,10 @@ struct SVEIntNarrowDecodeTests {
             #expect(text(encoding) == expected)
         }
         for encoding: UInt32 in [
-            0x4520_4020, // tsz 000
-            0x4538_4020, // tsz 011 — not one-hot
-            0x4568_4020, // tsz 101 — not one-hot
-            0x4528_5820, // reserved opcode 11
+            0x4520_4020,
+            0x4538_4020,
+            0x4568_4020,
+            0x4528_5820,
         ] {
             #expect(decode(encoding).mnemonic == .undefined, "0x\(String(encoding, radix: 16))")
         }
@@ -161,9 +154,7 @@ struct SVEIntNarrowDecodeTests {
     }
 
     @Test func theOddPairFieldStillDecodesAnEvenAlignedPair() {
-        // The encoding carries only the high four bits of the pair base, so
-        // every decodable pair starts at an even register.
-        let d = decode(0x45A8_03C0) // sqshrn z0.b, { z30.h, z31.h }, #8
+        let d = decode(0x45A8_03C0)
         #expect(text(0x45A8_03C0) == "sqshrn z0.b, { z30.h, z31.h }, #8")
         #expect(canonicalIndices(d.semanticReads) == [62, 63])
     }

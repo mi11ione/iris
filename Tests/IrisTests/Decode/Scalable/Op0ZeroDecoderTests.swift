@@ -4,17 +4,10 @@
 import Iris
 import Testing
 
-/// Validates the composite that multiplexes the three families sharing
-/// `op0=0b0000`: Apple's AMX coprocessor (an implementation-defined squat on
-/// reserved space), architectural SME (bit31=1), and the genuine reserved
-/// holes. UDF also lives at `op0=0` but is intercepted by the dispatcher before
-/// family lookup. Getting this wrong is not a rendering bug — it would silently
-/// attribute one vendor's instructions to another architecture.
+/// Validates the composite multiplexing the three families sharing `op0=0`.
 @Suite("Op0ZeroDecoder / composite routing of the op0=0 tier")
 struct Op0ZeroDecoderRoutingTests {
     @Test func amxEncodingsRouteToTheAMXDecoder() {
-        // The AMX magic pattern (0x00201000 / mask 0xFFFFFC00) with every
-        // documented opcode.
         for opcode: UInt32 in 0 ..< 23 {
             let encoding = 0x0020_1000 | (opcode << 5)
             let draft = Iris.decode(encoding, at: 0)
@@ -23,11 +16,6 @@ struct Op0ZeroDecoderRoutingTests {
     }
 
     @Test func smeEncodingsRouteToTheSMEDecoder() {
-        // bit31=1 within op0=0 is the SME region. The scalable tier is complete,
-        // so the routing claim is that each bits[31:29] group reaches the SME
-        // decoder and lands in the SME category — proven here with a genuine
-        // architectural hole per group (an in-region word that decodes to a
-        // well-formed UNDEFINED rather than a real instruction).
         let holes: [(UInt32, String)] = [
             (0x8000_0004, "100|0|0 — SME2 outer-product hole"),
             (0xA000_8002, "101|0|0 — SME2 multi-vector memory hole"),
@@ -42,8 +30,6 @@ struct Op0ZeroDecoderRoutingTests {
     }
 
     @Test func smeCoreEncodingsRouteThroughToARealRecord() {
-        // The composite must reach 2s.6's decoder too, not just its UNDEFINED
-        // arm — a routing break would look like a silently unimplemented tier.
         let core: [(UInt32, Mnemonic, String)] = [
             (0x8080_0000, .fmopa, "outer product"),
             (0xC000_0000, .mov, "MOVA insert"),
@@ -60,11 +46,9 @@ struct Op0ZeroDecoderRoutingTests {
     }
 
     @Test func genuineHolesRouteToUndefined() {
-        // op0=0, bit31=0, not the AMX magic pattern, not UDF — the reserved
-        // space that remains unallocated even under maximal SME/SVE features.
         let holes: [UInt32] = [
-            0x0020_1400, // adjacent to AMX but outside its mask
-            0x0020_0000, // op0=0, bits[31:16] != 0, not AMX
+            0x0020_1400,
+            0x0020_0000,
             0x0100_0000,
             0x01FF_FFFF,
             0x0020_1800,
@@ -79,9 +63,6 @@ struct Op0ZeroDecoderRoutingTests {
     }
 
     @Test func theThreeRoutesAreMutuallyExclusive() {
-        // AMX and SME both live at op0=0; they must never both claim a word.
-        // AMX is bit31=0 by construction, SME is bit31=1 — and a word can only
-        // come back in one category, so the split is visible on the record.
         for opcode: UInt32 in 0 ..< 23 {
             let amxWord = 0x0020_1000 | (opcode << 5)
             #expect(Iris.decode(amxWord).category == .amx)
@@ -90,15 +71,11 @@ struct Op0ZeroDecoderRoutingTests {
             let smeWord = topBits << 29
             #expect(Iris.decode(smeWord).category == .sme)
         }
-        // …and UDF, the fourth resident, keeps its own category.
         #expect(Iris.decode(0x0000_1234).category == .branchesExceptionSystem)
     }
 }
 
-/// Validates that the whole of `op0=0` is accounted for. The tier is
-/// architecturally SME, with AMX squatting a masked window and UDF carved out
-/// below it, so every word in the tier must come back attributed to one of the
-/// four outcomes — never unclaimed, never attributed to two families.
+/// Validates that the whole of `op0=0` is accounted for.
 @Suite("Op0ZeroDecoder / the tier is fully accounted for")
 struct Op0ZeroDecoderRegistrationTests {
     @Test func everyOutcomeInTheTierIsReachable() {

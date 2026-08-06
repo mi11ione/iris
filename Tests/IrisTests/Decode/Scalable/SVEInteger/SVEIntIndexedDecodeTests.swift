@@ -23,13 +23,8 @@ private func indexedZm(_ d: Instruction) -> ScalableVectorRef? {
     return nil
 }
 
-/// Validates the indexed SVE2 integer forms (top byte 0x44, bit21 set), where
-/// the second multiplicand is one broadcast element of Zm. The register field
-/// narrows as the index widens — three bits of Zm at halfword and word
-/// results, four at doubleword — and the index is assembled from scattered
-/// bits (b22:b20:b19 at halfword, b20:b19 at word, b20 at doubleword), with
-/// the widening forms folding in b11 as an extra low bit because they index
-/// the narrower source element.
+/// Validates the indexed SVE2 integer forms, where the second multiplicand is
+/// one broadcast element of Zm.
 @Suite("SVE integer / indexed multiplies and multiply-adds")
 struct SVEIntIndexedDecodeTests {
     @Test func theIndexedDotProductsScaleTheirIndexWithTheDestination() {
@@ -106,7 +101,6 @@ struct SVEIntIndexedDecodeTests {
             #expect(decode(encoding).mnemonic == mnemonic, "0x\(String(encoding, radix: 16))")
             #expect(text(encoding) == expected)
         }
-        // The plain multiplies write fresh — no accumulator read.
         #expect(canonicalIndices(decode(0x44A2_F820).semanticReads) == [33, 34])
         #expect(decode(0x44A2_FC20).mnemonic == .undefined, "reserved same-width-multiply opcode")
         #expect(decode(0x4422_C020).mnemonic == .undefined, "smullb at a halfword destination")
@@ -130,18 +124,15 @@ struct SVEIntIndexedDecodeTests {
     }
 
     @Test func theRegisterFieldNarrowsAsTheIndexWidens() {
-        // Halfword and word results take Zm from three bits; a doubleword
-        // result frees b19 back to the register and keeps a one-bit index.
-        let halfword = decode(0x44A7_0020) // sdot z0.s, z1.b, z7.b[0]
+        let halfword = decode(0x44A7_0020)
         #expect(indexedZm(halfword) == ScalableVectorRef(registerIndex: 7, element: .b, elementIndex: 0))
-        let doubleword = decode(0x44EA_0020) // sdot z0.d, z1.h, z10.h[0]
+        let doubleword = decode(0x44EA_0020)
         #expect(indexedZm(doubleword) == ScalableVectorRef(registerIndex: 10, element: .h, elementIndex: 0))
         #expect(text(0x44EA_0020) == "sdot z0.d, z1.h, z10.h[0]")
     }
 
     @Test func theHalfwordIndexAssemblesFromItsThreeScatteredBits() {
-        // b22:b20:b19 — value 7 needs all three set.
-        let d = decode(0x447A_0820) // mla z0.h, z1.h, z2.h[7]
+        let d = decode(0x447A_0820)
         #expect(text(0x447A_0820) == "mla z0.h, z1.h, z2.h[7]")
         #expect(indexedZm(d) == ScalableVectorRef(registerIndex: 2, element: .h, elementIndex: 7))
     }

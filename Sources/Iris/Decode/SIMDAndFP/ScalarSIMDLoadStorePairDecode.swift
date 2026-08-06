@@ -1,12 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Scalar SIMD LDP/STP/LDNP/STNP (V=1).
-// Encoding: `opc 10 1 V 0 indexing 1 ... Rt2 Rn Rt` with V=1. opc
-// selects the scalar element width (00=S, 01=D, 10=Q); indexing
-// (bits[24:23]) selects no-allocate (00), post-index (01), signed-
-// offset (10), pre-index (11). The signed imm7 displacement is scaled
-// by elementBytes.
 
 enum ScalarSIMDLoadStorePairDecode {
     @_optimize(speed)
@@ -19,8 +12,6 @@ enum ScalarSIMDLoadStorePairDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rt = UInt8(encoding & 0x1F)
 
-        // opc → (element, scale). opc=11 is the FEAT_LSUI unprivileged
-        // T-pair (Q-register only); 10 is the regular Q pair — both Q/scale-16.
         let isUnpriv = opc == 0b11
         let elementSize: ScalarSize
         let scale: Int64
@@ -41,7 +32,7 @@ enum ScalarSIMDLoadStorePairDecode {
         case (0b10, true): mnemonic = isUnpriv ? .ldtp : .ldp; writeback = .none
         case (0b10, false): mnemonic = isUnpriv ? .sttp : .stp; writeback = .none
         case (0b11, true): mnemonic = isUnpriv ? .ldtp : .ldp; writeback = .preIndex
-        default: // (indexing, isLoad) = (0b11, false) — only remaining combination.
+        default:
             mnemonic = isUnpriv ? .sttp : .stp; writeback = .preIndex
         }
 

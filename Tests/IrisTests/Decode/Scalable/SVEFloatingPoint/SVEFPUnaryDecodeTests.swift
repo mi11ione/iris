@@ -16,33 +16,20 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// A merging-unary word (G11) with the given bits[23:16] form key, Pg=1, Zn=1,
-/// Zd=0.
 private func merging(_ key: UInt8) -> UInt32 {
     0x6500_0000 | (UInt32(key) << 16) | 0xA000 | (1 << 10) | (1 << 5)
 }
 
-/// A zeroing-unary word (G14) with the given (bits[23:16], bits[15:13]) form
-/// key, Pg=1, Zn=1, Zd=0.
 private func zeroing(_ key: UInt8, _ low: UInt32) -> UInt32 {
     0x6400_0000 | (UInt32(key) << 16) | (low << 13) | (1 << 10) | (1 << 5)
 }
 
-/// A convert-precision word (G15) for the form key with the given qualifier
-/// (bit19 = merging), Pg=1, Zn=1, Zd=0.
 private func convertPrecision(_ key: UInt8, merging: Bool) -> UInt32 {
     let byte1 = UInt32(key) | (merging ? 0x08 : 0)
     return 0x6400_0000 | (byte1 << 16) | 0xA000 | (1 << 10) | (1 << 5)
 }
 
-/// Validates the predicated unary/convert surface: G11 the merging `/M` class
-/// (`sve_fp_2op_p_zd`), G14 the SVE2p2 zeroing `/Z` twins
-/// (`sve_fp_z2op_p_zd`), and G15 the convert-precision group
-/// (`sve2_fp_convert_precision`). The conversions render true cross-size
-/// operand pairs; merging forms read the destination and set partialWrite,
-/// zeroing forms are full writes — except the top-half converts FCVTNT/
-/// FCVTXNT/BFCVTNT, which preserve the untouched halves under BOTH qualifiers,
-/// and FCVTLT, which follows the plain `/M` rule.
+/// Validates the predicated unary/convert surface.
 @Suite("SVE floating-point / predicated unary and convert-precision")
 struct SVEFPUnaryDecodeTests {
     @Test func mergingConversionsRenderCrossSizeOperands() {
@@ -82,15 +69,13 @@ struct SVEFPUnaryDecodeTests {
     }
 
     @Test func mergingUnaryIsADestinationReadingPartialWrite() {
-        let d = decode(merging(0x4D)) // fsqrt z0.h
+        let d = decode(merging(0x4D))
         #expect(d.scalableEffect == [.readsStreamingMode, .partialWrite])
         #expect(canonicalIndices(d.semanticReads) == [32, 33], "/m reads the destination and source")
         #expect(canonicalIndices(d.semanticWrites) == [32])
     }
 
     @Test func reservedMergingFormKeysAreHoles() {
-        // Keys with bit5 set carry bit21=1 and route elsewhere, so a reserved
-        // merging-form key must keep bit5 clear to reach this decoder.
         for key: UInt8 in [0x00, 0x01, 0x45, 0x90, 0x9E] {
             #expect(decode(merging(key)).mnemonic == .undefined, "key 0x\(String(key, radix: 16)) is reserved")
         }
@@ -117,15 +102,11 @@ struct SVEFPUnaryDecodeTests {
     }
 
     @Test func reservedZeroingFormKeysAreHoles() {
-        // Both keys route to the zeroing decoder (bit20=bit19=1) and miss the
-        // form table, so they exercise its reserved-slot rejection.
         #expect(decode(zeroing(0x18, 0b100)).mnemonic == .undefined)
         #expect(decode(zeroing(0x9A, 0b111)).mnemonic == .undefined, "fcvt has no 111 slot")
     }
 
     @Test func topHalfConvertsPreserveTheDestinationInBothQualifiers() {
-        // FCVTNT/FCVTXNT/BFCVTNT read the destination and set partialWrite even
-        // under /z (the ASL seeds the result from Zd).
         let converts: [(UInt8, Mnemonic, String, String)] = [
             (0x80, .fcvtnt, "fcvtnt z0.h, p1/m, z1.s", "fcvtnt z0.h, p1/z, z1.s"),
             (0x02, .fcvtxnt, "fcvtxnt z0.s, p1/m, z1.d", "fcvtxnt z0.s, p1/z, z1.d"),
@@ -158,7 +139,6 @@ struct SVEFPUnaryDecodeTests {
 
     @Test func fcvtltDoubleFormAndConvertPrecisionHoles() {
         #expect(text(convertPrecision(0xC3, merging: true)) == "fcvtlt z0.d, p1/m, z1.s")
-        // A form key with no convert-precision member is a hole.
         #expect(decode(convertPrecision(0x00, merging: true)).mnemonic == .undefined)
         #expect(decode(convertPrecision(0x40, merging: false)).mnemonic == .undefined)
     }

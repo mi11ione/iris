@@ -4,11 +4,8 @@
 import Iris
 import Testing
 
-/// Validates `DPICanonicalizer.format(draft:)` — the public Sources/
-/// Iris/Disassembler/ formatter that produces llvm-mc-compatible
-/// disassembly text from a `Instruction`. Each test crafts a draft
-/// directly so the formatter is exercised in isolation from the per-
-/// family decoders.
+/// Validates `DPICanonicalizer.format(draft:)`, crafting drafts directly so
+/// the formatter is exercised in isolation from the per-family decoders.
 @Suite("Disassembler / DPICanonicalizer.format")
 struct DPICanonicalizerFormatTests {
     private func draft(
@@ -28,18 +25,13 @@ struct DPICanonicalizerFormatTests {
     }
 
     @Test func undefinedRecordRendersLongDirective() {
-        // Undefined records render the raw word as `.long` (the text
-        // router owns sentinel rendering — text is total).
         let d = draft(mnemonic: .undefined, operands: [], category: .undefined)
         #expect(d.text == ".long 0x0")
-        // The DPI formatter's own defensive arm (reachable only via a
-        // hand-built family-category record) still yields "".
         let armed = draft(mnemonic: .undefined, operands: [])
         #expect(armed.text == "")
     }
 
     @Test func mnemonicWithNoOperandsFormatsAsJustMnemonic() {
-        // Defensive — DPI never produces this shape, but the formatter handles it.
         let d = draft(mnemonic: .add, operands: [])
         #expect(d.text == "add")
     }
@@ -110,7 +102,6 @@ struct DPICanonicalizerFormatTests {
     }
 
     @Test func movBitmaskUsesSignedDecimalForNegativeValue() {
-        // MOV bitmask with the high bit set in 32-bit: signed display.
         let d = draft(mnemonic: .mov, operands: [
             .register(.w(0)),
             .immediate(value: -2_147_483_647, width: 32),
@@ -248,9 +239,6 @@ struct DPICanonicalizerFormatTests {
     }
 
     @Test func registerSimdRendersAsVName() {
-        // `.register(.simd(0))` uses canonical-index 32 which the
-        // formatter recognises as v0. (The defensive sentinel branch
-        // only triggers for `.vectorRegister`, not `.register(.simd)`.)
         let d = draft(mnemonic: .add, operands: [
             .register(.simd(0)),
         ])
@@ -258,16 +246,11 @@ struct DPICanonicalizerFormatTests {
     }
 
     @Test func unknownMnemonicFallsThroughToQuestionMark() {
-        // Mnemonic raw values outside the allocated names fall through
-        // to the name table's fallback.
         let d = draft(mnemonic: Mnemonic(rawValue: 999), operands: [])
         #expect(d.text == "?999")
     }
 
     @Test func registerOver64FallsThroughToQuestionMark() {
-        // Defensive — register canonical index >= 64 shouldn't be
-        // produced by any decoder, but the formatter falls through to
-        // a "?N" marker.
         let r = RegisterRef(canonicalIndex: 64, role: .general, width: .x64)
         let d = draft(mnemonic: .add, operands: [.register(r)])
         let out = d.text
@@ -275,9 +258,6 @@ struct DPICanonicalizerFormatTests {
     }
 
     @Test func vectorRegisterDirectVariantHitsSentinel() {
-        // The .vectorRegister case (not .register(.simd)) is a defensive
-        // sentinel for the DPI formatter — verify it doesn't crash and
-        // produces the sentinel marker.
         let vec = VectorRegisterRef(registerIndex: 4, view: .full(arrangement: .s4))
         let d = draft(mnemonic: .add, operands: [.vectorRegister(vec)])
         let out = d.text
@@ -296,10 +276,6 @@ struct DPICanonicalizerFormatTests {
     }
 
     @Test func allDefensiveOperandSentinelsRenderAsUnsupported() {
-        // Hit every Operand case the DPI family doesn't itself emit but the
-        // @frozen switch must handle. Each should render as the
-        // "?unsupported-operand" sentinel (the formatter never crashes;
-        // validation tooling surfaces it).
         let sysReg = SystemRegisterEncoding(op0: 3, op1: 3, crn: 13, crm: 0, op2: 2)
         let mem = MemoryOperand(base: .pc, displacement: 0)
         let prefetch = PrefetchOperation(rawValue: 0)

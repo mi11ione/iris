@@ -1,14 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FP data-processing (3 source) per ARM ARM § C4.1.96.41.
-// Encoding: `0 0 0 11111 ftype o1 Rm o0 Ra Rn Rd`.
-// (o1, o0) selects FMADD/FMSUB/FNMADD/FNMSUB.
 
 enum FPDataProcessing3SourceDecode {
     @_optimize(speed)
     static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // M (bit31) is a fixed 0 for FP DP 3-source; M=1 is reserved.
         if (encoding >> 31) & 1 == 1 {
             return .undefined(at: address, encoding: encoding)
         }
@@ -28,7 +23,7 @@ enum FPDataProcessing3SourceDecode {
         case (0, 0): .fmadd
         case (0, 1): .fmsub
         case (1, 0): .fnmadd
-        default: .fnmsub // (o1, o0) = (1, 1) — only remaining 2-bit pair.
+        default: .fnmsub
         }
 
         let vd = simdfpScalarOperand(Rd, size: size)

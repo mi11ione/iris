@@ -4,14 +4,8 @@
 import Iris
 import Testing
 
-/// Validates the FP16, FP8/BF16, complex-arithmetic, dot-product /
-/// matrix-multiply, lookup-table, and SIMD-register LRCPC2 encoding
-/// classes: vector and scalar three-same FP16, the RDM scalar extras,
-/// vector and scalar two-reg-misc FP16, the FCVTN/FCVTL/FCVTXN/BFCVTN
-/// and FP8 long-convert shapes, scalar pairwise FP16, the three-register
-/// extension class (FCMLA/FCADD/dot/MMLA/BF16/FP8), their by-element
-/// forms, FEAT_LUT LUTI2/LUTI4, and STLUR/LDAPUR of SIMD registers —
-/// every mnemonic row plus the reserved-shape rejections.
+/// Validates the FP16, FP8/BF16, complex-arithmetic, dot-product/matrix-
+/// multiply, lookup-table and SIMD-register LRCPC2 classes.
 @Suite("SIMD/FP / FP16, FP8/BF16, complex, dot/MMLA, LUT, SIMD LRCPC2")
 struct SIMDFPHalfPrecisionAndExtensionTests {
     @Test func vectorThreeSameFP16DecodesEveryRow() {
@@ -32,13 +26,12 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
             let d = decode(row.word)
             #expect(d.category == .simdAndFP)
             #expect(d.text == "\(row.name) v0.4h, v1.4h, v2.4h")
-            // Q=1 form of the same row is .8h.
             let q = decode(row.word | (1 << 30))
             #expect(q.text == "\(row.name) v0.8h, v1.8h, v2.8h")
         }
-        #expect(decode(0x0E42_2C20).isUndefined) // (U=0,a=0,op3=5) unmapped
-        #expect(decode(0x0EC2_2420).isUndefined) // (U=0,a=1,op3=4) unmapped
-        #expect(decode(0x0E42_4420).isUndefined) // bit14 = 1 reserved
+        #expect(decode(0x0E42_2C20).isUndefined)
+        #expect(decode(0x0EC2_2420).isUndefined)
+        #expect(decode(0x0E42_4420).isUndefined)
     }
 
     @Test func scalarThreeSameFP16DecodesEveryRow() {
@@ -53,7 +46,7 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
             #expect(d.category == .simdAndFP)
             #expect(d.text == "\(row.name) h0, h1, h2")
         }
-        #expect(decode(0x5E42_0420).isUndefined) // (0,0,0) unmapped scalar
+        #expect(decode(0x5E42_0420).isUndefined)
     }
 
     @Test func scalarRDMExtraDecodesBothOpsAndSizes() {
@@ -61,12 +54,11 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         #expect(decode(0x7E42_8C20).text == "sqrdmlsh h0, h1, h2")
         #expect(decode(0x7E82_8420).text == "sqrdmlah s0, s1, s2")
         #expect(decode(0x7E82_8C20).text == "sqrdmlsh s0, s1, s2")
-        // Accumulating RMW: destination participates in the reads.
         #expect(decode(0x7E42_8420).semanticReads.contains(.simd(0)))
-        #expect(decode(0x5E42_8420).isUndefined) // U=0 reserved
-        #expect(decode(0x7E02_8420).isUndefined) // size=00 reserved
-        #expect(decode(0x7EC2_8420).isUndefined) // size=11 reserved
-        #expect(decode(0x7E42_9420).isUndefined) // op5=10010 unmapped
+        #expect(decode(0x5E42_8420).isUndefined)
+        #expect(decode(0x7E02_8420).isUndefined)
+        #expect(decode(0x7EC2_8420).isUndefined)
+        #expect(decode(0x7E42_9420).isUndefined)
     }
 
     @Test func vectorTwoRegMiscFP16DecodesEveryRow() {
@@ -91,10 +83,9 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             #expect(decode(row.word).text == row.text)
         }
-        // The Q=1 form of one representative row renders .8h.
         #expect(decode(0x4E79_8820).text == "frintn v0.8h, v1.8h")
-        #expect(decode(0x0E78_0820).isUndefined) // opcode 00000 unmapped
-        #expect(decode(0x0E38_0820).isUndefined) // bit22 = 0 reserved
+        #expect(decode(0x0E78_0820).isUndefined)
+        #expect(decode(0x0E38_0820).isUndefined)
     }
 
     @Test func scalarTwoRegMiscFP16DecodesEveryRow() {
@@ -114,8 +105,8 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             #expect(decode(row.word).text == row.text)
         }
-        #expect(decode(0x5E78_0820).isUndefined) // opcode 00000 unmapped
-        #expect(decode(0x5E38_0820).isUndefined) // bit22 = 0 reserved
+        #expect(decode(0x5E78_0820).isUndefined)
+        #expect(decode(0x5E38_0820).isUndefined)
     }
 
     @Test func fpConvertNarrowLongDecodesEveryShape() {
@@ -134,14 +125,14 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             #expect(decode(row.word).text == row.text)
         }
-        #expect(decode(0x2E21_6820).isUndefined) // fcvtxn at sz=0 reserved
-        #expect(decode(0x0EE1_6820).isUndefined) // bfcvtn at sz=1 reserved
-        #expect(decode(0x2EA1_6820).isUndefined) // (U=1, 10110, bit23=1) unmapped
+        #expect(decode(0x2E21_6820).isUndefined)
+        #expect(decode(0x0EE1_6820).isUndefined)
+        #expect(decode(0x2EA1_6820).isUndefined)
     }
 
     @Test func fpFamilyTwoRegMiscReservedShapesAreUndefined() {
-        #expect(decode(0x4EE1_E820).isUndefined) // frint32z shape with altBit=1
-        #expect(decode(0x4EE1_C820).isUndefined) // urecpe .2d reserved
+        #expect(decode(0x4EE1_E820).isUndefined)
+        #expect(decode(0x4EE1_C820).isUndefined)
     }
 
     @Test func scalarPairwiseFP16DecodesEveryRow() {
@@ -155,14 +146,14 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             #expect(decode(row.word).text == row.text)
         }
-        #expect(decode(0x5E30_E820).isUndefined) // opcode 01110 unmapped FP16
+        #expect(decode(0x5E30_E820).isUndefined)
     }
 
     @Test func scalarFcvtxnDecodes() {
         let d = decode(0x7E61_6820)
         #expect(d.mnemonic == .fcvtxn)
         #expect(d.text == "fcvtxn s0, d1")
-        #expect(decode(0x7E21_6820).isUndefined) // size=00 reserved scalar
+        #expect(decode(0x7E21_6820).isUndefined)
     }
 
     @Test func threeRegExtensionDecodesComplexArithmetic() {
@@ -184,10 +175,9 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             #expect(decode(row.word).text == row.text)
         }
-        #expect(decode(0x2EC2_C420).isUndefined) // fcmla .1d (size=3, Q=0)
-        // FCMLA accumulates — Vd participates in the reads.
+        #expect(decode(0x2EC2_C420).isUndefined)
         #expect(decode(0x2E42_C420).semanticReads.contains(.simd(0)))
-        #expect(!decode(0x2E42_E420).semanticReads.contains(.simd(0))) // FCADD does not
+        #expect(!decode(0x2E42_E420).semanticReads.contains(.simd(0)))
     }
 
     @Test func threeRegExtensionDecodesDotMMLAAndConvertFamilies() {
@@ -218,9 +208,8 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             #expect(decode(row.word).text == row.text)
         }
-        // MMLA forms are 128-bit only; Q=0 is reserved.
         #expect(decode(0x0E82_A420).isUndefined)
-        #expect(decode(0x2E82_AC20).isUndefined) // (1,2,5) unmapped
+        #expect(decode(0x2E82_AC20).isUndefined)
     }
 
     @Test func byElementDotFormsDecode() {
@@ -235,7 +224,7 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             let d = decode(row.word)
             #expect(d.text == row.text)
-            #expect(d.semanticReads.contains(.simd(0))) // dot accumulates
+            #expect(d.semanticReads.contains(.simd(0)))
         }
     }
 
@@ -271,8 +260,8 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
         for row in rows {
             #expect(decode(row.word).text == row.text)
         }
-        #expect(decode(0x2F42_1820).isUndefined) // .4h with H=1 reserved
-        #expect(decode(0x2F82_1020).isUndefined) // .2s form reserved
+        #expect(decode(0x2F42_1820).isUndefined)
+        #expect(decode(0x2F82_1020).isUndefined)
     }
 
     @Test func lutFormsDecodeWithListAndLaneOperands() {
@@ -290,14 +279,13 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
             #expect(d.category == .simdAndFP)
             #expect(d.text == row.text)
         }
-        #expect(decode(0x0E82_1020).isUndefined) // Q=0 unallocated
-        #expect(decode(0x4E82_0020).isUndefined) // LUTI2 .16b needs bit12=1
-        #expect(decode(0x4E42_0020).isUndefined) // LUTI4 with neither bit12/13
-        #expect(decode(0x4E82_1420).isUndefined) // bits 11:10 must be 0
+        #expect(decode(0x0E82_1020).isUndefined)
+        #expect(decode(0x4E82_0020).isUndefined)
+        #expect(decode(0x4E42_0020).isUndefined)
+        #expect(decode(0x4E82_1420).isUndefined)
     }
 
     @Test func pmullQuadwordPolynomialFormsDecode() {
-        // PMULL/PMULL2 at size=11 produce the .1q polynomial product.
         let lo = decode(0x0EE2_E020)
         #expect(lo.mnemonic == .pmull)
         #expect(lo.text == "pmull v0.1q, v1.1d, v2.1d")
@@ -321,11 +309,9 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
     }
 
     @Test func movi64BitFormsDecode() {
-        // op=1 vector form replicates the abcdefgh byte mask into .2d.
         let vec = decode(0x6F05_E540)
         #expect(vec.mnemonic == .movi)
         #expect(vec.text == "movi v0.2d, #0xff00ff00ff00ff00")
-        // op=1 with Q=0 is the scalar 64-bit MOVI (Dd destination).
         let scalar = decode(0x2F07_E7E0)
         #expect(scalar.mnemonic == .movi)
         #expect(scalar.text == "movi d0, #0xffffffffffffffff")
@@ -348,7 +334,6 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
             #expect(d.mnemonic == row.mnemonic, "0x\(String(row.word, radix: 16))")
             #expect(d.text == "\(row.name) v0.4s, v1.8h, v2.h[0]")
         }
-        // Q=0 keeps the base mnemonic.
         let base = decode(0x0F42_2020)
         #expect(base.mnemonic == .smlal)
         #expect(base.text == "smlal v0.4s, v1.4h, v2.h[0]")
@@ -369,9 +354,6 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
     }
 
     @Test func lrcpc3SingleStructureFormsDecode() {
-        // FEAT_LRCPC3 STL1/LDAP1 {Vt.d}[i]: release store / acquire load
-        // of one D lane; the load preserves the other lane so Vt is both
-        // read and written.
         let st0 = decode(0x0D01_8420)
         #expect(st0.mnemonic == .stl1)
         #expect(st0.memoryAccess == .store)
@@ -393,10 +375,10 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
 
     @Test func vectorExtensionRowsDecodeEveryNewMnemonic() {
         let rows: [(word: UInt32, text: String)] = [
-            (0x0EC2_1C20, "famax v0.4h, v1.4h, v2.4h"), // FEAT_FAMINMAX
+            (0x0EC2_1C20, "famax v0.4h, v1.4h, v2.4h"),
             (0x6EA2_DC20, "famin v0.4s, v1.4s, v2.4s"),
-            (0x2EC2_3C20, "fscale v0.4h, v1.4h, v2.4h"), // FEAT_FP8
-            (0x0E21_E820, "frint32z v0.2s, v1.2s"), // FEAT_FRINTTS
+            (0x2EC2_3C20, "fscale v0.4h, v1.4h, v2.4h"),
+            (0x0E21_E820, "frint32z v0.2s, v1.2s"),
             (0x2E21_E820, "frint32x v0.2s, v1.2s"),
             (0x0E21_F820, "frint64z v0.2s, v1.2s"),
             (0x2E21_F820, "frint64x v0.2s, v1.2s"),
@@ -419,22 +401,17 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
     }
 
     @Test func singlePrecisionFaminmaxAndFscaleRowsDecode() {
-        // The non-FP16 rows of FEAT_FAMINMAX / FEAT_FP8 FSCALE (the .4h
-        // forms route through the half-precision three-same decoder).
         #expect(decode(0x4EA2_DC20).text == "famax v0.4s, v1.4s, v2.4s")
         #expect(decode(0x6EA2_FC20).text == "fscale v0.4s, v1.4s, v2.4s")
     }
 
     @Test func rdmThreeSameExtraDecodesAtBothVectorSizes() {
-        // SQRDMLAH (vector, three-same extra) at .4h (size 1) and .4s
-        // (size 2).
         #expect(decode(0x2E42_8420).text == "sqrdmlah v0.4h, v1.4h, v2.4h")
         #expect(decode(0x6E82_8420).text == "sqrdmlah v0.4s, v1.4s, v2.4s")
         #expect(decode(0x6E82_8C20).text == "sqrdmlsh v0.4s, v1.4s, v2.4s")
     }
 
     @Test func fp8DotProductWithHalfDestinationDecodes() {
-        // FP8DOT2: byte sources, half-precision destination, Q = 1.
         #expect(decode(0x4E42_FC20).text == "fdot v0.8h, v1.16b, v2.16b")
     }
 
@@ -481,10 +458,9 @@ struct SIMDFPHalfPrecisionAndExtensionTests {
             #expect(d.memoryAccess == row.access)
             #expect(d.text == row.text)
         }
-        // Negative unscaled displacement.
         #expect(decode(0xDD10_0820).text == "stlur d0, [x1, #-256]")
-        #expect(decode(0x5D80_0820).isUndefined) // size=01 with opc=10 reserved
-        #expect(decode(0x1D00_0020).isUndefined) // bits 11:10 != 10
-        #expect(decode(0x1D20_0820).isUndefined) // bit 21 set
+        #expect(decode(0x5D80_0820).isUndefined)
+        #expect(decode(0x1D00_0020).isUndefined)
+        #expect(decode(0x1D20_0820).isUndefined)
     }
 }

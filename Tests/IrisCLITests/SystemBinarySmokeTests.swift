@@ -1,20 +1,13 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Env-gated local smoke over Apple system binaries. These binaries are
-// never checked in (licensing); the suite runs only when
-// IRIS_CLI_SYSTEM_SMOKE=1 is exported, asserts structural invariants
-// only (never byte-locked output), and skips paths absent on the host.
 
 import Foundation
 import Iris
 import IrisCLICore
 import Testing
 
-/// Validates the CLI end to end over real system binaries when
-/// `IRIS_CLI_SYSTEM_SMOKE=1`: every mode runs to exit 0, listings have
-/// one line per record, NDJSON parses line by line, and the census adds
-/// up — structure, not bytes, since system binaries change underfoot.
+/// Validates the CLI end to end over real system binaries under
+/// `IRIS_CLI_SYSTEM_SMOKE=1`.
 @Suite(
     "System binary smoke",
     .enabled(if: ProcessInfo.processInfo.environment["IRIS_CLI_SYSTEM_SMOKE"] == "1"),
@@ -33,7 +26,6 @@ struct SystemBinarySmokeTests {
         let run = runCLI(["--color", "never", path])
         #expect(run.status == CLI.exitSuccess)
 
-        // One instruction line per record across all sections.
         var recordCount = 0
         for section in binary.codeSections {
             recordCount += section.instructions(features: binary.features).count
@@ -43,7 +35,6 @@ struct SystemBinarySmokeTests {
         }
         #expect(instructionLines.count == recordCount)
 
-        // Symbol labels appear when the binary has symbols in code.
         if binary.symbols.count > 0, !binary.functionStarts.isEmpty {
             #expect(run.stdout.contains(":\n"))
         }

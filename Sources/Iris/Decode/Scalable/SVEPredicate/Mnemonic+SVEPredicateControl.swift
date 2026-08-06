@@ -1,18 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// mnemonic constants — SVE predicate & control. Raw values
-// from the SVE / SVE2 slab (16384 ..< 28672) reserved by the scalable core; SVE-predicate is the
-// first family to allocate in it. Shared mnemonics whose text token is
-// identical to an earlier family's (AND/ORR/EOR/BIC/ORN/MOV/NOT/ADD/SUB)
-// are REUSED from their owning family per the shared-mnemonic ownership
-// rule — the Mnemonic is the token; the operand shape and `category == .sve`
-// distinguish the predicate form from the integer form at canonicalization.
-// Only the SVE-unique tokens are declared here.
 
 public extension Mnemonic {
-    // MARK: Predicate initialise / test (G1)
-
     /// `PTRUE` — initialise predicate from a pattern (no NZCV).
     static let ptrue = Mnemonic(rawValue: 16384)
     /// `PTRUES` — initialise predicate, setting NZCV.
@@ -21,8 +10,6 @@ public extension Mnemonic {
     static let pfalse = Mnemonic(rawValue: 16386)
     /// `PTEST` — set NZCV from a predicate under a governing predicate.
     static let ptest = Mnemonic(rawValue: 16387)
-
-    // MARK: Predicate logical (G2) — SVE-unique tokens only
 
     /// `ORRS` — predicate OR, setting NZCV.
     static let orrs = Mnemonic(rawValue: 16388)
@@ -44,8 +31,6 @@ public extension Mnemonic {
     static let movs = Mnemonic(rawValue: 16396)
     /// `NOTS` — predicate NOT alias (of EORS), setting NZCV.
     static let nots = Mnemonic(rawValue: 16397)
-
-    // MARK: Predicate break / partition (G3)
 
     /// `BRKA` — break after the first true lane (propagating).
     static let brka = Mnemonic(rawValue: 16398)
@@ -72,8 +57,6 @@ public extension Mnemonic {
     /// `PNEXT` — advance to the next active lane, setting NZCV.
     static let pnext = Mnemonic(rawValue: 16409)
 
-    // MARK: First-fault register (G4)
-
     /// `RDFFR` — read the first-fault register into a predicate.
     static let rdffr = Mnemonic(rawValue: 16410)
     /// `RDFFRS` — `RDFFR` setting NZCV.
@@ -82,8 +65,6 @@ public extension Mnemonic {
     static let wrffr = Mnemonic(rawValue: 16412)
     /// `SETFFR` — set the first-fault register all-true.
     static let setffr = Mnemonic(rawValue: 16413)
-
-    // MARK: Predicate count (G5)
 
     /// `CNTP` — count active predicate lanes into a scalar.
     static let cntp = Mnemonic(rawValue: 16414)
@@ -99,8 +80,6 @@ public extension Mnemonic {
     static let sqdecp = Mnemonic(rawValue: 16419)
     /// `UQDECP` — unsigned-saturating decrement by predicate count.
     static let uqdecp = Mnemonic(rawValue: 16420)
-
-    // MARK: Loop predicates (G6)
 
     /// `WHILEGE` — signed while-greater-or-equal loop predicate.
     static let whilege = Mnemonic(rawValue: 16421)
@@ -126,8 +105,6 @@ public extension Mnemonic {
     static let ctermeq = Mnemonic(rawValue: 16431)
     /// `CTERMNE` — conditionally-terminate-not-equal (sets N,V; reads C).
     static let ctermne = Mnemonic(rawValue: 16432)
-
-    // MARK: Element count + stack-frame adjust (G7)
 
     /// `RDVL` — read the vector length in bytes into a scalar.
     static let rdvl = Mnemonic(rawValue: 16433)
@@ -198,12 +175,8 @@ public extension Mnemonic {
     /// `UQDECD` — unsigned-saturating decrement by doubleword-element count.
     static let uqdecd = Mnemonic(rawValue: 16466)
 
-    // MARK: Index generation (G8)
-
     /// `INDEX` — generate a vector of monotonically-stepped indices.
     static let index = Mnemonic(rawValue: 16467)
-
-    // MARK: MOVPRFX (G9)
 
     /// `MOVPRFX` — constructive-prefix copy (predicated or unpredicated).
     static let movprfx = Mnemonic(rawValue: 16468)

@@ -4,9 +4,8 @@
 import IrisCLICore
 import Testing
 
-/// Validates `(cputype, cpusubtype)` naming and selection mapping: the
-/// lipo-style names for known pairs, the identifying fallback for
-/// unknown ones, and which pairs satisfy which `--arch` selection.
+/// Validates `(cputype, cpusubtype)` naming and which pairs satisfy which
+/// `--arch` selection.
 @Suite("Architecture naming")
 struct ArchitectureNamingTests {
     @Test func arm64FlavorNames() {
@@ -17,8 +16,6 @@ struct ArchitectureNamingTests {
     }
 
     @Test func capabilityBitsAreMasked() {
-        // arm64e slices ship with high capability bits (0x80000002 and
-        // friends); only the low feature byte names the flavor.
         #expect(ArchitectureName.name(cputype: 0x0100_000C, cpusubtype: Int32(bitPattern: 0x8000_0002)) == "arm64e")
         #expect(ArchitectureName.selection(cputype: 0x0100_000C, cpusubtype: Int32(bitPattern: 0xC000_0002)) == .arm64e)
     }
@@ -57,7 +54,9 @@ struct ArchitectureNamingTests {
         #expect(CLI.helpText(for: .decode).contains("--features"))
         #expect(CLI.helpText(for: .decode).contains("--semantics"))
         #expect(CLI.helpText(for: .decode).contains("--bytes"))
+        #expect(CLI.helpText(for: .decode).contains("--at <address>"))
         #expect(!CLI.helpText(for: .decode).contains("--arch"))
+        #expect(!CLI.helpText(for: .disasm).contains("--at "))
 
         #expect(CLI.helpText(for: .stats).contains("--arch"))
         #expect(CLI.helpText(for: .stats).contains("--json"))
@@ -67,7 +66,6 @@ struct ArchitectureNamingTests {
         #expect(CLI.helpText(for: .functions).contains("--color"))
         #expect(!CLI.helpText(for: .functions).contains("--semantics"))
 
-        // Every verb help names its usage and the help flag.
         for verb in Verb.allCases {
             #expect(CLI.helpText(for: verb).contains("usage:"))
             #expect(CLI.helpText(for: verb).contains("--help, -h"))
@@ -79,13 +77,10 @@ struct ArchitectureNamingTests {
         #expect(help.contains("--function"))
         #expect(help.contains("--range"))
         #expect(help.contains("--slim"))
-        // The referenced-data annotation is described.
         #expect(help.contains("\"the string\""))
     }
 
     @Test func slimIsDocumentedWhereverJSONIsAccepted() {
-        // --slim shapes --json, so the verbs that emit JSON name it; stats
-        // emits one census object, the others NDJSON.
         for verb in [Verb.disasm, .decode, .stats, .functions] {
             #expect(CLI.helpText(for: verb).contains("--slim"), "\(verb) help should name --slim")
         }

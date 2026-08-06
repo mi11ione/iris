@@ -20,18 +20,10 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the integer compare-to-predicate group: the vector and wide
-/// forms at top byte 0x24, the unsigned-immediate form (bit21), and the
-/// signed-immediate form at 0x25. Every compare writes its destination
-/// predicate AND NZCV — the load-bearing contrast with the FP compares, which
-/// write a predicate but no flags. The vector CMPLE/CMPLT/CMPLO/CMPLS are
-/// assembler-only swap aliases: the bit patterns that would spell them are
-/// the wide (Zm.d) encodings, so a narrow cmple/cmplt/cmplo/cmpls must never
-/// be emitted, while the wide and immediate ones are real and must be.
+/// Validates the integer compare-to-predicate group across the vector, wide
+/// and immediate forms.
 @Suite("SVE integer / compare to predicate")
 struct SVEIntCompareDecodeTests {
-    /// Every vector/wide compare slot: bits 15:13 select the pair, bit 4 the
-    /// second member; the wide rows read Zm at doubleword.
     private static let vectorAndWide: [(UInt32, Mnemonic, Bool, String)] = [
         (0x2402_0020, .cmphs, false, "cmphs p0.b, p0/z, z1.b, z2.b"),
         (0x2402_0030, .cmphi, false, "cmphi p0.b, p0/z, z1.b, z2.b"),
@@ -73,10 +65,6 @@ struct SVEIntCompareDecodeTests {
     }
 
     @Test func aNarrowLessThanCompareIsNeverEmitted() {
-        // The four "swapped" spellings exist only in the assembler. Every
-        // vector-form encoding decodes to cmpeq/ne/ge/gt/hi/hs; cmple, cmplt,
-        // cmplo and cmpls appear only with a doubleword (wide) or immediate
-        // second operand. Sweep every vector/wide slot to prove it.
         for sel: UInt32 in 0 ... 7 {
             for second: UInt32 in 0 ... 1 {
                 let encoding = 0x2402_0020 | (sel << 13) | (second << 4)
@@ -93,8 +81,6 @@ struct SVEIntCompareDecodeTests {
     }
 
     @Test func theWideFormsRejectADoublewordSource() {
-        // A wide compare reads Zm.d against elements narrower than doubleword;
-        // sz=11 leaves nothing narrower, so the slot is reserved.
         #expect(decode(0x24C2_2020).mnemonic == .undefined)
         #expect(decode(0x24C2_A020).mnemonic == .cmpeq, "the non-wide slot still decodes at doubleword")
         #expect(text(0x24C2_A020) == "cmpeq p0.d, p0/z, z1.d, z2.d")
@@ -143,7 +129,7 @@ struct SVEIntCompareDecodeTests {
     }
 
     @Test func theResultPredicateCarriesItsElementAndTheGoverningStaysBare() {
-        let d = decode(0x2482_A020) // cmpeq p0.s, p0/z, z1.s, z2.s
+        let d = decode(0x2482_A020)
         #expect(text(0x2482_A020) == "cmpeq p0.s, p0/z, z1.s, z2.s")
         #expect(d.operands[0] == .scalablePredicate(
             ScalablePredicateRef(registerIndex: 0, element: .s, role: .result),

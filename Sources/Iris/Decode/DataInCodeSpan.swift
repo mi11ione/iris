@@ -1,20 +1,12 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 
-/// A caller-provided span of bytes inside a code buffer that is **not**
-/// instructions (a jump table or an embedded data slab).
+/// A caller-provided span of bytes inside a code buffer that is not
+/// instructions — a jump table or embedded data slab.
 ///
-/// Compilers record this knowledge at link time (Mach-O carries it as
-/// `LC_DATA_IN_CODE`; each 8-byte `data_in_code_entry` is
-/// `offset:UInt32, length:UInt16, kind:UInt16` measured from the
-/// mach_header). That knowledge is loader-level and cannot be recovered
-/// from bytes alone, so the decoder accepts spans from the caller and
-/// marks the covered words as data rather than decoding garbage. A span
-/// is expressed in buffer-offset space: `offset` counts bytes from the
-/// start of the buffer handed to
-/// ``InstructionStream/init(bytes:at:features:dataInCode:)-(UnsafeRawBufferPointer,_,_,_)``,
-/// so a caller translating from `LC_DATA_IN_CODE` rebases each entry by
-/// the file offset at which the decoded code bytes begin.
+/// Loader-level knowledge unrecoverable from bytes alone, so the decoder
+/// takes it from the caller and marks the covered words as data. `offset`
+/// counts from the start of the decoded buffer.
 @frozen
 public struct DataInCodeSpan: Sendable, Hashable {
     /// Byte offset of the span's first byte, measured from the start of

@@ -1,13 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// the move/lookup families in cell 110|0|x (top byte 0xC0):
-// MOVA/MOVAZ multi-slice (ZA <-> vector list), the ZA-array and ZT0 ZERO
-// forms, MOVT (GPR/vector <-> ZT0), and the ZT0-table LUTI2/LUTI4/LUTI6
-// lookups. Routed by bits[23:16]: 0x0C-0x0F ZERO-array,
-// 0x48 ZERO-ZT0, 0x4C/0x4E/0x4F MOVT, 0x02/0x04/0x06/… MOVA/MOVAZ,
-// 0x8A-0x9C/0xC8-0xCC LUTI. MOVA renders `mov` (unconditional alias);
-// MOVAZ renders `movaz`.
 
 /// SME2 move/lookup decoders.
 enum SME2MoveLookupDecode {
@@ -20,13 +12,9 @@ enum SME2MoveLookupDecode {
         case 0x0C, 0x0D, 0x0E, 0x0F: decodeZeroArray(e, a, &sink)
         case 0x48: decodeZeroZT0(e, a, &sink)
         case 0x4C, 0x4E, 0x4F: decodeMovt(e, a, &sink)
-        // LUTI index bits bleed into bits[17:16], so its region byte is not a
-        // stable key — the table match (below) handles it directly.
         default: decodeLuti(e, a, &sink)
         }
     }
-
-    // MARK: - LUTI2 / LUTI4 / LUTI6 (ZT0 table lookup)
 
     /// The destination/source shape of a LUTI record.
     private enum LutiForm {
@@ -42,9 +30,7 @@ enum SME2MoveLookupDecode {
         case luti6multi
     }
 
-    /// One LUTI record — exact `(mask, value)`, the form, element, `.S`-stride,
-    /// destination width, and the table-index field. Generated from the ARM
-    /// records so the mask rejects reserved-bit holes by construction.
+    /// One LUTI record.
     private struct LutiRow {
         let mask: UInt32
         let value: UInt32
@@ -92,8 +78,7 @@ enum SME2MoveLookupDecode {
     ]
 
     /// LUTI2/LUTI4/LUTI6 lookups from `ZT0` into a Z destination, matched by
-    /// exact `(mask, value)` — the mask rejects reserved encodings and the
-    /// index bits that bleed into the region byte.
+    /// exact `(mask, value)`.
     @_optimize(speed)
     private static func decodeLuti(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         for row in lutiTable where e & row.mask == row.value {
@@ -147,8 +132,7 @@ enum SME2MoveLookupDecode {
         )
     }
 
-    /// The first destination register of a LUTI multi group — consecutive
-    /// (`field×n` at bits[4:1]/[4:2]) or strided (`16·D + low`, stride `16/n`).
+    /// The first destination register of a LUTI multi group.
     @inline(__always)
     private static func lutiDestFirst(_ e: UInt32, _ count: UInt8, strided: Bool) -> UInt8 {
         if strided {
@@ -158,18 +142,10 @@ enum SME2MoveLookupDecode {
         return count == 4 ? UInt8(e & 0x1C) : UInt8(e & 0x1E)
     }
 
-    // MARK: - MOVA / MOVAZ (tile-slice multi-vector forms)
-
-    /// MOVA/MOVAZ between a `ZA` tile-slice range and a vector group (list↔tile
-    /// and single-slice MOVAZ). MOVA renders `mov`; MOVAZ renders `movaz`.
-    /// Returns `nil` for a non-tile-slice-MOVA word. The tile/offset packing is
-    /// at bits[8:5] (per element), the range spans the group width, and the
-    /// select register is `W12+Rs`.
+    /// MOVA/MOVAZ between a `ZA` tile-slice range and a vector group
+    /// (list↔tile and single-slice MOVAZ).
     @inline(__always)
     private static func decodeMovaTileSlice(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
-        // Single-slice MOVAZ: `movaz Zd, za<t>{h|v}.<T>[Ws, off]` (no range).
-        // The b/h/s/d forms free the size bits (bit16=0); `.q` is the exact
-        // size-11 + bit16=1 encoding.
         if e & 0xFF3F_1E00 == 0xC002_0200 || e & 0xFFFF_1E00 == 0xC0C3_0200 {
             let element: ScalarSize = e & 0x10000 != 0 ? .q : sizeElement(e)
             let (tile, slot) = singleSliceTileSlot(e, element)
@@ -184,9 +160,6 @@ enum SME2MoveLookupDecode {
                 scalableEffect: [.readsStreamingMode, .partialWrite],
             )
         }
-        // Multi list↔tile: bit17=0 write (list→tile), bit17=1 read (tile→list);
-        // bit10=1 is 4-way; bit9=1 is MOVAZ (read direction only). The opcode
-        // fixes bits[12:11]=0 (bit11=1 is the array form) and bit16=0.
         guard e & 0xFF01_1800 == 0xC000_0000 else { return nil }
         let op = (e >> 17) & 0x7F
         guard op == 0x02 || op == 0x03 || op == 0x22 || op == 0x23
@@ -195,18 +168,12 @@ enum SME2MoveLookupDecode {
         let movaz = read && e & 0x200 != 0
         let count: UInt8 = e & 0x400 != 0 ? 4 : 2
         let element = sizeElement(e)
-        // The tile:slot field is bits[2:0] (write) / bits[7:5] (read); the list
-        // is at bits[9:6]/[9:7] (write) or bits[4:0] (read).
         guard let (tile, lo, hi) = multiTileSlice(e, count: count, read: read) else { return nil }
         let zFirst: UInt8
         if read {
-            // Zd at bits[4:1] (×2, bit0 reserved) / bits[4:2] (×4, bits[1:0]
-            // reserved).
             if e & (count == 4 ? 0x3 : 0x1) != 0 { return nil }
             zFirst = count == 4 ? UInt8(e & 0x1C) : UInt8(e & 0x1E)
         } else {
-            // Write: tile/offset is bits[2:0], so bits[5:3] are reserved; Zn is
-            // at bits[9:6] (×2) / bits[9:7] (×4), with bit6 reserved for 4-way.
             if e & 0x38 != 0 { return nil }
             if count == 4, e & 0x40 != 0 { return nil }
             zFirst = count == 4 ? UInt8((e >> 7) & 0x7) &* 4 : UInt8((e >> 6) & 0xF) &* 2
@@ -222,35 +189,23 @@ enum SME2MoveLookupDecode {
             category: .sme,
             operandCount: read ? sink.emit(list, slice) : sink.emit(slice, list),
             scalableReads: za, scalableWrites: read && !movaz ? .empty : za,
-            // Partial only when this record writes ZA (write direction, or
-            // MOVAZ zeroing); the MOVA-read direction fully writes its Z list.
             scalableEffect: read && !movaz
                 ? .readsStreamingMode : [.readsStreamingMode, .partialWrite],
         )
     }
 
     /// The `(tile, offset-lo, offset-hi)` of a multi-vector MOVA tile-slice.
-    /// The tile:slot field sits in the 3-bit region bits[2:0] (write) /
-    /// bits[7:5] (read); its width is `max(tileBits, 3-way-base)` — `log2(N)`
-    /// tile bits plus `base − tileBits` offset bits (base 3 for 2-way, 2 for
-    /// 4-way), clamped so `.d`/`.s` keep their full tile index. The offset
-    /// scales by the group width. Any set bit above the field width in the
-    /// region, or `bit8` on a read, is reserved and rejects.
     @inline(__always)
     private static func multiTileSlice(
         _ e: UInt32, count: UInt8, read: Bool,
     ) -> (tile: UInt8, lo: UInt8, hi: UInt8)? {
-        if read, e & 0x100 != 0 { return nil } // read bit8 reserved
-        // Tile-index bit count = the size field (`.b`/`.h`/`.s`/`.d` -> 0/1/2/3);
-        // the multi tile-slice form is never `.q`.
+        if read, e & 0x100 != 0 { return nil }
         let tb = UInt8((e >> 22) & 0x3)
         let base: UInt8 = count == 4 ? 2 : 3
         let offsetBits: UInt8 = tb < base ? base - tb : 0
-        // fieldWidth is `base` (when tb < base) or `tb` (otherwise) — both ≤ 3,
-        // so the 3-bit region always has room.
         let fieldWidth = tb + offsetBits
         let region = read ? UInt8((e >> 5) & 0x7) : UInt8(e & 0x7)
-        if region & ~((1 << fieldWidth) - 1) != 0 { return nil } // reserved high bits
+        if region & ~((1 << fieldWidth) - 1) != 0 { return nil }
         let slot = region & ((1 << offsetBits) - 1)
         let lo = slot &* count
         return (region >> offsetBits, lo, lo &+ count &- 1)
@@ -293,17 +248,10 @@ enum SME2MoveLookupDecode {
         }
     }
 
-    // MARK: - MOVA / MOVAZ (ZA-array multi-vector forms)
-
-    /// MOVA/MOVAZ between a `.d` `ZA`-array vector `za.d[W8+Rv, off, vgxN]` and
-    /// a `.d` vector group. MOVA renders `mov` (the always-preferred alias);
-    /// MOVAZ (which zeroes the read `ZA` slices) renders `movaz`. Returns `nil`
-    /// for a non-array-MOVA word (the tile-slice forms are handled by
-    /// ``decodeMovaTileSlice``).
+    /// MOVA/MOVAZ between a `.d` `ZA`-array vector `za.d[W8+Rv, off, vgxN]`
+    /// and a `.d` vector group.
     @inline(__always)
     private static func decodeMovaArray(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
-        // Array WRITE (`mov za.d[Wv, off, vgxN], {Zn}`): the offset is bits[2:0]
-        // and the source list `Zn` is bits[9:6] (×2) / bits[9:7] (×4).
         if e & 0xFFFF_9C38 == 0xC004_0800 {
             return arrayMova(e, a, .mov, write: true, count: 2,
                              offset: UInt8(e & 0x7), zFirst: UInt8((e >> 6) & 0xF) &* 2, &sink)
@@ -312,8 +260,6 @@ enum SME2MoveLookupDecode {
             return arrayMova(e, a, .mov, write: true, count: 4,
                              offset: UInt8(e & 0x7), zFirst: UInt8((e >> 7) & 0x7) &* 4, &sink)
         }
-        // Array READ (`mov`/`movaz {Zd}, za.d[Wv, off, vgxN]`): the offset is
-        // bits[7:5] and the dest list `Zd` is bits[4:0].
         let readOffset = UInt8((e >> 5) & 0x7)
         switch e & 0xFFFF_9F01 {
         case 0xC006_0800: return arrayMova(e, a, .mov, write: false, count: 2, offset: readOffset, zFirst: UInt8(e & 0x1E), &sink)
@@ -336,7 +282,6 @@ enum SME2MoveLookupDecode {
         let array = SME2Decode.zaVector(e, .d, offset: offset, group: vg)
         let list = SME2Decode.group(zFirst, count, .d)
         let groupMask = SME2Decode.groupMask(zFirst, count)
-        // MOVAZ zeroes the read ZA slices (a ZA write); MOVA read does not.
         let za = SME2Decode.zaWholeMask()
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
@@ -346,24 +291,19 @@ enum SME2MoveLookupDecode {
             operandCount: write ? sink.emit(array, list) : sink.emit(list, array),
             scalableReads: za,
             scalableWrites: write || mnemonic == .movaz ? za : .empty,
-            // Partial only when this record writes ZA (write direction, or
-            // MOVAZ zeroing); the MOVA-read direction fully writes its Z list.
             scalableEffect: write || mnemonic == .movaz
                 ? [.readsStreamingMode, .partialWrite] : .readsStreamingMode,
         )
     }
 
-    // MARK: - ZERO (ZA array)
-
-    /// `ZERO za.d[Wv, off{:hi}{, vgxN}]` — the eight SME2p1 array forms
-    /// (always `.d`, write-only).
+    /// `ZERO za.d[Wv, off{:hi}{, vgxN}]`.
     @_optimize(speed)
     private static func decodeZeroArray(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let (offset, offsetHigh, group): (UInt8, UInt8?, ZAArrayVectorOperand.VectorGroup)
         switch e & 0xFFFF_9FF8 {
-        case 0xC00C_0000: // za.d[Wv, off3, vgx2]
+        case 0xC00C_0000:
             (offset, offsetHigh, group) = (UInt8(e & 0x7), nil, .vgx2)
-        case 0xC00E_0000: // za.d[Wv, off3, vgx4]
+        case 0xC00E_0000:
             (offset, offsetHigh, group) = (UInt8(e & 0x7), nil, .vgx4)
         default:
             return decodeZeroArrayRanges(e, a, &sink)
@@ -373,28 +313,27 @@ enum SME2MoveLookupDecode {
 
     @inline(__always)
     private static func decodeZeroArrayRanges(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // Range forms: off×span, with narrower group fields.
-        if e & 0xFFFF_9FF8 == 0xC00C_8000 { // za.d[Wv, o1:o2]
+        if e & 0xFFFF_9FF8 == 0xC00C_8000 {
             let lo = UInt8(e & 0x7) &* 2
             return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .none, &sink)
         }
         switch e & 0xFFFF_9FFC {
-        case 0xC00D_0000: // vgx2, o1:o2
+        case 0xC00D_0000:
             let lo = UInt8(e & 0x3) &* 2
             return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .vgx2, &sink)
-        case 0xC00D_8000: // vgx4, o1:o2
+        case 0xC00D_8000:
             let lo = UInt8(e & 0x3) &* 2
             return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 1, group: .vgx4, &sink)
-        case 0xC00E_8000: // o1:o4 (whole)
+        case 0xC00E_8000:
             let lo = UInt8(e & 0x3) &* 4
             return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .none, &sink)
         default: break
         }
         switch e & 0xFFFF_9FFE {
-        case 0xC00F_0000: // vgx2, o1:o4
+        case 0xC00F_0000:
             let lo = UInt8(e & 0x1) &* 4
             return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .vgx2, &sink)
-        case 0xC00F_8000: // vgx4, o1:o4
+        case 0xC00F_8000:
             let lo = UInt8(e & 0x1) &* 4
             return zeroArrayDraft(e, a, offset: lo, offsetHigh: lo &+ 3, group: .vgx4, &sink)
         default: return SME2Decode.undefined(e, a)
@@ -414,13 +353,9 @@ enum SME2MoveLookupDecode {
                 e, .d, offset: offset, offsetHigh: offsetHigh, group: group,
             )),
             scalableWrites: SME2Decode.zaWholeMask(),
-            // ZERO za-array is streaming-gated (HasSME2p1, not IsNonStreamingSafe
-            // like the ZT0 ZERO) and writes a dynamic ZA slice range.
             scalableEffect: [.readsStreamingMode, .partialWrite],
         )
     }
-
-    // MARK: - ZERO / MOVT (ZT0)
 
     /// `ZERO { zt0 }`.
     @inline(__always)
@@ -434,32 +369,30 @@ enum SME2MoveLookupDecode {
     }
 
     /// `MOVT Xt, zt0[off]` / `MOVT zt0[off], Xt` (scalar, off = field × 8,
-    /// 0-56) and the LUTv2 vector form `MOVT zt0{[off, mul vl]}, Zt`. The masks
-    /// below fix the full opcode (`bits[9:5]=0b11111` scalar, `Zt` for vector)
-    /// so the region's holes stay UNDEFINED.
+    /// 0-56) and the LUTv2 vector form `MOVT zt0{[off, mul vl]}, Zt`.
     @inline(__always)
     private static func decodeMovt(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let rt = UInt8(e & 0x1F)
         let offset = UInt8((e >> 12) & 0x7) &* 8
-        if e & 0xFFFF_8FE0 == 0xC04C_03E0 { // movt Xt, zt0[off]
+        if e & 0xFFFF_8FE0 == 0xC04C_03E0 {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .movt,
                 semanticWrites: SME2Decode.dataMask(rt), category: .sme,
                 operandCount: sink.emit(gpr64(rt), .zt0(elementIndex: offset)),
                 scalableReads: SME2Decode.zt0Mask(),
-                scalableEffect: .readsStreamingMode, // MOVT is streaming-gated (HasSME2)
+                scalableEffect: .readsStreamingMode,
             )
         }
-        if e & 0xFFFF_8FE0 == 0xC04E_03E0 { // movt zt0[off], Xt
+        if e & 0xFFFF_8FE0 == 0xC04E_03E0 {
             return DecodedDraft(
                 address: a, encoding: e, mnemonic: .movt,
                 semanticReads: SME2Decode.dataMask(rt), category: .sme,
                 operandCount: sink.emit(.zt0(elementIndex: offset), gpr64(rt)),
                 scalableWrites: SME2Decode.zt0Mask(),
-                scalableEffect: [.readsStreamingMode, .partialWrite], // writes an 8-byte ZT0 slice
+                scalableEffect: [.readsStreamingMode, .partialWrite],
             )
         }
-        if e & 0xFFFF_CFE0 == 0xC04F_03E0 { // movt zt0{[off, mul vl]}, Zt (LUTv2)
+        if e & 0xFFFF_CFE0 == 0xC04F_03E0 {
             let zt = UInt8(e & 0x1F)
             let off2 = UInt8((e >> 12) & 0x3)
             return DecodedDraft(

@@ -4,24 +4,15 @@
 import Iris
 import Testing
 
-/// Validates crypto/Apple-extensions text rendering (via
-/// `Instruction.text`) for every sub-family: AES / SHA / SM* text, PAC
-/// standalone, MTE (including IRG XZR alias and MTE-store offset-0
-/// alias), AMX (set/clr no operand, X-register operand for documented
-/// ops, `.long` form for amxUnknownOp), and defensive sentinels for
-/// operand variants outside the family's scope.
+/// Validates crypto/Apple-extensions text for every sub-family.
 @Suite("CryptoAppleExtensions / Canonicalizer.format")
 struct CryptoAppleExtensionsCanonicalizerTests {
     @Test func undefinedRecordRendersLongDirective() {
-        // Text is total: undefined records render the raw word as a
-        // `.long` directive (the router owns the sentinel rendering).
         let undefined = Instruction(address: 0, encoding: 0, mnemonic: .undefined, category: .undefined)
         #expect(undefined.text == ".long 0x0")
     }
 
     @Test func cryptoFormatterGuardsForeignMnemonicRanges() {
-        // Hand-built record: crypto category carrying a non-crypto
-        // mnemonic (.add) — the formatter's range guard fires.
         let hostile = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .crypto, operands: [],
@@ -30,15 +21,11 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func crossFamilyDelegationRendersCryptoMnemonics() {
-        // A crypto/MTE/AMX-range mnemonic on a GPR-family record routes
-        // through that family's formatter into the crypto canonicalizer
-        // (the in-formatter `owns()` delegation, observed via text).
         let aese = Instruction(
             address: 0, encoding: 0, mnemonic: .aese,
             category: .dataProcessingImmediate, operands: [],
         )
         #expect(aese.text == "aese")
-        // Non-crypto mnemonics stay with their own family formatter.
         let add = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .dataProcessingImmediate, operands: [],
@@ -67,7 +54,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func sha1cFormatting() {
-        // SHA1C q0, s1, v2.4s.
         let d = decode(0x5E02_0020, at: 0)
         #expect(d.text == "sha1c q0, s1, v2.4s")
     }
@@ -103,7 +89,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func sha1hFormatting() {
-        // SHA1H s0, s1.
         let d = decode(0x5E28_0820, at: 0)
         #expect(d.text == "sha1h s0, s1")
     }
@@ -119,21 +104,18 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func eor3Formatting() {
-        // EOR3 v0.16b, v1.16b, v2.16b, v3.16b.
         let d = decode(0xCE02_0C20, at: 0)
         #expect(d.text ==
             "eor3 v0.16b, v1.16b, v2.16b, v3.16b")
     }
 
     @Test func bcaxFormatting() {
-        // BCAX v0.16b, v1.16b, v2.16b, v3.16b.
         let d = decode(0xCE22_0C20, at: 0)
         #expect(d.text ==
             "bcax v0.16b, v1.16b, v2.16b, v3.16b")
     }
 
     @Test func xarFormatting() {
-        // XAR v0.2d, v1.2d, v2.2d, #1.
         let d = decode(0xCE82_0420, at: 0)
         #expect(d.text ==
             "xar v0.2d, v1.2d, v2.2d, #1")
@@ -170,14 +152,12 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func sm3ss1Formatting() {
-        // SM3SS1 v0.4s, v1.4s, v2.4s, v3.4s.
         let d = decode(0xCE42_0C20, at: 0)
         #expect(d.text ==
             "sm3ss1 v0.4s, v1.4s, v2.4s, v3.4s")
     }
 
     @Test func sm3tt1aFormattingWithLaneIndex() {
-        // SM3TT1A v0.4s, v1.4s, v2.s[3].
         let d = decode(0xCE42_B020, at: 0)
         #expect(d.text ==
             "sm3tt1a v0.4s, v1.4s, v2.s[3]")
@@ -321,13 +301,11 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func pacgaWithRmSPFormatting() {
-        // PACGA x0, x1, sp — Rm SP-form renders as "sp" not "x31".
         let d = decode(0x9ADF_3020, at: 0)
         #expect(d.text == "pacga x0, x1, sp")
     }
 
     @Test func addgFormatting() {
-        // ADDG sp, x2, #32, #3 = 0x91820C5F (Rd=11111 → sp, Rn=00010 → x2).
         let d = decode(0x9182_0C5F, at: 0)
         #expect(d.text == "addg sp, x2, #32, #3")
     }
@@ -338,7 +316,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func subpFormatting() {
-        // SUBP x0, x1, x2 = 0x9AC20020.
         let d = decode(0x9AC2_0020, at: 0)
         #expect(d.text == "subp x0, x1, x2")
     }
@@ -349,13 +326,11 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func irgThreeOperandFormatting() {
-        // IRG x0, x1, x2 — 3-operand form (Rm != XZR).
         let d = decode(0x9AC2_1020, at: 0)
         #expect(d.text == "irg x0, x1, x2")
     }
 
     @Test func irgWithXZRRendersAsTwoOperandAlias() {
-        // IRG x0, x1, xzr — Rm=11111 collapses to 2-operand `irg x0, x1`.
         let d = decode(0x9ADF_1020, at: 0)
         #expect(d.text == "irg x0, x1")
     }
@@ -366,19 +341,16 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func ldgFormatting() {
-        // LDG x0, [x1, #0] — signed offset, displacement 0 → bare [Xn] alias.
         let d = decode(0xD960_0020, at: 0)
         #expect(d.text == "ldg x0, [x1]")
     }
 
     @Test func ldgWithOffsetFormatting() {
-        // LDG x0, [x1, #16] — simm9 = 1, scaled × 16.
         let d = decode(0xD960_1020, at: 0)
         #expect(d.text == "ldg x0, [x1, #16]")
     }
 
     @Test func ldgmFormatting() {
-        // LDGM x0, [x1] — bare addressing.
         let d = decode(0xD9E0_0020, at: 0)
         #expect(d.text == "ldgm x0, [x1]")
     }
@@ -394,25 +366,21 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func stgOffsetZeroRendersBareAlias() {
-        // STG x0, [x1] — signed offset with displacement 0 → omit `, #0`.
         let d = decode(0xD920_0820, at: 0)
         #expect(d.text == "stg x0, [x1]")
     }
 
     @Test func stgWithSignedOffset() {
-        // STG x0, [x1, #16].
         let d = decode(0xD920_1820, at: 0)
         #expect(d.text == "stg x0, [x1, #16]")
     }
 
     @Test func stgPostIndex() {
-        // STG x0, [x1], #16 — post-index.
         let d = decode(0xD920_1420, at: 0)
         #expect(d.text == "stg x0, [x1], #16")
     }
 
     @Test func stgPreIndex() {
-        // STG x0, [x1, #16]! — pre-index.
         let d = decode(0xD920_1C20, at: 0)
         #expect(d.text == "stg x0, [x1, #16]!")
     }
@@ -455,7 +423,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func amxLdxRendersXRegister() {
-        // amxLdx with operand X5.
         let d = decode(0x0020_1005, at: 0)
         #expect(d.text == "ldx x5")
     }
@@ -566,44 +533,31 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func amxWithXZRRendersAsXzr() {
-        // amxLdx X31 = ldx xzr.
         let d = decode(0x0020_101F, at: 0)
         #expect(d.text == "ldx xzr")
     }
 
     @Test func amxUnknownOpRendersLongHex() {
-        // Opcode 23 (first opcode outside documented set) → amxUnknownOp.
-        // Hard-code the oracle string so a regression in our hex
-        // formatter (casing / zero-pad) can't be silently mirrored by
-        // an oracle built via the same `String(radix:16)` call.
         let d = decode(0x0020_12E0, at: 0)
         #expect(d.text ==
             ".long 0x2012e0")
     }
 
     @Test func registerNameRendersSPCorrectly() {
-        // ADDG SP, x2, #0, #0 — Rd = SP.
         let d = decode(0x9180_005F, at: 0)
         #expect(d.text.contains("sp"))
     }
 
     @Test func formatGenericOperandHandlesAmxFieldOperandOutsideDispatch() {
-        // Construct a draft with .amxField that ISN'T in the per-mnemonic
-        // dispatch list (e.g. .sha1c). This exercises the
-        // formatGenericOperand .amxField branch.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
             category: .crypto,
             operands: [.amxField(AMXField(rawBits: 0x0020_1005))],
         )
-        // SHA1C dispatches via defaultOperandList → formatGenericOperand →
-        // .amxField → xRegisterName(5) → "x5".
         #expect(draft.text == "sha1c x5")
     }
 
     @Test func formatGenericOperandHandlesAmxUnknownOperandOutsideDispatch() {
-        // .amxUnknown carried by a non-amxUnknownOp mnemonic still
-        // renders via formatGenericOperand → formatLongHex.
         let raw: UInt32 = 0xDEAD_BEEF
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
@@ -615,8 +569,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func unsupportedOperandVariantsRenderSentinel() {
-        // Operand variants this family never emits (e.g. .conditionCode)
-        // flow through the defensive sentinel "?unsupported-operand".
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
             category: .crypto,
@@ -627,9 +579,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func mnemonicOutsideExplicitTableFallsToRawValueSentinel() {
-        // A family-range mnemonic that's not in the name table should
-        // render as "?<rawValue>". Every declared constant IS in the
-        // table, but reserved gap values (e.g. 12350) are not.
         let draft = Instruction(
             address: 0, encoding: 0,
             mnemonic: Mnemonic(rawValue: 12350),
@@ -639,9 +588,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func memoryOperandPcBaseRendersPcSentinel() {
-        // formatMemoryOperand has a PC-base branch (unreachable for MTE
-        // but exists in code). Exercise via formatGenericOperand with a
-        // manually-constructed memory operand.
         let mem = MemoryOperand(base: .pc, displacement: 16)
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
@@ -685,7 +631,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func mteStoreWithPcBaseInOperandRenders() {
-        // MTE store helper hits .pc branch as well via formatMTEStore.
         let mem = MemoryOperand(base: .pc, displacement: 16)
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .stg,
@@ -719,8 +664,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func mteStoreWithUnexpectedOperandFallsThroughToDefault() {
-        // formatMTEStore expects operands.count == 2 with operand[1] = .memory.
-        // If the layout differs, falls back to defaultOperandList.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .stg,
             category: .memoryTagging,
@@ -731,7 +674,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func irgWithWrongOperandCountFallsThrough() {
-        // formatIRG expects operands.count == 3.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .irg,
             category: .memoryTagging,
@@ -742,8 +684,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func amxFieldOperandlessForAmxOpcodeRendersEmpty() {
-        // Force operand list to be empty for an AMX docop. The amx-X
-        // formatter returns empty when the operand isn't .amxField.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .amxLdx,
             category: .amx, operands: [],
@@ -752,8 +692,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func amxUnknownOpFallsBackToDraftEncodingWhenOperandMissing() {
-        // amxUnknownOp without an .amxUnknown operand still renders via
-        // formatLongHex(draft.encoding).
         let draft = Instruction(
             address: 0, encoding: 0xCAFE_BABE, mnemonic: .amxUnknownOp,
             category: .amx, operands: [],
@@ -795,7 +733,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func registerTextRendersW32Form() {
-        // Below-31 GPR with 32-bit width → "wN".
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
             category: .crypto, operands: [.register(.w(5))],
@@ -804,8 +741,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func registerTextRendersSIMDRegisterByCanonicalIndex() {
-        // .register(.simd(n)) has canonicalIndex 32+n; registerText
-        // maps it to "vN".
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
             category: .crypto, operands: [.register(.simd(7))],
@@ -814,7 +749,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func registerTextFallsToRawIndexWhenOutOfRange() {
-        // canonicalIndex >= 64 has no named mapping — fallback is "?N".
         let reg = RegisterRef(canonicalIndex: 64, role: .general, width: .x64)
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
@@ -850,8 +784,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func scalarRendersEverySize() {
-        // scalarPrefix has cases b/h/s/d/q; SHA1C / SHA1H exercise s/q.
-        // Add explicit coverage for b/h/d via manual drafts.
         for (size, prefix) in [
             (ScalarSize.b, "b"),
             (ScalarSize.h, "h"),
@@ -868,8 +800,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func elementSubscriptRendersEveryScalarSize() {
-        // scalarSizeName has b/h/s/d/q. SM3TT exercises s; cover b/h/d
-        // via manual drafts.
         for (arrangement, expectedSize) in [
             (VectorArrangement.b16, "b"),
             (VectorArrangement.h8, "h"),
@@ -889,8 +819,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func formatGenericOperandHandlesSignedImmediate() {
-        // .immediate is only reachable via a hand-built value (the real
-        // decoders only emit .unsignedImmediate for crypto/MTE/PAC).
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .sha1c,
             category: .crypto, operands: [.immediate(value: -42, width: 16)],
@@ -900,15 +828,11 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func undefinedMnemonicOnCryptoCategoryRecordRendersEmpty() {
-        // The crypto formatter's own defensive arm (reachable only via a
-        // hand-built crypto-category record) yields "".
         let d = Instruction(mnemonic: .undefined, category: .crypto)
         #expect(d.text == "")
     }
 
     @Test func quadAndTwoHalfArrangementsRenderTheirNames() {
-        // .q1 / .h2 arrangements are only reachable on crypto records via
-        // hand-built operands; the name table is total.
         let q1 = Instruction(mnemonic: .aese, category: .crypto, operands: [
             .vectorRegister(VectorRegisterRef(registerIndex: 2, view: .full(arrangement: .q1))),
         ])
@@ -920,9 +844,6 @@ struct CryptoAppleExtensionsCanonicalizerTests {
     }
 
     @Test func vectorViewRenderingCoversGroupAndLaneViews() {
-        // .elementGroup and .lane views are only reachable via hand-built
-        // records (the crypto decoders emit .full/.scalar/.element); the
-        // renderer is total over the view enum.
         let group = Instruction(mnemonic: .aese, category: .crypto, operands: [
             .vectorRegister(VectorRegisterRef(
                 registerIndex: 3, view: .elementGroup(elementSize: .s, count: 4, index: 2),

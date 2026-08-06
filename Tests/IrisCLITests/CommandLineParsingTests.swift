@@ -5,14 +5,9 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates argv parsing under the verb model: verb dispatch (explicit
-/// word and inferred-from-shape), the verb-vs-filename edge, each verb's
-/// accepted flag set with the unknown-option error for anything outside
-/// it, the word/byte-string input grammars, and the global help/version.
+/// Validates argv parsing.
 @Suite("Command-line parsing")
 struct CommandLineParsingTests {
-    // MARK: Globals
-
     @Test func bareInvocationPrintsTopLevelHelp() {
         #expect(ParsedCommandLine.parse([]) == .help(nil))
     }
@@ -28,7 +23,6 @@ struct CommandLineParsingTests {
         #expect(ParsedCommandLine.parse(["decode", "-h"]) == .help(.decode))
         #expect(ParsedCommandLine.parse(["disasm", "--help"]) == .help(.disasm))
         #expect(ParsedCommandLine.parse(["functions", "--help"]) == .help(.functions))
-        // The verb is found even behind a leading flag.
         #expect(ParsedCommandLine.parse(["--json", "stats", "--help"]) == .help(.stats))
     }
 
@@ -38,8 +32,6 @@ struct CommandLineParsingTests {
         #expect(ParsedCommandLine.parse(["stats", "--version"]) == .version)
     }
 
-    // MARK: Verb dispatch
-
     @Test func explicitVerbWords() {
         #expect(ParsedCommandLine.parse(["disasm", "a/binary"]) == .run(Invocation(verb: .disasm, input: .file(path: "a/binary"))))
         #expect(ParsedCommandLine.parse(["stats", "a/binary"]) == .run(Invocation(verb: .stats, input: .file(path: "a/binary"))))
@@ -48,7 +40,6 @@ struct CommandLineParsingTests {
     }
 
     @Test func defaultVerbIsDisasmForAPath() {
-        // No verb word, a path positional infers disasm.
         #expect(ParsedCommandLine.parse(["a/binary"]) == .run(Invocation(verb: .disasm, input: .file(path: "a/binary"))))
     }
 
@@ -60,26 +51,19 @@ struct CommandLineParsingTests {
     }
 
     @Test func verbBehindALeadingFlagIsStillFound() {
-        // The verb word need not be argv[0]; a leading flag does not hide it.
         let parsed = ParsedCommandLine.parse(["--color", "never", "functions", "a/binary"])
         let expected = Invocation(verb: .functions, input: .file(path: "a/binary"), color: .never)
         #expect(parsed == .run(expected))
     }
 
     @Test func aFilenameThatIsAVerbWordReachesViaTheExplicitVerb() {
-        // 'iris disasm stats' disassembles a file named 'stats': the first
-        // bare token (disasm) is the verb, the next bare token is the path.
         let parsed = ParsedCommandLine.parse(["disasm", "stats"])
         #expect(parsed == .run(Invocation(verb: .disasm, input: .file(path: "stats"))))
     }
 
     @Test func aPathBeginningWithDotSlashIsNotAVerb() {
-        // './stats' is a path, never the stats verb (it is not a bare verb
-        // word), so it infers disasm with that path.
         #expect(ParsedCommandLine.parse(["./stats"]) == .run(Invocation(verb: .disasm, input: .file(path: "./stats"))))
     }
-
-    // MARK: Per-verb flag sets
 
     @Test func disasmAcceptsItsFullFlagSet() {
         let parsed = ParsedCommandLine.parse([
@@ -113,12 +97,7 @@ struct CommandLineParsingTests {
         #expect(parsed == .run(expected))
     }
 
-    // MARK: Per-verb unknown-option errors (the no-op class is gone)
-
     @Test func semanticsIsRejectedByStats() {
-        // The headline of the restructure: stats has no --semantics (it is a
-        // summary, not a listing), so the flat model's no-op is now a clean
-        // usage error scoped to the verb.
         #expect(ParsedCommandLine.parse(["stats", "--semantics", "f"])
             == .usageError("iris stats: error: unknown option '--semantics'"))
     }
@@ -146,9 +125,6 @@ struct CommandLineParsingTests {
     }
 
     @Test func bytesOnAFileVerbRedirectsToDecode() {
-        // --bytes is decode's input carrier. A file verb redirects to decode
-        // rather than dead-ending at "unknown option", matching the raw-word
-        // positional guidance.
         for verb in ["disasm", "stats", "functions"] {
             #expect(ParsedCommandLine.parse([verb, "--bytes", "1f 20 03 d5"])
                 == .usageError("iris \(verb): error: --bytes carries raw words; use 'iris decode --bytes …'"))
@@ -156,12 +132,9 @@ struct CommandLineParsingTests {
     }
 
     @Test func unknownFlagIsScopedToTheInferredVerb() {
-        // No explicit verb word: the error scope is plain `iris:`.
         #expect(ParsedCommandLine.parse(["-x", "file"]) == .usageError("iris: error: unknown option '-x'"))
         #expect(ParsedCommandLine.parse(["--bogus", "0x1"]) == .usageError("iris: error: unknown option '--bogus'"))
     }
-
-    // MARK: Input shape vs verb
 
     @Test func aFileVerbRejectsARawWord() {
         #expect(ParsedCommandLine.parse(["stats", "0xd503201f"])
@@ -172,8 +145,6 @@ struct CommandLineParsingTests {
         #expect(ParsedCommandLine.parse(["decode", "some/file"])
             == .usageError("iris decode: error: 'some/file' is not a 0x-prefixed word; use 'iris disasm some/file' for a file"))
     }
-
-    // MARK: Value flags
 
     @Test func bytesInputAcceptsEverySeparatorAndCase() {
         let expected = Invocation(verb: .decode, input: .bytes([0x1F, 0x20, 0x03, 0xD5]))
@@ -208,14 +179,10 @@ struct CommandLineParsingTests {
             == .usageError("iris disasm: error: unknown color mode 'rainbow' (expected auto, always, or never)"))
     }
 
-    // MARK: Input-count errors
-
     @Test func inputCountErrors() {
         #expect(ParsedCommandLine.parse(["disasm", "a", "b"]) == .usageError("iris disasm: error: more than one input ('a' and 'b')"))
         #expect(ParsedCommandLine.parse(["stats"]) == .usageError("iris stats: error: no input (a Mach-O file path)"))
         #expect(ParsedCommandLine.parse(["decode"]) == .usageError("iris decode: error: no input (a 0x-prefixed word, or --bytes)"))
-        // --bytes infers decode, but inferred (verb-less) errors carry the
-        // plain `iris:` scope, not `iris decode:`.
         #expect(ParsedCommandLine.parse(["--bytes", "1f", "also-a-file"])
             == .usageError("iris: error: --bytes and a positional input are mutually exclusive"))
     }
@@ -233,8 +200,6 @@ struct CommandLineParsingTests {
                 == .usageError("iris: error: --bytes wants pairs of hex digits separated by spaces or commas, got '\(bad)'"))
         }
     }
-
-    // MARK: Verb properties
 
     @Test func verbFlagAcceptance() {
         #expect(Verb.disasm.accepts("--arch") && Verb.disasm.accepts("--semantics") && Verb.disasm.accepts("--quiet"))
@@ -282,11 +247,7 @@ struct CommandLineParsingTests {
         #expect(plain.directDecodeFeatures == [])
     }
 
-    // MARK: - -slim
-
     @Test func slimRidesWhereJSONIs() {
-        // --slim is accepted by every verb (it shapes --json), and parses
-        // alongside --json into the slim flag.
         #expect(Verb.disasm.accepts("--slim") && Verb.decode.accepts("--slim")
             && Verb.stats.accepts("--slim") && Verb.functions.accepts("--slim"))
         let parsed = ParsedCommandLine.parse(["functions", "--json", "--slim", "a/binary"])
@@ -298,12 +259,9 @@ struct CommandLineParsingTests {
     @Test func slimWithoutJSONIsAUsageError() {
         #expect(ParsedCommandLine.parse(["disasm", "--slim", "f"])
             == .usageError("iris disasm: error: --slim shapes --json output; add --json (or drop --slim)"))
-        // Inferred verb keeps the plain scope.
         #expect(ParsedCommandLine.parse(["--slim", "f"])
             == .usageError("iris: error: --slim shapes --json output; add --json (or drop --slim)"))
     }
-
-    // MARK: - -function / --range (disasm scoping)
 
     @Test func disasmAcceptsFunctionAndRange() {
         #expect(Verb.disasm.accepts("--function") && Verb.disasm.accepts("--range"))
@@ -353,11 +311,51 @@ struct CommandLineParsingTests {
     }
 
     @Test func functionNameIsSteppedOverDuringVerbInference() {
-        // --function takes a value, so a verb-word-shaped function name does
-        // not get mistaken for the verb, and a leading --function does not
-        // hide the path.
         let parsed = ParsedCommandLine.parse(["--function", "_main", "a/binary"])
         #expect(parsed == .run(Invocation(verb: .disasm, input: .file(path: "a/binary"), function: "_main")))
+    }
+
+    @Test func decodeTakesABaseAddress() {
+        #expect(Verb.decode.accepts("--at"))
+        #expect(!Verb.disasm.accepts("--at") && !Verb.stats.accepts("--at") && !Verb.functions.accepts("--at"))
+        let hex = ParsedCommandLine.parse(["decode", "--at", "0xfffffe0007b3c000", "--bytes", "0d fe ff 17"])
+        #expect(hex == .run(Invocation(
+            verb: .decode, input: .bytes([0x0D, 0xFE, 0xFF, 0x17]), address: 0xFFFF_FE00_07B3_C000,
+        )))
+        let decimal = ParsedCommandLine.parse(["decode", "--at", "4096", "0xd503201f"])
+        #expect(decimal == .run(Invocation(verb: .decode, input: .word(0xD503_201F), address: 4096)))
+        #expect(ParsedCommandLine.parse(["0xd503201f"])
+            == .run(Invocation(verb: .decode, input: .word(0xD503_201F), address: 0)))
+    }
+
+    @Test func baseAddressIsLastWinsAndSteppedOverDuringVerbInference() {
+        let inferred = ParsedCommandLine.parse(["--at", "0x1000", "--bytes", "1f 20 03 d5"])
+        #expect(inferred == .run(Invocation(
+            verb: .decode, input: .bytes([0x1F, 0x20, 0x03, 0xD5]), address: 0x1000,
+        )))
+        let lastWins = ParsedCommandLine.parse(["--at", "0x1000", "--at", "0x2000", "0x1"])
+        #expect(lastWins == .run(Invocation(verb: .decode, input: .word(1), address: 0x2000)))
+    }
+
+    @Test func malformedBaseAddressErrors() {
+        for bad in ["", "0x", "0xzz", "notanaddress", "-1", "0x1_0", "0x10:0x20"] {
+            #expect(ParsedCommandLine.parse(["decode", "--at", bad, "0x1"])
+                == .usageError("iris decode: error: --at wants a base address as 0x-hex or decimal, got '\(bad)'"))
+        }
+    }
+
+    @Test func missingBaseAddressValueErrors() {
+        #expect(ParsedCommandLine.parse(["decode", "--at"])
+            == .usageError("iris decode: error: --at needs a value (a base address, 0x-hex or decimal, e.g. 0xfffffe0007b3c000)"))
+    }
+
+    @Test func fileVerbsRejectABaseAddress() {
+        for verb in ["disasm", "stats", "functions"] {
+            #expect(ParsedCommandLine.parse([verb, "--at", "0x1000", "f"])
+                == .usageError("iris \(verb): error: --at bases raw words; a Mach-O file carries its own addresses"))
+        }
+        #expect(ParsedCommandLine.parse(["--at", "0x1000", "a/binary"])
+            == .usageError("iris: error: --at bases raw words; a Mach-O file carries its own addresses"))
     }
 
     @Test func parseAddressRangeGrammar() {

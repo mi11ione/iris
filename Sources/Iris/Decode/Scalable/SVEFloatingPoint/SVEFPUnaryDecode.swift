@@ -1,21 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// the predicated unary/convert surface: G11 merging `/M`
-// (`sve_fp_2op_p_zd`, 74 forms — FCVT, FCVTZS/FCVTZU, SCVTF/UCVTF, the
-// FRINT family, FRECPX, FSQRT, FLOGB, BFCVT, FCVTX), G14 the SVE2p2 zeroing
-// `/Z` twins (`sve_fp_z2op_p_zd`, 74 forms), and G15 the SVE2 convert-
-// precision group (`sve2_fp_convert_precision` — FCVTLT and the top-half
-// converts FCVTNT/FCVTXNT/BFCVTNT in both qualifiers). The conversion size
-// pairs pack irregularly, so G11 keys on bits[23:16] and G14/G15 on
-// (bits[23:16], bits[15:13]) exactly as the catalogue pins them. Merging
-// forms read the destination (`partialWrite`); zeroing forms are full
-// writes — except the top-half converts, which preserve the untouched
-// halves under BOTH qualifiers and stay destination-reading partial writes.
 
 extension SVEFloatingPointDecode {
-    // MARK: G11 — merging unary (0x65, bit21=0, bits[15:13]=101)
-
     @inline(__always)
     static func decodeUnaryMerging(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let (mnemonic, dest, src) = unaryMergingForm(UInt8((e >> 16) & 0xFF)) else {
@@ -106,8 +92,6 @@ extension SVEFloatingPointDecode {
         default: nil
         }
     }
-
-    // MARK: G14 — zeroing unary (0x64, bit21=0, bits[20:19]=11, bit15=1)
 
     @inline(__always)
     static func decodeUnaryZeroing(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
@@ -202,15 +186,9 @@ extension SVEFloatingPointDecode {
         }
     }
 
-    // MARK: G15 — convert precision (0x64, bit21=0, bits[20:19]=00, bits[15:13]=101)
-
     @inline(__always)
     static func decodeConvertPrecision(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // The class pins bits[15:13]=101; the dispatcher's else-branch also
-        // carries the 110/111 holes here, so bits[14:13] must be re-checked.
         if (e >> 13) & 0b11 != 0b01 { return undefined(e, a) }
-        // bit19 selects `/M` (1) vs the SVE2p2 `/Z` (0); the form key is the
-        // remaining byte-1 bits.
         let merging = (e >> 19) & 1 == 1
         let mnemonic: Mnemonic
         let dest: ScalarSize
@@ -224,9 +202,6 @@ extension SVEFloatingPointDecode {
         case 0xC3: (mnemonic, dest, src) = (.fcvtlt, .d, .s)
         default: return undefined(e, a)
         }
-        // The top-half converts preserve the untouched halves in BOTH
-        // qualifiers (ASL seeds the result from Zd); FCVTLT selects input
-        // halves and is partial only when merging.
         let preserving = mnemonic != .fcvtlt
         return unaryDraft(
             e, a, mnemonic, dest, src,

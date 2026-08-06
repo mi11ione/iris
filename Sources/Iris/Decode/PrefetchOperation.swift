@@ -1,16 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// PrefetchOperation. The 5-bit `Rt` field of
-// `PRFM` / `PRFUM` is a composite (operation, target, policy) tuple. The
-// raw byte is preserved; named accessors decode it on demand.
 
-/// Composite operand for the `PRFM` / `PRFUM` prefetch hint instructions.
-///
-/// The 5-bit raw value encodes three sub-fields: a 2-bit operation
-/// (`PLD` load / `PLI` instruction-prefetch / `PST` store), a 2-bit
-/// target (`L1` / `L2` / `L3`), and a 1-bit policy (`KEEP` / `STRM`).
-/// Carried by ``Operand/prefetchOperation(_:)``.
+/// Composite operand for the `PRFM` / `PRFUM` prefetch hints. The 5-bit raw
+/// value packs a 2-bit operation (`PLD`/`PLI`/`PST`), a 2-bit target
+/// (`L1`/`L2`/`L3`) and a 1-bit policy (`KEEP`/`STRM`).
 @frozen
 public struct PrefetchOperation: Sendable, Hashable {
     /// Raw 5-bit value, exactly as encoded in the instruction's `Rt`

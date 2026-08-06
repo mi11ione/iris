@@ -1,20 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Per-mnemonic semantic attribute tables + verification
-// helpers. Mirrors `Decode/BranchesExceptionSystem/BESSemanticAttributes.swift`
-// shape exactly — same public types (`DPRSemanticIssue`,
-// `DPRExpectedReads`, `DPRSemanticChecker`, `DPRSemanticAttributes`),
-// same `verify(_:) -> DPRSemanticIssue?` entry point, same
-// required+allowed pair semantics for read-mask expectations.
-//
-// Every DPR record has `branchClass == .none`, `memoryAccess == .none`,
-// `memoryOrdering == []`, `category == .dataProcessingRegister` —
-// universal invariants. `flagEffect`, `semanticReads`, `semanticWrites`
-// are mnemonic-specific per the ARM ARM.
-
-// Concrete semantic-field discrepancy between a decoded record and the
-// expected attributes. Returned by ``DPRSemanticChecker/verify(_:)``.
 
 import Iris
 
@@ -36,11 +21,7 @@ public struct DPRSemanticIssue: Sendable, Equatable {
     }
 }
 
-/// Expected semantic-reads constraint. `required` is the
-/// minimum bitset (must be a subset of `instruction.semanticReads.mask`);
-/// `allowed` is the maximum (the actual mask must be a subset). For
-/// variable-Rn instructions the loose pair lets callers verify "Rn is in
-/// the reads, no extraneous regs" without extracting Rn for every encoding.
+/// Expected semantic-reads constraint.
 @frozen
 public struct DPRExpectedReads: Sendable, Equatable {
     public let required: UInt64
@@ -53,26 +34,15 @@ public struct DPRExpectedReads: Sendable, Equatable {
     }
 }
 
-/// Per-record semantic-field verification against the ARM ARM's
-/// per-mnemonic table. Returns `nil` when the record matches every
-/// expected attribute; returns the first mismatch otherwise.
+/// Per-record semantic-field verification against the ARM ARM's per-mnemonic
+/// table.
 public enum DPRSemanticChecker {
-    /// Verify the record's classification fields match the per-mnemonic
-    /// table. Every DPR mnemonic has `branchClass == .none`,
-    /// `memoryAccess == .none`, `memoryOrdering == []`,
-    /// `category == .dataProcessingRegister` —
-    /// these are universal invariants. `flagEffect`, `semanticReads`,
-    /// `semanticWrites` are mnemonic-specific.
-    /// UNDEFINED records are skipped (their semantic fields are
-    /// empty by construction).
+    /// Verify the record's classification fields against the per-mnemonic
+    /// table.
     @_effects(readonly)
     @_optimize(speed)
     public static func verify(_ instruction: Instruction) -> DPRSemanticIssue? {
         if instruction.mnemonic == .undefined { return nil }
-        // PAC standalone / PACGA / MTE-DPR records flow through the
-        // DPR family decoder via top-of-method delegation; their semantic
-        // attributes are verified by the crypto/Apple-extensions checker,
-        // not this one.
         if cryptoAppleExtensionsOwns(instruction.mnemonic) { return nil }
         if instruction.branchClass != .none {
             return DPRSemanticIssue(
@@ -140,13 +110,8 @@ public enum DPRSemanticChecker {
 }
 
 /// Per-mnemonic semantic-attribute lookups.
-/// Pure functions; constant-folded at module load.
 public enum DPRSemanticAttributes {
-    /// The architecturally-correct `FlagEffect` for a DPR record — both the
-    /// flags written and the flags read. Carry-consuming arithmetic (the
-    /// ADC/SBC family) reads C; conditional compare and select read the full
-    /// condition; RMIF writes only its mask-selected flags and SETF8/SETF16
-    /// preserve C.
+    /// The architecturally-correct `FlagEffect` for a DPR record.
     @_effects(readonly)
     public static func expectedFlagEffect(for instruction: Instruction) -> FlagEffect {
         switch instruction.mnemonic {
@@ -163,8 +128,6 @@ public enum DPRSemanticAttributes {
         case .setf8, .setf16:
             return [.writesN, .writesZ, .writesV]
         case .rmif:
-            // Writes exactly the flags the imm4 mask operand selects (bit3→N,
-            // bit2→Z, bit1→C, bit0→V); reads none.
             guard instruction.operands.count >= 3,
                   case let .unsignedImmediate(value, _) = instruction.operands[2]
             else { return .nzcv }
@@ -179,16 +142,11 @@ public enum DPRSemanticAttributes {
         }
     }
 
-    /// Expected semantic-reads constraint for a decoded
-    /// record. The mask is computed from the draft's operand list using
-    /// per-family extraction (helpers below): the first/second/third
-    /// register operand, possibly unwrapping `.shiftedRegister` or
-    /// `.extendedRegister`.
+    /// Expected semantic-reads constraint for a decoded record.
     @_effects(readonly)
     public static func expectedReadMask(for instruction: Instruction) -> DPRExpectedReads? {
         let m = instruction.mnemonic
         switch m {
-        // Three-operand reads: Rn (operand[1]) + Rm-wrapped (operand[2]).
         case .add, .adds, .sub, .subs,
              .and, .orr, .eor, .ands,
              .bic, .orn, .eon, .bics,
@@ -201,57 +159,38 @@ public enum DPRSemanticAttributes {
             let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
                 | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: true)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // CMP/CMN/TST: operand[0]=Rn, operand[1]=Rm-wrapped.
         case .cmp, .cmn, .tst:
             let mask = registerMaskAt(operands: instruction.operands, index: 0, unwrapShiftExtend: false)
                 | registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: true)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // NEG/NEGS: operand[0]=Rd, operand[1]=Rm-wrapped. Reads only Rm.
-        // NGC/NGCS / MOV / MVN: operand[0]=Rd, operand[1]=Rm-possibly-wrapped.
         case .neg, .negs, .ngc, .ngcs, .mov, .mvn:
             let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: true)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // CCMP/CCMN register form: operand[0]=Rn, operand[1]=Rm.
-        // CCMP/CCMN immediate form: operand[0]=Rn, operand[1]=imm5.
-        // The mask is "first register" plus optional "second register if
-        // operand[1] is a register"; helper handles both shapes.
         case .ccmp, .ccmn:
             var mask = registerMaskAt(operands: instruction.operands, index: 0, unwrapShiftExtend: false)
             mask |= registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // CSEL/CSINC/CSINV/CSNEG base: operand[0]=Rd, [1]=Rn, [2]=Rm.
         case .csel, .csinc, .csinv, .csneg:
             let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
                 | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // CSET/CSETM: operand[0]=Rd. Reads empty (Rn=Rm=XZR dropped).
         case .cset, .csetm:
             return DPRExpectedReads(required: 0, allowed: 0)
-        // CINC/CINV/CNEG: operand[0]=Rd, [1]=Rn. Reads Rn only (Rn=Rm).
         case .cinc, .cinv, .cneg:
             let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // MADD/MSUB/SMADDL/SMSUBL/UMADDL/UMSUBL base 4-operand:
-        // [0]=Rd, [1]=Rn, [2]=Rm, [3]=Ra. Reads {Rn, Rm, Ra}.
         case .madd, .msub, .smaddl, .smsubl, .umaddl, .umsubl, .maddpt, .msubpt:
             let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
                 | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: false)
                 | registerMaskAt(operands: instruction.operands, index: 3, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // MUL/MNEG/SMULL/SMNEGL/UMULL/UMNEGL aliases 3-operand:
-        // [0]=Rd, [1]=Rn, [2]=Rm. Reads {Rn, Rm}.
-        // SMULH/UMULH same shape.
         case .mul, .mneg, .smull, .smnegl, .umull, .umnegl, .smulh, .umulh:
             let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
                 | registerMaskAt(operands: instruction.operands, index: 2, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // Data-processing 1-source: [0]=Rd, [1]=Rn. Reads {Rn}. CSSC
-        // ABS/CTZ/CNT share the shape.
         case .rbit, .rev, .rev16, .rev32, .clz, .cls, .abs, .ctz, .cnt:
             let mask = registerMaskAt(operands: instruction.operands, index: 1, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
-        // FlagM: RMIF / SETF8 / SETF16 read Rn at operand[0] (RMIF's other
-        // operands are immediates; SETF* has none).
         case .rmif, .setf8, .setf16:
             let mask = registerMaskAt(operands: instruction.operands, index: 0, unwrapShiftExtend: false)
             return DPRExpectedReads(required: mask, allowed: mask)
@@ -261,17 +200,12 @@ public enum DPRSemanticAttributes {
     }
 
     /// Expected semantic-writes mask for a decoded record.
-    /// All non-CMP/CMN/TST/CCMP/CCMN/CSET/CSETM DPR records write Rd
-    /// (operand[0]); the flag-effect-only ones write nothing in the GP
-    /// register set.
     @_effects(readonly)
     public static func expectedWriteMask(for instruction: Instruction) -> UInt64? {
         let m = instruction.mnemonic
         switch m {
-        // No GP write — flag-effect-only or no-effect-by-encoding.
         case .cmp, .cmn, .tst, .ccmp, .ccmn, .rmif, .setf8, .setf16:
             return 0
-        // Every other DPR mnemonic writes Rd (operand[0]).
         case .add, .adds, .sub, .subs,
              .and, .orr, .eor, .ands,
              .bic, .orn, .eon, .bics,
@@ -296,12 +230,8 @@ public enum DPRSemanticAttributes {
         }
     }
 
-    /// Extract the canonical-index bit-mask of the register at `index`
-    /// in the operand list. When `unwrapShiftExtend` is true, also
-    /// unwraps `.shiftedRegister` and `.extendedRegister` to their inner
-    /// register. Returns 0 if the index is out of range, the operand
-    /// isn't a register variant, or the register is XZR/WZR (per the
-    /// `insertingNonZero` convention used by the decoder).
+    /// Extract the canonical-index bit-mask of the register at `index` in the
+    /// operand list.
     @_effects(readonly)
     @inline(__always)
     public static func registerMaskAt(

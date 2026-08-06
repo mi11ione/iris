@@ -1,13 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Data-processing 3-source (multiply-accumulate) decode.
-// Encoding tier op0=0xD bit 24=1. (opc, isSub, sf) selects MADD/MSUB/
-// SMADDL/SMSUBL/UMADDL/UMSUBL; (opc, isSub) of (010, 0) → SMULH and
-// (110, 0) → UMULH; opc 011 → FEAT_CPA MADDPT/MSUBPT. Aliases MUL/MNEG/
-// SMULL/SMNEGL/UMULL/UMNEGL with Ra=XZR. Reserved: op54 != 0; sf=0
-// wide-multiply; SMULH/UMULH with Ra != 31 OR isSub != 0; opc23_21
-// outside {000, 001, 010, 011, 101, 110}.
 
 enum MulAccumDecode {
     @inline(__always)
@@ -28,13 +20,11 @@ enum MulAccumDecode {
 
         switch opc {
         case 0b000:
-            // MADD / MSUB — same-size multiply-accumulate at sf=0 or sf=1.
             let rdRef = gprOperand(encoding: Rd, width: dstWidth, form: .zrOrGeneral)
             let rnRef = gprOperand(encoding: Rn, width: dstWidth, form: .zrOrGeneral)
             let rmRef = gprOperand(encoding: Rm, width: dstWidth, form: .zrOrGeneral)
             let raRef = gprOperand(encoding: Ra, width: dstWidth, form: .zrOrGeneral)
             if Ra == 31 {
-                // MUL / MNEG alias.
                 let mnemonic: Mnemonic = isSub == 0 ? .mul : .mneg
                 return DecodedDraft(
                     address: address,
@@ -62,7 +52,6 @@ enum MulAccumDecode {
             )
 
         case 0b001:
-            // SMADDL / SMSUBL — sf=1 required; Rd/Ra = X, Rn/Rm = W.
             if sf == 0 { return .undefined(at: address, encoding: encoding) }
             let rdRef = gprOperand(encoding: Rd, width: .x64, form: .zrOrGeneral)
             let rnRef = gprOperand(encoding: Rn, width: .w32, form: .zrOrGeneral)
@@ -96,9 +85,6 @@ enum MulAccumDecode {
             )
 
         case 0b010:
-            // SMULH — sf=1 required; isSub=0 fixed. Ra is architecturally
-            // "should be 11111" but llvm-mc treats it as don't-care
-            // (decodes regardless and discards Ra in display). Match.
             if sf == 0 { return .undefined(at: address, encoding: encoding) }
             if isSub != 0 { return .undefined(at: address, encoding: encoding) }
             let rdRef = gprOperand(encoding: Rd, width: .x64, form: .zrOrGeneral)
@@ -116,7 +102,6 @@ enum MulAccumDecode {
             )
 
         case 0b101:
-            // UMADDL / UMSUBL — sf=1 required; Rd/Ra = X, Rn/Rm = W.
             if sf == 0 { return .undefined(at: address, encoding: encoding) }
             let rdRef = gprOperand(encoding: Rd, width: .x64, form: .zrOrGeneral)
             let rnRef = gprOperand(encoding: Rn, width: .w32, form: .zrOrGeneral)
@@ -150,7 +135,6 @@ enum MulAccumDecode {
             )
 
         case 0b110:
-            // UMULH — same don't-care Ra rule as SMULH (case 0b010 above).
             if sf == 0 { return .undefined(at: address, encoding: encoding) }
             if isSub != 0 { return .undefined(at: address, encoding: encoding) }
             let rdRef = gprOperand(encoding: Rd, width: .x64, form: .zrOrGeneral)
@@ -168,8 +152,6 @@ enum MulAccumDecode {
             )
 
         case 0b011:
-            // FEAT_CPA checked-pointer multiply-add: MADDPT (isSub=0) /
-            // MSUBPT (isSub=1). 64-bit only; 4-operand, no MUL-style alias.
             if sf == 0 { return .undefined(at: address, encoding: encoding) }
             let rdRef = gprOperand(encoding: Rd, width: .x64, form: .zrOrGeneral)
             let rnRef = gprOperand(encoding: Rn, width: .x64, form: .zrOrGeneral)
@@ -189,7 +171,6 @@ enum MulAccumDecode {
             )
 
         default:
-            // opc ∈ {100, 111} — reserved in the 3-source tier.
             return .undefined(at: address, encoding: encoding)
         }
     }

@@ -1,18 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// semantic-attribute checker for SME core records.
-// Independently re-derives the expected semantic classification from the
-// mnemonic and the (text-validated) operand list and compares it to what the
-// decoder produced, so a decode that renders the right text but mis-tags a
-// memory-access kind, a streaming/partial-write effect, the ZA read/write
-// overlap mask, or the slice-select GPR read is still caught.
-// The ZA-overlap write model (acceptance) is the load-bearing
-// SME check: the expected ZA mask is recomputed from the operands and compared
-// bit-for-bit against `scalableReads`/`scalableWrites`.
-
-// A semantic mismatch between a decoded SME record and the independently
-// derived expectation.
 
 import Iris
 
@@ -31,8 +18,7 @@ public struct SMECoreSemanticIssue: Sendable, Hashable {
 /// Verifies SME-core records against the independently derived semantic model.
 public enum SMECoreSemanticChecker {
     /// The SME-core instruction families, distinguished by mnemonic (and, for
-    /// `mov`, by operand shape). Each fixes the memory kind, the effect flags,
-    /// and which ZA operand is read vs written.
+    /// `mov`, by operand shape).
     public enum Family {
         case outerProduct, addHV, movaInsert, movaExtract
         case ld1, st1, ldrZA, strZA, zero
@@ -43,8 +29,6 @@ public enum SMECoreSemanticChecker {
     public static func verify(draft: Instruction) -> SMECoreSemanticIssue? {
         if draft.mnemonic == .undefined { return nil }
 
-        // Universal invariants: category .sme; no branch, memory
-        // ordering, or flag effect.
         if draft.category != .sme {
             return issue("category", draft.category, Category.sme)
         }
@@ -62,14 +46,11 @@ public enum SMECoreSemanticChecker {
             return SMECoreSemanticIssue(field: "family", actual: "\(draft.mnemonic.rawValue)", expected: "a known SME-core family")
         }
 
-        // Memory-access kind.
         let expectedAccess = expectedMemoryAccess(family)
         if draft.memoryAccess != expectedAccess {
             return issue("memoryAccess", draft.memoryAccess, expectedAccess)
         }
 
-        // Effect flags: no in-scope SME-core decode writes streaming
-        // mode or ZA-enable (those live on the SMSTART/SMSTOP records).
         if let flagIssue = checkFlag(draft, .readsStreamingMode, "readsStreamingMode", expectsReadsStreaming(family)) {
             return flagIssue
         }
@@ -83,7 +64,6 @@ public enum SMECoreSemanticChecker {
             return SMECoreSemanticIssue(field: "writesZAEnable", actual: "set", expected: "unset")
         }
 
-        // ZA overlap read/write masks (acceptance).
         let (expectedRead, expectedWrite) = expectedZAMasks(family, draft.operands)
         if draft.scalableReads.zaMask.bits != expectedRead {
             return maskIssue("scalableReads.za", draft.scalableReads.zaMask.bits, expectedRead)
@@ -92,9 +72,6 @@ public enum SMECoreSemanticChecker {
             return maskIssue("scalableWrites.za", draft.scalableWrites.zaMask.bits, expectedWrite)
         }
 
-        // The slice-select GPR Wv is a semantic read on every tile-slice /
-        // array-vector access — a classification the text renders
-        // but the read-set could still drop.
         if familyTouchesSelect(family), let sel = selectRegisterIndex(draft.operands) {
             if !draft.semanticReads.contains(RegisterRef.x(sel)) {
                 return SMECoreSemanticIssue(field: "semanticReads.selectRegister", actual: "missing w\(sel)", expected: "w\(sel) read")
@@ -102,8 +79,6 @@ public enum SMECoreSemanticChecker {
         }
         return nil
     }
-
-    // MARK: family classification
 
     @_effects(readonly)
     public static func family(of draft: Instruction) -> Family? {
@@ -124,15 +99,12 @@ public enum SMECoreSemanticChecker {
         case .str:
             return .strZA
         case .mov:
-            // Insert writes a tile slice (operand 0); extract writes a Z vector.
             if case .zaTileSlice = draft.operands.first { return .movaInsert }
             return .movaExtract
         default:
             return nil
         }
     }
-
-    // MARK: per-family expectations
 
     @_effects(readonly)
     public static func expectedMemoryAccess(_ family: Family) -> MemoryAccess {
@@ -167,37 +139,35 @@ public enum SMECoreSemanticChecker {
     public static func familyTouchesSelect(_ family: Family) -> Bool {
         switch family {
         case .outerProduct, .addHV, .zero: false
-        default: true // mova / ld1 / st1 / ldrZA / strZA carry Wv
+        default: true
         }
     }
 
     /// The expected `(ZA read, ZA write)` residue masks, recomputed from the
-    /// ZA operand — the exact overlap model of
+    /// ZA operand.
     @_effects(readonly)
     public static func expectedZAMasks(_ family: Family, _ operands: Instruction.Operands) -> (read: UInt16, write: UInt16) {
         switch family {
         case .outerProduct, .addHV:
-            let m = firstZAMask(operands) // accumulate: read + write the tile
+            let m = firstZAMask(operands)
             return (m, m)
         case .movaInsert:
-            let m = firstZAMask(operands) // merging: read + write the tile
+            let m = firstZAMask(operands)
             return (m, m)
         case .movaExtract:
-            return (tileSliceMask(operands), 0) // reads the source tile only
+            return (tileSliceMask(operands), 0)
         case .ld1:
-            return (0, firstZAMask(operands)) // writes the loaded tile slice
+            return (0, firstZAMask(operands))
         case .st1:
-            return (firstZAMask(operands), 0) // reads the stored tile slice
+            return (firstZAMask(operands), 0)
         case .ldrZA:
-            return (0, 0xFFFF) // writes the whole array (dynamic row)
+            return (0, 0xFFFF)
         case .strZA:
-            return (0xFFFF, 0) // reads the whole array
+            return (0xFFFF, 0)
         case .zero:
-            return (0, zeroMask(operands)) // exact write of the listed tiles
+            return (0, zeroMask(operands))
         }
     }
-
-    // MARK: ZA-mask helpers
 
     /// The ZA residue mask of the first ZA operand (`zaTile` / `zaTileSlice` /
     /// `zaArrayVector`), or 0 if none.
@@ -219,7 +189,7 @@ public enum SMECoreSemanticChecker {
         return 0
     }
 
-    /// The union of every `zaTile` operand's mask — the ZERO write set.
+    /// The union of every `zaTile` operand's mask.
     @_effects(readonly)
     public static func zeroMask(_ operands: Instruction.Operands) -> UInt16 {
         var bits: UInt16 = 0
@@ -257,8 +227,6 @@ public enum SMECoreSemanticChecker {
         }
         return nil
     }
-
-    // MARK: issue builders
 
     @inline(__always)
     public static func checkFlag(_ draft: Instruction, _ flag: ScalableEffect, _ field: String, _ expectSet: Bool) -> SMECoreSemanticIssue? {

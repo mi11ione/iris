@@ -6,15 +6,9 @@ import Iris
 import IrisValidation
 import Testing
 
-/// Golden-corpus parity check at the unit-test level. Reads the DPR
-/// synthetic corpus TSV (llvm-mc-harvested ground truth) and verifies
-/// that for every row, decode → canonicalize → compare against the
-/// harvested `expected_text` matches exactly — so regressions are
-/// caught by `swift test` alone.
-/// The corpus resolver itself: the in-repo fixture by default, the external
-/// `decode-<family>/synthetic.tsv` layout when a root is supplied. Pinning both
-/// keeps the `IRIS_DECODE_CORPUS` contract honest on hosts that have no such
-/// tree — the override is otherwise never taken by `swift test`.
+/// Golden-corpus parity: every DPR synthetic TSV row decodes and canonicalizes
+/// to its harvested `expected_text`, so regressions are caught by `swift
+/// test`.
 @Suite("Decode corpus path resolution")
 struct DecodeCorpusPathTests {
     @Test func theDefaultIsTheTrackedInRepoFixture() {
@@ -29,10 +23,10 @@ struct DecodeCorpusPathTests {
     }
 }
 
+/// Golden-corpus parity: every DPR synthetic TSV row decodes and canonicalizes
+/// to its harvested `expected_text`.
 @Suite("DPR / golden synthetic corpus parity (every row)")
 struct DPRGoldenCorpusParityTests {
-    /// In-repo fixture by default; an external corpus tree when
-    /// `IRIS_DECODE_CORPUS` is set — see `decodeCorpusTSVPath(family:)`.
     private static var corpusPath: String {
         decodeCorpusTSVPath(family: "dpr")
     }
@@ -59,11 +53,6 @@ struct DPRGoldenCorpusParityTests {
         return rows
     }
 
-    /// Mnemonic prefixes catalogued as deferred out-of-scope for the
-    /// DPR family decoder (FEAT_FlagM2 RMIF/SETF and the DPR-encoded
-    /// PAC tier). These rows have non-empty oracle text but the decoder
-    /// correctly emits .undefined; the filter keeps the parity test
-    /// gated on REAL divergences only.
     private static let deferredOosPrefixes: [String] = [
         "rmif", "setf8", "setf16",
         "pacia", "pacib", "pacda", "pacdb", "pacga",
@@ -73,9 +62,6 @@ struct DPRGoldenCorpusParityTests {
     ]
 
     private static func isDeferredOos(_ text: String) -> Bool {
-        // Every deferred mnemonic in the catalogue takes register operands
-        // (no bare-mnemonic forms), so `prefix + " "` is the only shape the
-        // corpus produces.
         for prefix in deferredOosPrefixes where text.hasPrefix("\(prefix) ") {
             return true
         }
@@ -85,12 +71,8 @@ struct DPRGoldenCorpusParityTests {
     @Test func everyRowDecodesToExpectedText() throws {
         let rows = try Self.loadRows()
         for row in rows {
-            // Skip pre-catalogued deferred-out-of-scope rows.
             if Self.isDeferredOos(row.expectedText) { continue }
             let d = decode(row.encoding, at: 0)
-            // The oracle's "" convention marks undefined encodings; Iris
-            // text is total (`.long 0x…`), so the comparison maps "" to
-            // the undefined witness.
             #expect(
                 row.expectedText.isEmpty ? d.isUndefined : d.text == row.expectedText,
                 "L\(row.lineNumber) 0x\(String(format: "%08x", row.encoding)): iris=`\(d.text)` expected=`\(row.expectedText)`",

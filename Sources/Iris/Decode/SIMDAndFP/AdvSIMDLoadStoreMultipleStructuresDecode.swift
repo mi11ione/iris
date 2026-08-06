@@ -1,12 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD load/store multiple-structures per
-// ARM ARM § C4.1.96.42 + .43 (merged on writeback discriminator).
-// No-offset form: `0 Q 0011 0000 L 000000 opcode size Rn Rt`.
-// Post-index form: `0 Q 0011 0010 L 0 Rm opcode size Rn Rt`.
-// Opcode (bits[15:12]) selects mnemonic + (selem × rpt).
-// Arrangement (size, Q) per the standard table.
 
 enum AdvSIMDLoadStoreMultipleStructuresDecode {
     @_optimize(speed)
@@ -20,13 +13,9 @@ enum AdvSIMDLoadStoreMultipleStructuresDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rt = UInt8(encoding & 0x1F)
 
-        // bit31 is fixed 0 for AdvSIMD load/store structure forms; a 1 is
-        // reserved → UNDEFINED.
         if (encoding >> 31) & 1 != 0 {
             return .undefined(at: address, encoding: encoding)
         }
-        // bit21 is reserved (must be 0) in both the no-offset and post-index
-        // forms; the no-offset form additionally reserves Rm (bits[20:16]).
         if (encoding >> 21) & 1 != 0 {
             return .undefined(at: address, encoding: encoding)
         }
@@ -35,18 +24,15 @@ enum AdvSIMDLoadStoreMultipleStructuresDecode {
         }
 
         let arrangement = arrangementFromSizeQ(size: size, Q: Q)
-        // Opcode → (selem, rpt, mnemonic).
         guard let layout = layoutFor(opcode: opcode, L: L) else {
             return .undefined(at: address, encoding: encoding)
         }
-        // LD2/LD3/LD4 with size=11 Q=0 (.1D arrangement) is reserved.
         if layout.selem > 1, arrangement == .d1 {
             return .undefined(at: address, encoding: encoding)
         }
         let totalRegs = layout.selem * layout.rpt
         let totalBytes = UInt64(totalRegs) * 8 * (1 + UInt64(Q))
 
-        // Build vector list.
         let operandMark = sink.mark
         var listReads: RegisterSet = .empty
         var listWrites: RegisterSet = .empty
@@ -60,7 +46,6 @@ enum AdvSIMDLoadStoreMultipleStructuresDecode {
             }
         }
 
-        // Build memory operand.
         let rnRef = simdfpGprOperand(encoding: Rn, width: .x64, spOrGeneral: true)
         var memOperand: MemoryOperand
         if postIndexed {
@@ -89,11 +74,9 @@ enum AdvSIMDLoadStoreMultipleStructuresDecode {
         var reads = listReads
         reads = simdfpInsertingNonZeroGPR(reg: rnRef, into: reads)
         var writes = listWrites
-        // Post-index writes back the base register.
         if postIndexed {
             writes = simdfpInsertingNonZeroGPR(reg: rnRef, into: writes)
         }
-        // Post-index register: read Rm.
         if postIndexed, Rm != 0b11111 {
             let rmRef = simdfpGprOperand(encoding: Rm, width: .x64, spOrGeneral: false)
             reads = simdfpInsertingNonZeroGPR(reg: rmRef, into: reads)

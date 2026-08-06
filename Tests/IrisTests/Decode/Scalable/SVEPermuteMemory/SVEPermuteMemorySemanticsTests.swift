@@ -10,12 +10,7 @@ private func decode(_ encoding: UInt32) -> Instruction {
 }
 
 /// Validates that the independently-derived semantic model agrees with every
-/// decoded 2s.5 record across the whole family taxonomy. The checker re-derives
-/// the memory-access kind, the fault/temporal flags, and the FFR touches from
-/// the mnemonic alone, so verifying a representative of each family exercises
-/// every arm of that derivation (load / store / prefetch / register-only, and
-/// first-fault / non-fault / non-temporal / normal) on a record the decoder
-/// actually produced.
+/// decoded 2s.5 record.
 @Suite("SVE permute/memory/crypto semantics / consistent records pass")
 struct SVEPermuteMemorySemanticsPassTests {
     private static let representatives: [(UInt32, String)] = [
@@ -42,8 +37,6 @@ struct SVEPermuteMemorySemanticsPassTests {
     }
 
     @Test func anUndefinedRecordIsVacuouslyValid() {
-        // An UNDEFINED carries no semantic content — the checker short-circuits
-        // to nil even if every other field were inconsistent.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .undefined,
             branchClass: .exception, memoryAccess: .load, category: .undefined,
@@ -53,13 +46,9 @@ struct SVEPermuteMemorySemanticsPassTests {
 }
 
 /// Validates that the checker actually catches a decode that renders plausibly
-/// but mis-tags its semantics — a decode with the right text but a wrong memory
-/// kind, fault flag, FFR touch, or streaming blanket must be reported, not
-/// silently accepted. Each case is a hand-built draft that violates exactly one
-/// invariant so the reported `field` pins which check fired.
+/// but mis-tags its semantics.
 @Suite("SVE permute/memory/crypto semantics / mismatches are reported")
 struct SVEPermuteMemorySemanticsMismatchTests {
-    /// A base load draft that passes the checker; each test perturbs one field.
     private func loadDraft(
         mnemonic: Mnemonic = .ld1b,
         branchClass: BranchClass = .none,
@@ -108,13 +97,11 @@ struct SVEPermuteMemorySemanticsMismatchTests {
     }
 
     @Test func aWrongMemoryAccessKindIsReported() {
-        // A load mnemonic tagged `.none` (or `.store`) contradicts its family.
         #expect(field(loadDraft(memoryAccess: .none)) == "memoryAccess")
         #expect(field(loadDraft(memoryAccess: .store)) == "memoryAccess")
     }
 
     @Test func aSpuriousFirstFaultFlagIsReported() {
-        // A plain LD1B is not first-faulting; the flag must not be set.
         let draft = loadDraft(scalableEffect: [.readsStreamingMode, .firstFaulting])
         #expect(field(draft) == "firstFaulting")
     }
@@ -130,7 +117,6 @@ struct SVEPermuteMemorySemanticsMismatchTests {
     }
 
     @Test func aMissingFirstFaultFlagOnAnLdff1IsReported() {
-        // The inverse: an LDFF1 mnemonic must set firstFaulting and touch FFR.
         let draft = loadDraft(mnemonic: .ldff1b)
         #expect(field(draft) == "firstFaulting")
     }
@@ -156,15 +142,12 @@ struct SVEPermuteMemorySemanticsMismatchTests {
     }
 
     @Test func aMissingFFROnANonFaultLoadIsReported() {
-        // A non-fault mnemonic with the flag set but no FFR read is caught.
         let draft = loadDraft(mnemonic: .ldnf1b, scalableEffect: [.readsStreamingMode, .nonFaulting])
         #expect(field(draft) == "scalableReads.FFR")
     }
 }
 
-/// Validates the `SVEPermMemSemanticIssue` value — its memberwise fields carry
-/// the mismatch report, and it composes into sets like every other value type
-/// (Hashable / Equatable).
+/// Validates the `SVEPermMemSemanticIssue` value.
 @Suite("SVE permute/memory/crypto semantics / issue value")
 struct SVEPermMemSemanticIssueTests {
     @Test func theIssueCarriesItsThreeFields() {

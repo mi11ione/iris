@@ -4,13 +4,10 @@
 import Iris
 import Testing
 
-/// Pins the 36 Mnemonic raw-value constants the DPI family owns,
-/// in the reserved 256..1023 slab `Mnemonic.allocations` declares. The
-/// allocation requires uniqueness + range-membership; both are checked
-/// here at constant time.
+/// Pins the 36 DPI mnemonic constants in the reserved 256...1023 slab,
+/// checking uniqueness and range membership.
 @Suite("DPI / Mnemonic constants 256..299")
 struct DPIMnemonicConstantsTests {
-    /// The family's allocation table — base mnemonics + alias mnemonics with their locked raw values.
     private static let allDPIMnemonics: [(Mnemonic, UInt16, String)] = [
         (.add, 256, "add"), (.adds, 257, "adds"), (.sub, 258, "sub"), (.subs, 259, "subs"),
         (.and, 260, "and"), (.orr, 261, "orr"), (.eor, 262, "eor"), (.ands, 263, "ands"),

@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Load/store register, unsigned offset (scaled imm12).
-// Encoding shell bits[29:24] = 111001, V=0. imm12 at bits[21:10].
-//
-// size × opc table is identical to LDUR for the load/store kind selection.
-// The imm12 field is unsigned and scaled by (1 << size) bytes.
 
 enum LoadStoreUnsignedOffsetDecode {
     @_optimize(speed)
@@ -16,7 +10,6 @@ enum LoadStoreUnsignedOffsetDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rt = UInt8(encoding & 0x1F)
 
-        // Displacement = imm12 × scale (1 << size).
         let scale: Int64 = 1 << Int64(size)
         let displacement = Int64(imm12) * scale
 
@@ -40,7 +33,6 @@ enum LoadStoreUnsignedOffsetDecode {
         case (0b11, 0b00): mnemonic = .str; rtWidth = .x64; memoryAccess = .store; isLoad = false
         case (0b11, 0b01): mnemonic = .ldr; rtWidth = .x64; memoryAccess = .load; isLoad = true
         case (0b11, 0b10):
-            // PRFM <prfop>, [Rn|SP{, #pimm}]
             let rnRef = lsGprOperand(encoding: Rn, width: .x64, form: .spOrGeneral)
             return DecodedDraft(
                 address: address,

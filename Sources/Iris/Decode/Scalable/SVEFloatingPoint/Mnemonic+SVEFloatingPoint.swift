@@ -1,15 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// mnemonic constants — the SVE / SVE2 floating-point tokens
-// not already declared by earlier families. Raw values continue the SVE
-// slab (16384..<28672) from 16627 (SVE-integer ended at 16626). Shared tokens —
-// fadd, fmul, fmla, fmov, fcvt, fcvtzs, the frint* family, the NEON compare
-// and pairwise families, famax/famin, fdot, bfdot, bfmmla, bfmlalb/t,
-// bfcvt/bfcvtn, fcvtn — are reused from the SIMD/FP slab; the token is
-// the text, and `category == .sve` plus operand shape disambiguate (the
-// SVE-predicate/SVE-integer precedent). FCPY/FDUP have no tokens: they always render as
-// `fmov` (their only disassembler-visible alias).
 
 public extension Mnemonic {
     /// SVE FSUBR — reversed floating-point subtract.

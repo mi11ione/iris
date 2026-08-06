@@ -1,16 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SME core mnemonic tokens, in the SME/SME2 slab
-// (28672..<40960). The ZA load/store/move mnemonics (`mov`, `ldr`, `str`,
-// `ld1b`..`st1q`) and the streaming-mode controls (`smstart`, `smstop`) are
-// shared architectural mnemonics already declared by earlier families
-// (`mov`, `ldr`/`str`, the `ld1*`/`st1*` SVE-slab tokens, `smstart`/`smstop`)
-// and reused verbatim — the record's mnemonic is the
-// preferred-alias-resolved identity, and the ZA operand shape plus the `.sme`
-// category disambiguate the SME forms from their same-named SVE / base-ISA
-// peers. Only the SME-unique outer-product, accumulate, and ZERO tokens are
-// declared here.
 
 public extension Mnemonic {
     /// SME `ZERO` — zero a set of `ZA` tiles (or the whole array).

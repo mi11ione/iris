@@ -4,8 +4,6 @@
 import Iris
 import Testing
 
-/// Every mnemonic constant subpiece 2s.3 declares, grouped as the encoding
-/// tables group them.
 private let multiplyAddLong: [Mnemonic] = [
     .adclb, .adclt, .sabalb, .sabalt, .sbclb, .sbclt,
     .smlalb, .smlalt, .smlslb, .smlslt, .smullb,
@@ -59,13 +57,7 @@ private let declaredHere: [Mnemonic] =
         + bitwiseImmediate + multiplyAdd + checkedPointer + clamps + divides
         + saturatingPredicated + shiftLong + wideImmediate
 
-/// Validates the mnemonic constants this decoder declares. They continue the
-/// scalable slab directly after 2s.2's allocation, so three things must hold:
-/// every new constant sits inside the reserved scalable range, the constants
-/// are distinct and contiguous (the next subpiece must know exactly where it
-/// may begin), and the shared text tokens — add, mul, mov, smax, sqadd and a
-/// hundred more that earlier subpieces already declared — are reused rather
-/// than redeclared, since a duplicate raw value would silently collide.
+/// Validates the mnemonic constants this decoder declares.
 @Suite("SVE integer / mnemonic allocations")
 struct MnemonicSVEIntegerTests {
     private static let scalableRange: ClosedRange<UInt16> = 16384 ... 28671
@@ -83,8 +75,6 @@ struct MnemonicSVEIntegerTests {
     }
 
     @Test func theDeclaredMnemonicsAreContiguousAfterThePredicateControlSlab() {
-        // 2s.2 consumed 16384...16468; 2s.3 starts at 16469 and leaves no
-        // gaps, so 2s.4 knows its first free value is 16627.
         let raws = declaredHere.map(\.rawValue).sorted()
         #expect(raws.count == 158)
         #expect(Set(raws).count == raws.count)
@@ -92,9 +82,6 @@ struct MnemonicSVEIntegerTests {
     }
 
     @Test func theSharedTextTokensAreReusedNotRedeclared() {
-        // These mnemonics already exist for base-instruction or NEON forms
-        // (or 2s.2's predicate forms); the vector integer forms reuse them,
-        // so their raw values must stay outside this subpiece's block.
         let shared: [Mnemonic] = [
             .add, .sub, .and, .orr, .eor, .bic, .mul, .mov, .not, .neg, .abs,
             .asr, .lsl, .lsr, .cls, .clz, .cnt, .smax, .smin, .umax, .umin,
@@ -119,8 +106,6 @@ struct MnemonicSVEIntegerTests {
     }
 
     @Test func eachEncodingGroupContributesItsOwnConstants() {
-        // A group that accidentally shared a constant with another would
-        // decode to the wrong text; keep the groups provably disjoint.
         let groups = [
             multiplyAddLong, narrowing, unpredicated, reductions, predicatedShifts,
             bitPermuteAndWide, ternary, complex, compares, predicatedUnary,

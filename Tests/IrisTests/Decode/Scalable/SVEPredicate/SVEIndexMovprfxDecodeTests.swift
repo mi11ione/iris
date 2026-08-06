@@ -12,16 +12,11 @@ private func predicates(_ set: ScalableRegisterSet) -> [UInt8] {
     (0 ..< 16).filter { set.containsPredicate(UInt8($0)) }.map(UInt8.init)
 }
 
-/// Validates INDEX — the vector-of-stepped-values generator. Its two operands
-/// are each independently either an immediate or a general register, selected by
-/// one bit apiece, which gives four shapes over the same encoding. The register
-/// width follows the element size (32-bit for byte/halfword/word, 64-bit for
-/// doubleword), and only the operands that really are registers may enter the
-/// read mask.
+/// Validates INDEX, the vector-of-stepped-values generator.
 @Suite("SVE predicate & control / index generation")
 struct SVEIndexDecodeTests {
     @Test func bothOperandsCanBeImmediates() {
-        let d = decode(0x0423_4020) // index z0.b, #1, #3
+        let d = decode(0x0423_4020)
         #expect(d.mnemonic == .index)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -36,7 +31,7 @@ struct SVEIndexDecodeTests {
     }
 
     @Test func bothImmediatesAreSignExtendedFromFiveBits() {
-        let d = decode(0x04FF_4200) // index z0.d, #-16, #-1
+        let d = decode(0x04FF_4200)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 0, element: .d)),
             .immediate(value: -16, width: 5),
@@ -45,7 +40,7 @@ struct SVEIndexDecodeTests {
     }
 
     @Test func theStartOperandCanBeARegisterOnItsOwn() {
-        let d = decode(0x0462_44A1) // index z1.h, w5, #2
+        let d = decode(0x0462_44A1)
         #expect(d.mnemonic == .index)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 1, element: .h)),
@@ -56,7 +51,7 @@ struct SVEIndexDecodeTests {
     }
 
     @Test func theStepOperandCanBeARegisterOnItsOwn() {
-        let d = decode(0x04A6_4842) // index z2.s, #2, w6
+        let d = decode(0x04A6_4842)
         #expect(d.mnemonic == .index)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 2, element: .s)),
@@ -67,7 +62,7 @@ struct SVEIndexDecodeTests {
     }
 
     @Test func bothOperandsCanBeRegistersAndTheDoublewordFormIsSixtyFourBit() {
-        let d = decode(0x04E6_4CA3) // index z3.d, x5, x6
+        let d = decode(0x04E6_4CA3)
         #expect(d.mnemonic == .index)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 3, element: .d)),
@@ -79,7 +74,7 @@ struct SVEIndexDecodeTests {
     }
 
     @Test func registerThirtyOneIsTheZeroRegisterNotTheStackPointer() {
-        let d = decode(0x043F_4FE4) // index z4.b, wzr, wzr
+        let d = decode(0x043F_4FE4)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 4, element: .b)),
             .register(.wzr()),
@@ -89,16 +84,11 @@ struct SVEIndexDecodeTests {
     }
 }
 
-/// Validates MOVPRFX — the constructive prefix, in its unpredicated and
-/// predicated forms. The merging predicated form is one of only four
-/// lane-preserving writes in the tier: it reads its own destination and leaves
-/// inactive lanes alone, so it must carry the partial-write flag or a consumer
-/// would treat it as a full kill. Its governing predicate field is also three
-/// bits wide, not four — a detail that silently halves the register range.
+/// Validates MOVPRFX in its unpredicated and predicated forms.
 @Suite("SVE predicate & control / constructive prefix")
 struct SVEMovprfxDecodeTests {
     @Test func theUnpredicatedPrefixCopiesAWholeVector() {
-        let d = decode(0x0420_BC20) // movprfx z0, z1
+        let d = decode(0x0420_BC20)
         #expect(d.mnemonic == .movprfx)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -113,12 +103,12 @@ struct SVEMovprfxDecodeTests {
     }
 
     @Test func theUnpredicatedPrefixRejectsItsReservedFields() {
-        #expect(decode(0x0460_BC20).mnemonic == .undefined) // size field must be zero
-        #expect(decode(0x0421_BC20).mnemonic == .undefined) // bits 20:16 must be zero
+        #expect(decode(0x0460_BC20).mnemonic == .undefined)
+        #expect(decode(0x0421_BC20).mnemonic == .undefined)
     }
 
     @Test func theZeroingPredicatedPrefixFullyWritesItsDestination() {
-        let d = decode(0x0450_2C20) // movprfx z0.h, p3/z, z1.h
+        let d = decode(0x0450_2C20)
         #expect(d.mnemonic == .movprfx)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 0, element: .h)),
@@ -132,7 +122,7 @@ struct SVEMovprfxDecodeTests {
     }
 
     @Test func theMergingPredicatedPrefixReadsItsDestinationAndWritesItPartially() {
-        let d = decode(0x0491_3C20) // movprfx z0.s, p7/m, z1.s
+        let d = decode(0x0491_3C20)
         #expect(d.mnemonic == .movprfx)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 0, element: .s)),
@@ -151,8 +141,6 @@ struct SVEMovprfxDecodeTests {
     }
 
     @Test func thePredicatedPrefixTakesEverySize() {
-        // The size field is a real size here (unlike the unpredicated form,
-        // which requires it to be zero).
         let cases: [(UInt32, ScalarSize)] = [
             (0x0410_2C20, .b), (0x0450_2C20, .h), (0x0490_2C20, .s), (0x04D0_2C20, .d),
         ]
@@ -165,8 +153,6 @@ struct SVEMovprfxDecodeTests {
     }
 
     @Test func thePredicatedPrefixTakesOnlyTheLowEightPredicates() {
-        // The governing-predicate field is three bits (12:10), so it can only
-        // name p0 through p7 — the fourth bit belongs to a different field.
         let withoutPredicate = UInt32(0x0450_2C20) & ~0x1C00
         for register in UInt8(0) ... 7 {
             let d = decode(withoutPredicate | (UInt32(register) << 10))
@@ -180,9 +166,7 @@ struct SVEMovprfxDecodeTests {
     }
 
     @Test func aPrefixCopyingAVectorOntoItselfIsNotRejected() {
-        // Whether a prefix pairs with a legal successor is not a decode-level
-        // property, so the decoder must never reject on the register fields.
-        let d = decode(0x0420_BC00) // movprfx z0, z0
+        let d = decode(0x0420_BC00)
         #expect(d.mnemonic == .movprfx)
         #expect(Array(d.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 0)),

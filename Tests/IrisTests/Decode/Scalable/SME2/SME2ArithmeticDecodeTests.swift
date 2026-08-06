@@ -13,14 +13,6 @@ private func text(_ e: UInt32) -> String {
     decode(e).text
 }
 
-/// Every `(mask, value)` row of `accumulateSpec`, paired with the mnemonic it
-/// must resolve to. Transcribed one-for-one from the generated decode table:
-/// the table is a hand-ordered jump list where a mis-keyed row silently yields
-/// a plausible wrong mnemonic (or an empty render), so every row is driven and
-/// its identity pinned. The all-fields-zero encoding of a row matches that row
-/// by construction (its value bits are a submask of its key), and the driver
-/// asserts it lands on the intended mnemonic — proving no earlier row shadows
-/// it and no bit collision exists.
 private let accumulates: [(UInt32, Mnemonic)] = [
     (0xC1A1_1C00, .fadd),
     (0xC1A1_1C08, .fsub),
@@ -352,13 +344,7 @@ private let accumulates: [(UInt32, Mnemonic)] = [
     (0xC1C0_0000, .fmlal),
 ]
 
-/// Validates the SME2 multi-vector ZA-accumulate decoder (the `0xC1` cell,
-/// `bits[15:13]` groups 000/100). This is the widest table in 2s.7 — 328 rows
-/// spanning the add/sub, dot, mla/mls, widening `L` and quad-widening `LL`
-/// families across vgx1/vgx2/vgx4 groups, single/multi/indexed source shapes,
-/// and every tile/source element pairing — all keyed by scattered opcode bits.
-/// The bulk assertion drives every row; the golden cases pin the operand
-/// rendering for one representative of each source shape.
+/// Validates the SME2 multi-vector ZA-accumulate decoder.
 @Suite("SME2 / ZA-accumulate decode")
 struct SME2ArithmeticDecodeTests {
     @Test func everyAccumulateRowResolvesToItsMnemonic() {
@@ -369,10 +355,6 @@ struct SME2ArithmeticDecodeTests {
     }
 
     @Test func everyAccumulateRowIsSemanticallyConsistentAndRendersCleanly() {
-        // The independent checker re-derives the ZA touch, the streaming/partial
-        // effect and the memory kind; a nonempty, placeholder-free render proves
-        // the canonicalizer has a name for the token (an empty mnemonic is the
-        // silent-text-miss failure mode the family invites).
         for (e, _) in accumulates {
             let d = decode(e)
             #expect(SME2SemanticChecker.verify(draft: d) == nil, "0x\(String(e, radix: 16))")
@@ -384,8 +366,6 @@ struct SME2ArithmeticDecodeTests {
     }
 
     @Test func everyAccumulateReadsAndWritesTheWholeZAArrayUnderStreaming() {
-        // Every ZA-array access is a dynamic row selection, so the honest touch
-        // is the whole-ZA mask on both sides, streaming-gated and partial.
         for (e, _) in accumulates {
             let d = decode(e)
             #expect(!d.scalableReads.zaMask.isEmpty, "0x\(String(e, radix: 16))")
@@ -397,10 +377,6 @@ struct SME2ArithmeticDecodeTests {
     }
 
     @Test func theSourceShapesRenderTheirCanonicalOperandForms() {
-        // One representative per `buildAccumulate` arm — the accumulate pair,
-        // the single-slot vgx4, the quad-widening `LL` range, the vgx1 single
-        // and multi-vector single, and the indexed vgx1/vgx2 forms — pins the
-        // slice-range, vector-group and element-index rendering together.
         #expect(text(0xC1A0_1C10) == "add za.s[w8, 0, vgx2], { z0.s, z1.s }")
         #expect(text(0xC1A1_1C10) == "add za.s[w8, 0, vgx4], { z0.s - z3.s }")
         #expect(text(0xC1A1_0000) == "smlall za.s[w8, 0:3, vgx4], { z0.b - z3.b }, { z0.b - z3.b }")
@@ -411,15 +387,11 @@ struct SME2ArithmeticDecodeTests {
     }
 
     @Test func theSelectRegisterAndSliceOffsetTrackTheirFields() {
-        // Rv (bits[14:13]) picks W8-W11; the low offset field scales by the
-        // group tier. A payload of Rv=3 and offset field=2 on the vgx2 add moves
-        // both, and the group source registers follow bits[9:6].
         let e: UInt32 = 0xC1A0_1C10 | (3 << 13) | 2 | (5 << 6)
         #expect(text(e) == "add za.s[w11, 2, vgx2], { z10.s, z11.s }", "0x\(String(e, radix: 16))")
     }
 
     @Test func aWordInTheAccumulateGroupThatMatchesNoRowIsAClaimedHole() {
-        // bits[15:13] in 000..011 with no accumulate match is 2s.7's to reject.
         for e: UInt32 in [0xC100_000C, 0xC100_001C] {
             let d = decode(e)
             #expect(d.mnemonic == .undefined, "0x\(String(e, radix: 16))")
@@ -429,19 +401,15 @@ struct SME2ArithmeticDecodeTests {
     }
 
     @Test func aWordInTheSelGroupThatIsNotSelIsAClaimedHole() {
-        // bits[15:13]=100 hosts SEL; a 100-group word failing the SEL opcode is
-        // an unallocated hole rather than a mis-decoded select.
         let d = decode(0xC120_8020)
         #expect(d.mnemonic == .undefined)
         #expect(text(0xC120_8020) == ".long 0xc1208020")
     }
 
     @Test func theNonAccumulateGroupsRouteToTheirVectorOpsDecoders() {
-        // bits[15:13] 101/110/111 leave the ZA-accumulate table for the
-        // {Zd}-targeting families; a representative of each proves the routing.
-        #expect(decode(0xC120_B800).mnemonic == .smax) // 101 destructive
-        #expect(decode(0xC120_C400).mnemonic == .sclamp) // 110 clamp
-        #expect(decode(0xC131_E000).mnemonic == .fcvtzs) // 111 convert
-        #expect(decode(0xC120_8000).mnemonic == .sel) // 100 SEL
+        #expect(decode(0xC120_B800).mnemonic == .smax)
+        #expect(decode(0xC120_C400).mnemonic == .sclamp)
+        #expect(decode(0xC131_E000).mnemonic == .fcvtzs)
+        #expect(decode(0xC120_8000).mnemonic == .sel)
     }
 }

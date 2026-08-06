@@ -1,36 +1,19 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// the SME2 semantic checker. An independent re-derivation of
-// the classification a decoded SME2 record must carry, compared to
-// what the decoder tagged. It does not re-run the decoder's field extraction
-// (the exhaustive text sweep already proves the operand structure); instead
-// it verifies the semantic invariants that never appear in the rendered text
-// — category, branch/flag/memory/ordering classification, and the ZA/ZT0
-// register-touch consistency between the operand list and the scalable
-// read/write sets. The validator runs it on every in-scope decoded record;
-// any mismatch is a gating divergence.
-
-// Checks the semantic classification of a SME2 SME2 record against the
-// architectural model, independently of the decoder.
 
 import Iris
 
 public enum SME2SemanticChecker {
-    /// A single semantic mismatch — the field, the decoder's value, and the
-    /// independently-derived expectation.
+    /// A single semantic mismatch.
     public struct Issue: Sendable {
         public let field: String
         public let actual: String
         public let expected: String
     }
 
-    /// Verify `draft`'s semantic tags. Returns the first mismatch, or `nil`
-    /// when the record is semantically consistent with the model.
+    /// Verify `draft`'s semantic tags.
     @_optimize(speed)
     public static func verify(draft: Instruction) -> Issue? {
-        // UNDEFINED holes carry no operands and their category is checked by
-        // region below; nothing else to re-derive.
         let region = (draft.encoding >> 25) & 0xF
         let expectedCategory: Category = region == 0b0010 ? .sve : .sme
         if draft.category != expectedCategory {
@@ -38,7 +21,6 @@ public enum SME2SemanticChecker {
         }
         guard draft.mnemonic != .undefined else { return nil }
 
-        // Universal invariants: no branch, no ordering, no NZCV except WHILE.
         if draft.branchClass != .none {
             return Issue(field: "branchClass", actual: "\(draft.branchClass)", expected: "none")
         }
@@ -50,14 +32,11 @@ public enum SME2SemanticChecker {
             return Issue(field: "flagEffect", actual: "\(draft.flagEffect)", expected: "\(expectedFlag)")
         }
 
-        // Memory access follows the mnemonic (loads/stores of a Z-list or ZT0).
         let expectedMemory = memoryAccess(draft.mnemonic)
         if draft.memoryAccess != expectedMemory {
             return Issue(field: "memoryAccess", actual: "\(draft.memoryAccess)", expected: "\(expectedMemory)")
         }
 
-        // ZA is touched iff the record carries a ZA operand (array vector,
-        // tile, or tile slice).
         let hasZAOperand = draft.operands.contains { operand in
             switch operand {
             case .zaArrayVector, .zaTile, .zaTileSlice: true
@@ -69,7 +48,6 @@ public enum SME2SemanticChecker {
             return Issue(field: "za", actual: "touched=\(touchesZA)", expected: "operand=\(hasZAOperand)")
         }
 
-        // ZT0 is touched iff the record carries a ZT0 operand.
         let hasZT0Operand = draft.operands.contains { operand in
             if case .zt0 = operand { true } else { false }
         }
@@ -78,9 +56,6 @@ public enum SME2SemanticChecker {
             return Issue(field: "zt0", actual: "touched=\(touchesZT0)", expected: "operand=\(hasZT0Operand)")
         }
 
-        // Streaming mode: every SME2 record is streaming-gated except the
-        // non-streaming-safe `ZT0` fill/spill/zero trio (LDR/STR ZT0, ZERO
-        // {zt0}) — the only `IsNonStreamingSafe` records in the tblgen gates.
         let nonStreamingSafe = draft.mnemonic == .ldr || draft.mnemonic == .str
             || (draft.mnemonic == .zero && hasZT0Operand)
         if draft.scalableEffect.contains(.readsStreamingMode) == nonStreamingSafe {
@@ -91,9 +66,6 @@ public enum SME2SemanticChecker {
             )
         }
 
-        // Partial write: a statically-partial destination survives — any ZA
-        // write (a dynamic slice/tile) or a MOVT `ZT0`-slice insert. Full
-        // writes (Z lists, predicates, GPRs, the full-`ZT0` LDR/ZERO) are not.
         let writesZA = !draft.scalableWrites.zaMask.isEmpty
         let movtInsert = draft.mnemonic == .movt && draft.scalableWrites.containsZT0
         let expectPartial = writesZA || movtInsert
@@ -105,8 +77,6 @@ public enum SME2SemanticChecker {
             )
         }
 
-        // Non-temporal iff LDNT1/STNT1; and SME2 never toggles the streaming /
-        // ZA-enable state (those are the SMSTART/SMSTOP).
         let expectNonTemporal = isNonTemporal(draft.mnemonic)
         if draft.scalableEffect.contains(.nonTemporal) != expectNonTemporal {
             return Issue(
@@ -144,8 +114,7 @@ public enum SME2SemanticChecker {
         }
     }
 
-    /// The memory-access class implied by a mnemonic — the multi-vector
-    /// loads/stores and the `ZT0` fill/spill (`LDR`/`STR`).
+    /// The memory-access class implied by a mnemonic.
     @inline(__always)
     private static func memoryAccess(_ m: Mnemonic) -> MemoryAccess {
         switch m {

@@ -4,19 +4,14 @@
 import Iris
 import Testing
 
-/// Golden pins for RegisterSet iteration: the lowest-bit-first order,
-/// the element policy (bit i → .x(i), bit 31 → sp, bits 32…63 → simd),
-/// and the decode-grounded facts that make iteration honest — the zero
-/// register is never recorded, bit 31 is SP.
+/// Golden pins for `RegisterSet` iteration.
 @Suite("RegisterSet / iteration as registers")
 struct RegisterSetIterationTests {
     @Test func zeroRegisterParticipationIsNeverRecorded() {
-        // CMP x0, x1 discards into xzr: writes iterate empty.
         let cmp = decode(0xEB01_001F)
         #expect(cmp.mnemonic == .cmp)
         #expect(Array(cmp.semanticWrites) == [])
         #expect(Array(cmp.semanticReads) == [.x(0), .x(1)])
-        // MOV x0, xzr reads only the zero register: reads iterate empty.
         let mov = decode(0xAA1F_03E0)
         #expect(mov.mnemonic == .mov)
         #expect(Array(mov.semanticReads) == [])
@@ -24,8 +19,6 @@ struct RegisterSetIterationTests {
     }
 
     @Test func bit31IteratesAsStackPointer() {
-        // ADD sp, sp, #16 — bit 31 in a RegisterSet unambiguously
-        // means SP (proven decoder behavior, not an assumption).
         let add = decode(0x9100_43FF)
         #expect(add.mnemonic == .add)
         #expect(add.semanticReads.contains(.sp()))
@@ -34,7 +27,6 @@ struct RegisterSetIterationTests {
     }
 
     @Test func simdBitsIterateAsVectorRegisters() {
-        // AND v0.8b, v1.8b, v2.8b.
         let and = decode(0x0E22_1C20)
         #expect(and.mnemonic == .and)
         #expect(Array(and.semanticReads) == [.simd(1), .simd(2)])
@@ -55,14 +47,12 @@ struct RegisterSetIterationTests {
     }
 }
 
-/// Validates the RegisterSet algebra — O(1) bit operations mirroring
-/// the set vocabulary: subtracting, symmetric difference, removing,
-/// subset/superset/disjoint queries, emptiness, and count.
+/// Validates the `RegisterSet` algebra.
 @Suite("RegisterSet / set algebra")
 struct RegisterSetAlgebraTests {
-    private let a = RegisterSet(mask: 0b0111) //  {x0, x1, x2}
-    private let b = RegisterSet(mask: 0b0110) //  {x1, x2}
-    private let c = RegisterSet(mask: 0b1000) //  {x3}
+    private let a = RegisterSet(mask: 0b0111)
+    private let b = RegisterSet(mask: 0b0110)
+    private let c = RegisterSet(mask: 0b1000)
 
     @Test func subtractingRemovesSharedMembers() {
         #expect(a.subtracting(b) == RegisterSet(mask: 0b0001))
@@ -79,7 +69,6 @@ struct RegisterSetAlgebraTests {
     @Test func removingDropsOneRegister() {
         #expect(a.removing(.x(0)) == b)
         #expect(a.removing(.x(3)) == a)
-        // Canonical index >= 64 is ignored, mirroring inserting(_:).
         let synthetic = RegisterRef(canonicalIndex: 80, role: .general, width: .x64)
         #expect(a.removing(synthetic) == a)
         #expect(RegisterSet.empty.inserting(.sp()).removing(.sp()) == .empty)
@@ -106,9 +95,7 @@ struct RegisterSetAlgebraTests {
     }
 }
 
-/// Validates `RegisterSet`'s `CustomStringConvertible` rendering: a
-/// bracketed, ascending, comma-separated list of canonical register
-/// names, debug-only and independent of the canonical text path.
+/// Validates `RegisterSet`'s debug rendering.
 @Suite("RegisterSet / description")
 struct RegisterSetDescriptionTests {
     @Test func emptySetIsEmptyBrackets() {

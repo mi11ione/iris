@@ -4,28 +4,24 @@
 import Iris
 import Testing
 
-/// Builds the shared real-content stream the equality suites pin
-/// against: 12 llvm-mc-verified prologue words, a NOP, two words covered
-/// by a data-in-code span, an undefined word, and a 2-byte truncated
-/// tail, decoded with ARM64E features at a nonzero base.
 private func makeRealStream() -> InstructionStream {
     let words: [UInt32] = [
-        0xA9BF_7BFD, // stp x29, x30, [sp, #-16]!
-        0x9100_03FD, // mov x29, sp
-        0xD101_03FF, // sub sp, sp, #64
-        0x9000_0008, // adrp x8, #0
-        0x9104_0108, // add x8, x8, #256
-        0xF940_0100, // ldr x0, [x8]
-        0x9400_0000, // bl #0
-        0x7100_001F, // cmp w0, #0
-        0x5400_0081, // b.ne #16
-        0xA8C1_7BFD, // ldp x29, x30, [sp], #16
-        0x9101_03FF, // add sp, sp, #64
-        0xD65F_03C0, // ret
-        0xD503_201F, // nop (zero operands)
-        0xDEAD_BEEF, // data-in-code span covers this word
-        0x0604_0200, // and this word
-        0x0000_FFFF, // udf #65535
+        0xA9BF_7BFD,
+        0x9100_03FD,
+        0xD101_03FF,
+        0x9000_0008,
+        0x9104_0108,
+        0xF940_0100,
+        0x9400_0000,
+        0x7100_001F,
+        0x5400_0081,
+        0xA8C1_7BFD,
+        0x9101_03FF,
+        0xD65F_03C0,
+        0xD503_201F,
+        0xDEAD_BEEF,
+        0x0604_0200,
+        0x0000_FFFF,
     ]
     var bytes: [UInt8] = []
     bytes.reserveCapacity(words.count * 4 + 2)
@@ -45,39 +41,25 @@ private func makeRealStream() -> InstructionStream {
     )
 }
 
-/// A lookup result reduced to the fields the equality pins compare: the
-/// record and the materialized operand list, or `.absent` for a `nil`
-/// lookup. Comparing two signatures decides agreement in one `==`,
-/// without a per-case mismatch arm that real input never reaches.
 private enum LookupSignature: Equatable {
     case absent
     case present(InstructionRecord, [Operand])
 }
 
-/// The signature of a session lookup.
 private func lookupSignature(_ borrowed: BorrowedInstruction?) -> LookupSignature {
     borrowed.map { .present($0.record, Array($0.operands)) } ?? .absent
 }
 
-/// The signature of a stream-view lookup.
 private func lookupSignature(_ view: Instruction?) -> LookupSignature {
     view.map { .present($0.record, Array($0.operands)) } ?? .absent
 }
 
-/// Validates that every session access path agrees with the ergonomic
-/// Instruction views over the same stream — the golden equality pin for
-/// the closure-scoped session tier: identical records and identical
-/// operand sequences at every index and every address, over a real
-/// decoded buffer carrying defined words, a NOP, data-in-code markers,
-/// an undefined word, and a truncated tail.
+/// The golden equality pin for the session tier.
 @Suite("InstructionStream session / equality with the view path")
 struct SessionViewEqualityTests {
     @Test func sessionElementsMatchViewElementsAtEveryIndex() {
         let stream = makeRealStream()
         #expect(stream.count == 17)
-        // Each comparison is evaluated unconditionally and folded into one
-        // verdict, so the equality is asserted without an unreachable
-        // mismatch arm. The session and view always agree here by design.
         let scalars = stream.withSession { session in
             [
                 session.count == stream.count,
@@ -117,10 +99,6 @@ struct SessionViewEqualityTests {
     @Test func sessionLookupAgreesWithStreamLookupAtEveryWordAddress() {
         let stream = makeRealStream()
         let base = stream.baseAddress
-        // Materialize each lookup to a comparable signature (presence,
-        // record, operands) and compare the two signatures directly. The
-        // sweep runs two words past the end so it covers both the present
-        // and the absent address, with no unreachable mismatch arm.
         let agreement = stream.withSession { session -> [Bool] in
             var results: [Bool] = []
             var address = base
@@ -151,9 +129,6 @@ struct SessionViewEqualityTests {
     @Test func sessionContainingLookupAgreesWithStreamAtUnalignedAddresses() {
         let stream = makeRealStream()
         let base = stream.baseAddress
-        // Offsets cover unaligned addresses inside the stream and one past
-        // its end (1000), so the agreement check evaluates both the present
-        // and the absent signature. Comparison is one `==` per offset.
         let agreement = stream.withSession { session -> [Bool] in
             [UInt64(1), 2, 3, 5, 17, 50, 53, 65, 1000].map { offset in
                 let fromSession = lookupSignature(session.instruction(containing: base &+ offset))
@@ -180,10 +155,7 @@ struct SessionViewEqualityTests {
     }
 }
 
-/// Validates the session tier's negative paths and edge contracts:
-/// out-of-stream and unaligned lookups, the empty stream, the
-/// truncated-tail element, hostile hand-built operand indices, modular
-/// address wrap, and result threading out of the closure.
+/// Validates the session's negative paths.
 @Suite("InstructionStream session / negative pins and edges")
 struct SessionEdgeTests {
     @Test func sessionLookupRejectsOutOfStreamAndUnalignedAddresses() {
@@ -208,9 +180,6 @@ struct SessionEdgeTests {
 
     @Test func sessionOverEmptyStreamIsEmpty() {
         let stream = InstructionStream(bytes: [] as [UInt8], at: 0x4000)
-        // Iteration is exercised through the iterator itself (`Array(session)`),
-        // so the empty walk needs no per-element transform body that an empty
-        // collection could never invoke.
         let (count, isEmpty, lookup, containing, walked) = stream.withSession { session in
             (
                 session.count,

@@ -1,23 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Per-record semantic-attribute verification for SVE-predicate — SVE
-// predicate & control. The text-parity validator proves mnemonic + operands
-// against llvm-mc; disassembly text does NOT encode flagEffect, scalableEffect
-// (partialWrite / readsStreamingMode), or the semantic read/write sets — so
-// this checker proves those independently. Expectations are derived from the
-// (text-validated) operand list + mnemonic by architectural rule, a separate
-// computation from the decoder's own attribute logic, so a divergence between
-// the two surfaces a bug. Predicate reads/writes come from a general
-// role/qualifier walk over the operands; GPR/Z/FFR from per-mnemonic rule.
-
-// Concrete semantic-field discrepancy between a decoded record and the
-// architectural expectation. Returned by ``SVEPredicateControlSemanticChecker``.
 
 import Iris
 
 public struct SVEPCSemanticIssue: Sendable, Equatable {
-    /// Field that didn't match (e.g. "flagEffect", "scalableEffect", "predicateWrites").
+    /// Field that didn't match (e.g. "flagEffect", "scalableEffect",
+    /// "predicateWrites").
     public let field: String
     /// Stringified actual value from the draft.
     public let actual: String
@@ -32,14 +20,11 @@ public struct SVEPCSemanticIssue: Sendable, Equatable {
 }
 
 /// Per-record semantic-field verification for SVE predicate & control.
-/// Returns `nil` when the record matches every expected attribute; the
-/// first mismatch otherwise.
 public enum SVEPredicateControlSemanticChecker {
     @_effects(readonly)
     @_optimize(speed)
     public static func verify(draft: Instruction) -> SVEPCSemanticIssue? {
         if draft.mnemonic == .undefined { return nil }
-        // Universal invariants for the tier.
         if draft.category != .sve {
             return SVEPCSemanticIssue(field: "category", actual: "\(draft.category)", expected: "sve")
         }
@@ -52,17 +37,14 @@ public enum SVEPredicateControlSemanticChecker {
         if draft.memoryOrdering != [] {
             return SVEPCSemanticIssue(field: "memoryOrdering", actual: "\(draft.memoryOrdering)", expected: "[]")
         }
-        // flagEffect.
         let expFlag = SVEPredicateControlSemanticAttributes.expectedFlagEffect(for: draft.mnemonic)
         if draft.flagEffect != expFlag {
             return SVEPCSemanticIssue(field: "flagEffect", actual: "\(draft.flagEffect.rawValue)", expected: "\(expFlag.rawValue)")
         }
-        // scalableEffect (partialWrite + readsStreamingMode) — not text-visible.
         let expEffect = SVEPredicateControlSemanticAttributes.expectedScalableEffect(for: draft)
         if draft.scalableEffect != expEffect {
             return SVEPCSemanticIssue(field: "scalableEffect", actual: "\(draft.scalableEffect.rawValue)", expected: "\(expEffect.rawValue)")
         }
-        // FFR read / write.
         let (ffrR, ffrW) = SVEPredicateControlSemanticAttributes.expectedFFR(for: draft.mnemonic)
         if draft.scalableReads.containsFFR != ffrR {
             return SVEPCSemanticIssue(field: "ffrRead", actual: "\(draft.scalableReads.containsFFR)", expected: "\(ffrR)")
@@ -70,7 +52,6 @@ public enum SVEPredicateControlSemanticChecker {
         if draft.scalableWrites.containsFFR != ffrW {
             return SVEPCSemanticIssue(field: "ffrWrite", actual: "\(draft.scalableWrites.containsFFR)", expected: "\(ffrW)")
         }
-        // Predicate reads / writes (general role/qualifier walk).
         let expPredW = SVEPredicateControlSemanticAttributes.expectedPredicateWrites(draft.operands)
         if draft.scalableWrites.predicateMask != expPredW {
             return SVEPCSemanticIssue(
@@ -87,7 +68,6 @@ public enum SVEPredicateControlSemanticChecker {
                 expected: "0x\(String(expPredR, radix: 16))",
             )
         }
-        // GPR + Z register reads / writes (per-mnemonic rule over the operands).
         let expRegW = SVEPredicateControlSemanticAttributes.expectedRegisterWrites(for: draft)
         if draft.semanticWrites.mask != expRegW {
             return SVEPCSemanticIssue(
@@ -109,11 +89,11 @@ public enum SVEPredicateControlSemanticChecker {
 }
 
 /// Per-mnemonic / per-operand SVE predicate-control semantic-attribute
-/// lookups. Pure functions over the decoded mnemonic and operand list.
+/// lookups.
 public enum SVEPredicateControlSemanticAttributes {
-    /// Architecturally-correct `FlagEffect`: `.nzcv` for the S-suffixed
-    /// forms + PTEST/PFIRST/PNEXT/all WHILE; CTERM writes N,V and reads C
-    /// (its own set); everything else `.none`.
+    /// Architecturally-correct `FlagEffect`: `.nzcv` for the S-suffixed forms
+    /// + PTEST/PFIRST/PNEXT/all WHILE; CTERM writes N,V and reads C (its own
+    /// set); everything else `.none`.
     @_effects(readonly)
     public static func expectedFlagEffect(for m: Mnemonic) -> FlagEffect {
         switch m {
@@ -130,16 +110,16 @@ public enum SVEPredicateControlSemanticAttributes {
         }
     }
 
-    /// Architecturally-correct `ScalableEffect`. `readsStreamingMode` is set
-    /// for every in-scope form except CTERM and the SVL-form twins (RDSVL/
-    /// ADDSVL/ADDSPL). `partialWrite` is set for exactly BRKA/M, BRKB/M,
-    /// PFIRST, MOVPRFX/M — the four lane-preserving RMW forms.
+    /// Architecturally-correct `ScalableEffect`: `readsStreamingMode` on every
+    /// in-scope form except CTERM and the SVL twins, and `partialWrite` on
+    /// exactly BRKA/M, BRKB/M, PFIRST and MOVPRFX/M — the four lane-preserving
+    /// RMW forms.
     @_effects(readonly)
     public static func expectedScalableEffect(for draft: Instruction) -> ScalableEffect {
         var e: ScalableEffect = []
         switch draft.mnemonic {
         case .ctermeq, .ctermne, .rdsvl, .addsvl, .addspl:
-            break // no streaming dependence
+            break
         default:
             e.insert(.readsStreamingMode)
         }
@@ -162,8 +142,6 @@ public enum SVEPredicateControlSemanticAttributes {
         default: (false, false)
         }
     }
-
-    // MARK: predicate reads / writes — general role/qualifier walk
 
     /// Predicate-write mask = the result-role predicate operands.
     @_effects(readonly)
@@ -199,10 +177,9 @@ public enum SVEPredicateControlSemanticAttributes {
         return reads
     }
 
-    // MARK: register (GPR + Z) reads / writes — per-mnemonic over operands
-
     /// Register-write mask: the destination operand (operand 0) for the forms
-    /// that write a GPR or a Z register; empty for the pure predicate/flag forms.
+    /// that write a GPR or a Z register; empty for the pure predicate/flag
+    /// forms.
     @_effects(readonly)
     public static func expectedRegisterWrites(for draft: Instruction) -> UInt64 {
         switch draft.mnemonic {
@@ -224,39 +201,29 @@ public enum SVEPredicateControlSemanticAttributes {
     public static func expectedRegisterReads(for draft: Instruction) -> UInt64 {
         let ops = draft.operands
         switch draft.mnemonic {
-        // WHILE / WHILERW / WHILEWR: read the two GPR operands (indices 1,2).
         case .whilege, .whilegt, .whilelt, .whilele, .whilehs, .whilehi,
              .whilelo, .whilels, .whilerw, .whilewr:
             return operandRegisterMask(ops, 1) | operandRegisterMask(ops, 2)
-        // CTERM: read the two GPR operands (indices 0,1).
         case .ctermeq, .ctermne:
             return operandRegisterMask(ops, 0) | operandRegisterMask(ops, 1)
-        // ADDVL/ADDPL family: read Rn (index 1), write Rd.
         case .addvl, .addsvl, .addpl, .addspl:
             return operandRegisterMask(ops, 1)
-        // Tied accumulate scalar / vector (dest is read + written).
         case .incp, .decp, .sqincp, .uqincp, .sqdecp, .uqdecp,
              .incb, .inch, .incw, .incd, .decb, .dech, .decw, .decd,
              .sqincb, .sqinch, .sqincw, .sqincd, .uqincb, .uqinch, .uqincw, .uqincd,
              .sqdecb, .sqdech, .sqdecw, .sqdecd, .uqdecb, .uqdech, .uqdecw, .uqdecd:
             return operandRegisterMask(ops, 0)
-        // INDEX: read whichever of the start/step operands are registers.
         case .index:
             return operandRegisterMask(ops, 1) | operandRegisterMask(ops, 2)
-        // MOVPRFX: unpredicated reads Zn (index 1); predicated reads Zn (last)
-        // and, when merging, Zd (index 0).
         case .movprfx:
             if ops.count == 2 { return operandRegisterMask(ops, 1) }
             var r = operandRegisterMask(ops, 2)
             if hasMergingGoverning(ops) { r |= operandRegisterMask(ops, 0) }
             return r
-        // Write-only-dest forms (no register read): CNTP, RDVL/RDSVL, CNTB/H/W/D.
         default:
             return 0
         }
     }
-
-    // MARK: helpers
 
     /// The canonical-index bitmask for the register/vector operand at `index`
     /// (XZR/WZR → 0; SP → bit 31; Z_n / V_n → bit 32+n), or 0 otherwise.

@@ -4,28 +4,19 @@
 import Iris
 import Testing
 
-/// Validates `isSVEIntegerEncoding` — the single encoding predicate that
-/// defines which SVE words the integer decoder owns. It is consulted by the
-/// family decoder's gate, the validator's skip filter and the corpus
-/// harvester's scope filter, so a wrong answer either silently drops a real
-/// instruction from validation or hands a foreign encoding to the wrong
-/// decoder. 2s.3 spans six top bytes interleaved with four sibling decoders,
-/// so each in-scope group is claimed and each neighbouring family that shares
-/// the encoding space (predicate & control, floating-point, permute, crypto,
-/// counter forms, memory) is disclaimed.
+/// Validates `isSVEIntegerEncoding`, the predicate defining which SVE words
+/// the integer decoder owns and the one consulted by the family gate, the
+/// skip.
 @Suite("SVE integer / encoding-scope predicate")
 struct SVEIntegerScopeTests {
     @Test func onlyTheScalableTierIsConsidered() {
-        // op0 (bits 28:25) must be 0b0010. Everything else is another family's
-        // encoding space, whatever its low bits look like — observable as a
-        // decode that lands outside the scalable category entirely.
         for encoding: UInt32 in [
-            0x0000_0000, // op0=0 reserved
-            0x1400_0000, // branch
-            0x8B02_0020, // data-processing register
-            0xF900_0000, // load/store
-            0x4E20_1C00, // advanced SIMD
-            0x1520_C000, // wide-immediate bits under a branch top byte
+            0x0000_0000,
+            0x1400_0000,
+            0x8B02_0020,
+            0xF900_0000,
+            0x4E20_1C00,
+            0x1520_C000,
         ] {
             #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
@@ -91,8 +82,6 @@ struct SVEIntegerScopeTests {
             (0x45A8_0040, "sqshrn multi-vector (G14)"),
         ]
         for (encoding, label) in owned {
-            // In scope and claimed: the word decodes to a real scalable
-            // instruction rather than falling through to the tier's UNDEFINED.
             let d = Iris.decode(encoding)
             #expect(d.category == .sve, "\(label) must be scalable")
             #expect(d.mnemonic != .undefined, "\(label) must be claimed")
@@ -100,9 +89,6 @@ struct SVEIntegerScopeTests {
     }
 
     @Test func neighbouringGroupsThatShareTheEncodingSpaceAreDisclaimed() {
-        // Each of these sits inside one of 2s.3's six top bytes but belongs to
-        // another sibling decoder. A too-wide predicate would pull it here and force a
-        // wrong UNDEFINED (or worse, a mis-decode); the scope gate keeps it out.
         let foreign: [(UInt32, String)] = [
             (0x2510_4020, "brka — predicate partition (2s.2)"),
             (0x2518_E000, "ptrue — predicate initialise (2s.2)"),
@@ -130,18 +116,12 @@ struct SVEIntegerScopeTests {
             (0xE400_4000, "st1b — memory (2s.5)"),
         ]
         for (encoding, label) in foreign {
-            // Out of scope, and the sibling that owns it decodes it: a
-            // too-wide integer predicate would have claimed the word and
-            // forced it to UNDEFINED. The sibling's exact mnemonic is pinned
-            // by that group's own decode suite.
             #expect(Iris.decode(encoding).mnemonic != .undefined,
                     "\(label) must decode in its own group")
         }
     }
 
     @Test func theArchitecturalHolesStayInScopeAndDecodeToUndefined() {
-        // A hole inside an owned group is this decoder's to reject — it must not
-        // be pushed out of scope, or nothing would ever validate it.
         let holes: [(UInt32, String)] = [
             (0x0402_0443, "reserved predicated-arith opcode"),
             (0x0414_0443, "sdiv at a byte element"),
@@ -194,17 +174,9 @@ struct SVEIntegerScopeTests {
 }
 
 /// Validates that every word in the six top bytes 2s.3 shares with its
-/// siblings decodes to a well-formed scalable record. The sweep exhausts every
-/// dispatch-relevant bit combination in all six top bytes with two register/
-/// payload patterns, so a routing decision that wrongly depended on payload
-/// bits could not hide: a word that escaped its owner would surface here as a
-/// mis-categorized record, a lost raw encoding, or text the renderer could not
-/// form.
+/// siblings decodes to a well-formed scalable record.
 @Suite("SVE integer / every word in the shared top bytes is well formed")
 struct SVEIntegerScopeAgreementTests {
-    /// Bits 23...9 select every dispatch path in all six regions; the payload
-    /// bits below are register/immediate fields. Both payload patterns are
-    /// swept so a routing decision reading them would be caught.
     private static let payloads: [UInt32] = [0x000, 0x1FF]
     private static let topBytes: [UInt32] = [0x04, 0x05, 0x24, 0x25, 0x44, 0x45]
 
@@ -217,11 +189,6 @@ struct SVEIntegerScopeAgreementTests {
     }
 
     @Test func everyWordCarriesTheScalableCategoryAndItsRawEncoding() {
-        // The whole of op0=2 belongs to the scalable tier, so every swept word
-        // — claimed by 2s.3 or by one of the siblings sharing these top bytes,
-        // or a reserved hole none of them claims — comes back categorized as
-        // SVE with its raw word and address intact and no base-ISA attribute
-        // invented.
         for topByte in Self.topBytes {
             Self.sweep(topByte: topByte) { encoding in
                 let draft = Iris.decode(encoding, at: 0x4000)
@@ -236,9 +203,6 @@ struct SVEIntegerScopeAgreementTests {
     }
 
     @Test func everyWordRendersTextExactlyWhenItDecodes() {
-        // A decoded record must render nonempty single-line text with no `?`
-        // placeholder; a hole renders the `.long` data directive that every
-        // UNDEFINED record shares.
         for topByte in Self.topBytes {
             Self.sweep(topByte: topByte) { encoding in
                 let draft = Iris.decode(encoding, at: 0)

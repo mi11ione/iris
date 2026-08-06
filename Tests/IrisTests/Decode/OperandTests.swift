@@ -4,9 +4,7 @@
 import Iris
 import Testing
 
-/// Validates Operand — the single discriminated union over every
-/// ARM64 operand variant. Each of the 18 cases is exercised at the
-/// construction + equality level.
+/// Validates `Operand`, exercising each case at construction and equality.
 @Suite("Operand / variants instantiable and distinct")
 struct OperandTests {
     @Test func registerVariantCarriesRegisterRef() {
@@ -111,7 +109,6 @@ struct OperandTests {
     }
 
     @Test func pageLabelDistinctFromLabel() {
-        // ADRP target semantics differ from ADR (page-aligned vs PC-relative).
         let pl = Operand.pageLabel(byteOffset: 4096)
         let l = Operand.label(byteOffset: 4096)
         #expect(pl != l)
@@ -131,12 +128,8 @@ struct OperandTests {
     }
 }
 
-/// Pins MemoryLayout<Operand>.size so any future Swift toolchain change
-/// that grows the enum past its 24-byte budget surfaces
-/// here. Operand's payload is dominated by
-/// the Int64 in `.immediate` and the MemoryOperand in `.memory`; a
-/// growth past 24 bytes triggers a multiplicative cost across the
-/// operand buffer for every binary.
+/// Pins `MemoryLayout<Operand>.size` so a toolchain change growing the enum
+/// past its 24-byte budget surfaces here rather than as a multiplicative cost.
 @Suite("Operand / memory-layout invariant")
 struct OperandLayoutTests {
     @Test func sizeFitsInTwentyFourByteBudget() {

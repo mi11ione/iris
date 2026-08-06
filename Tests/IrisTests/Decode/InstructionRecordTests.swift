@@ -4,9 +4,8 @@
 import Iris
 import Testing
 
-/// Validates InstructionRecord — the atomic 57-byte record the decoder
-/// produces. Field preservation, equality, hashing, and the
-/// load-bearing layout pin.
+/// Validates `InstructionRecord`: field preservation, equality, hashing, and
+/// the load-bearing layout pin.
 @Suite("InstructionRecord / memberwise init and equality")
 struct InstructionRecordTests {
     @Test func memberwiseInitPreservesAllFields() {
@@ -52,12 +51,7 @@ struct InstructionRecordTests {
     }
 }
 
-/// Validates the InstructionRecord memory-layout pin — 57 bytes,
-/// 8-byte alignment, stride 64. This invariant is the packed-storage
-/// performance architecture's contract (cache-friendly bulk streams,
-/// predictable cost per million instructions); a regression here is a
-/// structural break. Widened from 40 bytes by the SVE/SME extension to
-/// carry the scalable read/write sets and scalableEffect inline.
+/// Validates the layout pin.
 @Suite("InstructionRecord / memory-layout invariant")
 struct InstructionRecordLayoutTests {
     @Test func sizeIsExactlyFiftySevenBytes() {
@@ -69,8 +63,6 @@ struct InstructionRecordLayoutTests {
     }
 
     @Test func strideIsSixtyFourBytes() {
-        // 57 bytes at 8-byte alignment rounds up to a 64-byte stride
-        // (7 bytes trailing padding).
         #expect(MemoryLayout<InstructionRecord>.stride == 64)
     }
 }

@@ -4,14 +4,10 @@
 import Iris
 import Testing
 
-/// Validates the BES family's dispatch behavior through the public
-/// surface: op0 routing into the family and the bits-31:24 sub-dispatch.
-/// Hits every bits 31:24 value the dispatch table maps to a
-/// sub-decoder, plus unallocated values rejected via .undefined.
+/// Validates BES dispatch through the public surface.
 @Suite("BES / BranchesExceptionSystemDecoder dispatch")
 struct BESDispatcherTests {
     @Test func bothBESOp0PartitionsAttributeToTheFamily() {
-        // op0=0xA (B) and op0=0xB (B with imm26 bit 25 set).
         #expect(decode(0x1400_0000).category == .branchesExceptionSystem)
         #expect(decode(0x1600_0000).category == .branchesExceptionSystem)
     }
@@ -91,24 +87,21 @@ struct BESDispatcherTests {
         #expect(d.mnemonic == .braa)
     }
 
+    @Test func dispatchRoutesPACReturnImmediate() {
+        let d = decode(0x5500_001F, at: 0)
+        #expect(d.mnemonic == .retaasppc)
+    }
+
     @Test func defensiveFallthroughOnInvalidBits31to24() {
-        // The dispatcher guarantees op0 ∈ {0xA, 0xB} but as a defensive
-        // path BranchesExceptionSystemDecoder still handles unmatched
-        // bits 31:24 — emit .undefined rather than crash. The only
-        // bits 31:24 values reachable here (given op0 ∈ {0xA, 0xB})
-        // that match no BES class: e.g. 0x55..0x57 — bits 28:25
-        // = 1010 / 1011, but bits 31:24 like 0x55 satisfy op0 yet not
-        // any sub-case. Encoding 0x55000000 has op0 = 0xA and bits
-        // 31:24 = 0x55 which doesn't match any known mnemonic-class
-        // (bit 4 may be 0/1, bits 23:0 don't matter — the dispatch
-        // falls through to .undefined).
-        let d = decode(0x5500_0000, at: 0)
-        #expect(d.mnemonic == .undefined)
+        for word: UInt32 in [0x5600_0000, 0x5700_0000, 0x7600_0000, 0x7700_0000,
+                             0xF600_0000, 0xF700_0000]
+        {
+            #expect(decode(word, at: 0).mnemonic == .undefined, "0x\(String(word, radix: 16))")
+        }
     }
 
     @Test func tierZeroDecodeReachesBES() {
-        // The same dispatch path the stream init uses, via tier-0.
-        let b = decode(0x1400_0000, at: 0) // op0 = 0xA (B)
+        let b = decode(0x1400_0000, at: 0)
         #expect(b.mnemonic == .b)
         #expect(b.category == .branchesExceptionSystem)
         let svc = decode(0xD400_0001, at: 0)

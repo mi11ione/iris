@@ -1,19 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Validation bridge — routes an SVE/SME record to its per-region semantic
-// checker (the scalable analog of the base BES/DPR/LS/... checkers) and maps
-// the checker's issue to the uniform (field, actual, expected) triple the
-// `iris-parity semantic` sweep consumes. The checkers verify the decoder's
-// scalable reads/writes and streaming/effect flags — the facts disassembly
-// text cannot show — so this catches semantic regressions that perfect
-// llvm-mc text parity would miss. Lives in `IrisValidation`, not in the shipped `Iris` API.
 
 import Iris
 
-/// Verify the scalable semantic attributes of one decoded SVE/SME
-/// instruction against its region's expected-attribute checker. Returns the
-/// first discrepancy, or `nil` for a clean record or a non-scalable category.
+/// Verify the scalable semantic attributes of one decoded SVE/SME instruction
+/// against its region's expected-attribute checker.
 public func scalableSemanticIssue(
     for instruction: Instruction,
 ) -> (field: String, actual: String, expected: String)? {

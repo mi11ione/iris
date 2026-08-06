@@ -4,9 +4,8 @@
 import Iris
 import Testing
 
-/// Validates DPR text rendering (via `Instruction.text`) for every
-/// DPR instruction class + the SP-extended display-collapse rule + the
-/// condition-name canonical mapping + every operand-variant render path.
+/// Validates DPR text for every instruction class, the SP-extended display
+/// collapse, condition naming, and every operand render path.
 @Suite("DPR / Canonicalizer text rendering")
 struct DPRCanonicalizerTests {
     private func canonical(_ encoding: UInt32) -> String {
@@ -15,13 +14,9 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func undefinedRendersLongDirective() {
-        // Undefined records render the raw word as `.long` (text is
-        // total).
         let d = Instruction(address: 0, encoding: 0xDEAD_BEEF, mnemonic: .undefined, category: .undefined)
         #expect(d.isUndefined)
         #expect(d.text == ".long 0xdeadbeef")
-        // The DPR formatter's own defensive arm (reachable only via a
-        // hand-built family-category record) still yields "".
         let armed = Instruction(address: 0, encoding: 0, mnemonic: .undefined, category: .dataProcessingRegister)
         #expect(armed.text == "")
     }
@@ -63,37 +58,30 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func extendedUxtxWithSpCollapsesToBareAtSf1() {
-        // SP-collapse: UXTX-with-SP at sf=1 → "add sp, x1, x2".
         #expect(canonical(0x8B22_603F) == "add sp, x1, x2")
     }
 
     @Test func extendedUxtxWithSpAtNonZeroShiftRendersAsLsl() {
-        // SP-collapse: UXTX-with-SP at sf=1, shift > 0 → "add sp, x1, x2, lsl #N".
         #expect(canonical(0x8B22_643F) == "add sp, x1, x2, lsl #1")
     }
 
     @Test func extendedUxtwWithWspAtSf0CollapsesToBare() {
-        // SP-collapse: UXTW-with-WSP at sf=0 → "add wsp, w1, w2".
         #expect(canonical(0x0B22_403F) == "add wsp, w1, w2")
     }
 
     @Test func extendedUxtwWithWspAtSf0NonZeroShiftRendersAsLsl() {
-        // Encoding 0x0B22_483F has imm3=010=2.
         #expect(canonical(0x0B22_483F) == "add wsp, w1, w2, lsl #2")
     }
 
     @Test func extendedSxtxWithSpKeepsExtendKeyword() {
-        // SXTX never collapses, even with SP at sf=1.
         #expect(canonical(0x8B22_E03F) == "add sp, x1, x2, sxtx")
     }
 
     @Test func extendedUxtwWithSpAtSf1KeepsExtendKeyword() {
-        // UXTW at sf=1 (with SP) does NOT collapse — natural extend is UXTX, not UXTW.
         #expect(canonical(0x8B22_403F) == "add sp, x1, w2, uxtw")
     }
 
     @Test func extendedUxtwAtNoSpRendersExtend() {
-        // No SP present → no collapse, extend keyword shown.
         #expect(canonical(0x8B22_4020) == "add x0, x1, w2, uxtw")
     }
 
@@ -370,7 +358,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func conditionCsRendersAsHs() {
-        // CCMP x1, x2, #0, CS → "ccmp x1, x2, #0, hs"
         #expect(canonical(0xFA42_2020) == "ccmp x1, x2, #0, hs")
     }
 
@@ -389,16 +376,11 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func wspRenders() {
-        // ADD w0, wsp, #imm doesn't apply (immediate-form is DPI's), but
-        // ADD wsp, w1, w2 extended hits wsp via Rd.
         let d = decode(0x0B22_403F, at: 0)
-        // After SP-collapse: "add wsp, w1, w2".
         #expect(d.text == "add wsp, w1, w2")
     }
 
     @Test func wzrRenders() {
-        // SUBS wzr, w1, w2 → cmp w1, w2 (alias drops Rd). To exercise
-        // bare wzr rendering, construct a draft directly with .wzr().
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .dataProcessingRegister,
@@ -417,8 +399,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func simdRegisterRenders() {
-        // DPR never emits SIMD, but the canonicalizer's registerText fallback
-        // must handle it for defensive completeness.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .dataProcessingRegister,
@@ -428,8 +408,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func unknownRegisterIndexRendersWithQuestionMark() {
-        // canonicalIndex >= 64 is defensive — the decoder never
-        // produces one, but registerText returns "?N" as a safe sentinel.
         let weirdReg = RegisterRef(canonicalIndex: 100, role: .general, width: .x64)
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
@@ -449,10 +427,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func mslShiftKindRenders() {
-        // DPR instructions don't emit .msl naturally, but the canonicalizer
-        // includes the case for completeness in case SIMD/FP's AdvSIMD
-        // modified-immediate ever shares a code path. A direct value
-        // exercises it.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .dataProcessingRegister,
@@ -462,8 +436,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func signedImmediateOperandRenders() {
-        // .immediate is allowed by the formatter but DPR doesn't emit it.
-        // Constructing directly to cover the rendering branch.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .dataProcessingRegister,
@@ -473,9 +445,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func foreignMnemonicResolvesThroughConsolidatedName() {
-        // Mnemonic names are consolidated: a hand-built DPR-category
-        // record carrying a BES-range mnemonic renders that mnemonic's
-        // real name; only unallocated raw values fall back to "?<raw>".
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .b,
             category: .dataProcessingRegister,
@@ -488,10 +457,7 @@ struct DPRCanonicalizerTests {
         #expect(unallocated.text == "?5000")
     }
 
-    // canonicalizer defensively handles them).
-
     @Test func extendKindUxtbRenders() {
-        // ADD x0, x1, w2, UXTB. sf=1 + UXTB → Rm renders as Wn.
         #expect(canonical(0x8B22_0020) == "add x0, x1, w2, uxtb")
     }
 
@@ -500,7 +466,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func extendKindUxtxWithoutSpRenders() {
-        // UXTX without SP doesn't collapse → renders "uxtx". sf=1 + UXTX → Xn.
         #expect(canonical(0x8B22_6020) == "add x0, x1, x2, uxtx")
     }
 
@@ -513,8 +478,6 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func extendKindNoneDefensiveRender() {
-        // Decoder never produces .none, but the canonicalizer's
-        // extendKindName must handle it defensively (returns "").
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .dataProcessingRegister,
@@ -524,7 +487,6 @@ struct DPRCanonicalizerTests {
                 .extendedRegister(reg: .x(2), extend: .none, shift: 0),
             ],
         )
-        // Renders "x2, " (empty extend keyword after the comma).
         let text = draft.text
         #expect(text == "add x0, x1, x2, ", "extend=.none renders empty keyword")
     }
@@ -543,20 +505,16 @@ struct DPRCanonicalizerTests {
     }
 
     @Test func addsBaseMnemonicRendersDirectly() {
-        // adds is hit by extended path with Rd != 31 (ADDS x1, x2, x3, UXTX).
         #expect(canonical(0xAB23_6041) == "adds x1, x2, x3, uxtx")
     }
 
     @Test func subBaseMnemonicRendersDirectly() {
-        // SUB x0, x1, x2, UXTX (no SP → keeps extend keyword).
         #expect(canonical(0xCB22_6020) == "sub x0, x1, x2, uxtx")
     }
 
     @Test func subsBaseMnemonicRendersDirectly() {
         #expect(canonical(0xEB23_6041) == "subs x1, x2, x3, uxtx")
     }
-
-    // The mnemonicName switch must still handle them.
 
     @Test func lslvMnemonicRendersDirectly() {
         let draft = Instruction(
@@ -594,27 +552,19 @@ struct DPRCanonicalizerTests {
         #expect(draft.text == "rorv x0, x1, x2")
     }
 
-    // register (covers the `else continue` branch in the loop).
-
     @Test func spCollapseFromRnSPAtSf1() {
-        // ADD x0, sp, x2, UXTX #0 — Rn is SP, Rd is general.
         #expect(canonical(0x8B22_63E0) == "add x0, sp, x2")
     }
 
     @Test func spCollapseFromBothRdAndRnSP() {
-        // ADD sp, sp, x2, UXTX #0.
         #expect(canonical(0x8B22_63FF) == "add sp, sp, x2")
     }
 
     @Test func wspCollapseFromRnWSPAtSf0() {
-        // ADD w0, wsp, w2, UXTW #0.
         #expect(canonical(0x0B22_43E0) == "add w0, wsp, w2")
     }
 
     @Test func spCollapseDoesNotFireWhenPrecedingOperandIsNotRegister() {
-        // Construct a draft where operand[0] is a NON-register, followed
-        // by .extendedRegister(.uxtx, 0). The collapse rule should NOT fire
-        // because there's no preceding stackPointer-role register.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
             category: .dataProcessingRegister,
@@ -623,14 +573,10 @@ struct DPRCanonicalizerTests {
                 .extendedRegister(reg: .x(2), extend: .uxtx, shift: 0),
             ],
         )
-        // Should keep the extend keyword (collapse predicate fails).
         #expect(draft.text == "add #1, x2, uxtx")
     }
 
     @Test func cryptoOwnedMnemonicsRouteToTheCryptoFormatter() {
-        // Crypto-owned mnemonics on a DPR-category record (hand-built;
-        // real PAC/MTE records decode with their own categories) route
-        // to the crypto/Apple-extensions formatter.
         let irg = Instruction(mnemonic: .irg, category: .dataProcessingRegister)
         #expect(irg.text == "irg")
     }

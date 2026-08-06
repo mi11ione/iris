@@ -16,16 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates G13, the FP8 and multi-vector convert cluster at 0x65: the
-/// single-source FP8 up-converts to half precision (F1CVT/F2CVT/BF1CVT/BF2CVT
-/// and their odd-input LT twins), the pair down-converts to FP8 bytes
-/// (FCVTN/FCVTNB/BFCVTN and the top-half FCVTNT), the FP8 integer up-converts
-/// (SCVTF/UCVTF ± LT), and the SVE2p2 pair int down-converts (FCVTZSN/FCVTZUN).
-/// Pair sources render as consecutive `{ z2n.T, z2n+1.T }` groups whose 4-bit
-/// base field is the pair base halved, and only FCVTNT is a preserving write.
+/// Validates the FP8 and multi-vector convert cluster at 0x65.
 @Suite("SVE floating-point / FP8 and multi-vector converts")
 struct SVEFPConvertGroupDecodeTests {
-    /// f1cvt z0.h, z1.b — G13a base (selector 00, even input).
     private static let singleBase: UInt32 = 0x6508_3020
 
     @Test func everyFp8SingleConvertDecodes() {
@@ -46,7 +39,6 @@ struct SVEFPConvertGroupDecodeTests {
         }
     }
 
-    /// fcvtn z0.b, { z2.h, z3.h } — G13b/c base (selector 00, pair base 2).
     private static let downPairBase: UInt32 = 0x650A_3040
 
     @Test func everyPairDownConvertDecodes() {
@@ -67,7 +59,7 @@ struct SVEFPConvertGroupDecodeTests {
     }
 
     @Test func theTopHalfPairDownConvertPreservesTheDestination() {
-        let encoding = Self.downPairBase | (0b11 << 10) // fcvtnt
+        let encoding = Self.downPairBase | (0b11 << 10)
         let d = decode(encoding)
         #expect(d.mnemonic == .fcvtnt)
         #expect(text(encoding) == "fcvtnt z0.b, { z2.s, z3.s }")
@@ -76,12 +68,10 @@ struct SVEFPConvertGroupDecodeTests {
     }
 
     @Test func thePairBaseFieldIsHalvedAndConsecutive() {
-        // The 4-bit field at bits[9:6] carries the pair base ÷ 2; field 7 → z14.
         let encoding = (Self.downPairBase & ~(UInt32(0xF) << 6)) | (7 << 6)
         #expect(text(encoding) == "fcvtn z0.b, { z14.h, z15.h }")
     }
 
-    /// scvtf z0.h, z1.b — G13e base (selector 00, dest .h).
     private static let upConvertBase: UInt32 = 0x654C_3020
 
     @Test func everyFp8IntegerUpConvertDecodes() {
@@ -94,21 +84,18 @@ struct SVEFPConvertGroupDecodeTests {
             #expect(decode(encoding).mnemonic == mnemonic, "0x\(String(encoding, radix: 16))")
             #expect(text(encoding) == "\(name) z0.h, z1.b")
         }
-        // The destination width climbs and the source is always one step below.
         let base = Self.upConvertBase & ~(UInt32(0b11) << 22)
         #expect(text(base | (0b10 << 22)) == "scvtf z0.s, z1.h")
         #expect(text(base | (0b11 << 22)) == "scvtf z0.d, z1.s")
         #expect(decode(base).mnemonic == .undefined, "sz=00 hole")
     }
 
-    /// fcvtzsn z0.h, { z2.s, z3.s } — G13d base (fcvtzsn, src .s).
     private static let intDownBase: UInt32 = 0x658D_3040
 
     @Test func everyPairIntDownConvertDecodes() {
         #expect(decode(Self.intDownBase).mnemonic == .fcvtzsn)
         #expect(text(Self.intDownBase) == "fcvtzsn z0.h, { z2.s, z3.s }")
         #expect(text(Self.intDownBase | (1 << 10)) == "fcvtzun z0.h, { z2.s, z3.s }")
-        // src size climbs; the destination is one step below.
         let base = Self.intDownBase & ~(UInt32(0b11) << 22)
         #expect(text(base | (0b01 << 22)) == "fcvtzsn z0.b, { z2.h, z3.h }")
         #expect(text(base | (0b11 << 22)) == "fcvtzsn z0.s, { z2.d, z3.d }")

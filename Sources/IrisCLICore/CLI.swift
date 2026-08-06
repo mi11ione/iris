@@ -3,16 +3,10 @@
 
 import Iris
 
-/// The `iris` tool: argv in, lines out, exit code back.
-///
-/// Exit codes: 0 success; 1 usage error; 2 unreadable or not Mach-O;
-/// 3 no decodable code sections / requested architecture unavailable.
-/// Listings and NDJSON go to `writeOutput` (stdout); diagnostics and
-/// errors to `writeError` (stderr). `--quiet` suppresses walker
-/// diagnostics, never error messages.
+/// The `iris` tool.
 public enum CLI {
     /// The tool's release version, matching the package tag.
-    public static let version = "0.7.0"
+    public static let version = "1.0.0"
 
     /// Exit code for success.
     public static let exitSuccess: Int32 = 0
@@ -20,13 +14,10 @@ public enum CLI {
     public static let exitUsage: Int32 = 1
     /// Exit code for an unreadable or non-Mach-O input.
     public static let exitNotMachO: Int32 = 2
-    /// Exit code for "nothing to decode": no code sections, or the
-    /// requested architecture is not in the file.
+    /// Exit code for "nothing to decode".
     public static let exitNoCode: Int32 = 3
 
-    /// Run one invocation. Output is emitted incrementally through the
-    /// sinks (NDJSON and listings stream line by line; nothing
-    /// accumulates whole-file).
+    /// Run one invocation.
     public static func run(
         arguments: [String],
         standardOutputIsTTY: Bool,
@@ -41,8 +32,6 @@ public enum CLI {
             writeOutput("iris \(version)\n")
             return exitSuccess
         case let .usageError(message):
-            // The parser bakes the full `iris[ verb]: error:` scope into
-            // the message, so it prints verbatim.
             writeError(message + "\n")
             writeError("run 'iris --help' for usage\n")
             return exitUsage
@@ -81,21 +70,17 @@ public enum CLI {
         }
     }
 
-    /// The `decode` verb: a stream over the given bytes at address 0,
-    /// honoring `--features`. Such a stream provably emits no diagnostics
-    /// (no spans, no address wrap from base 0), so only the records need
-    /// rendering. `--json` emits the per-instruction objects; otherwise a
-    /// listing, with `--semantics` annotating each decoded line.
+    /// The `decode` verb.
     static func runDirect(
         bytes: [UInt8],
         invocation: Invocation,
         palette: Palette,
         writeOutput: (String) -> Void,
     ) -> Int32 {
-        let stream = InstructionStream(bytes: bytes, features: invocation.directDecodeFeatures)
+        let stream = InstructionStream(
+            bytes: bytes, at: invocation.address, features: invocation.directDecodeFeatures,
+        )
         if invocation.json {
-            // One buffer for the whole stream, one `String` at the end, in
-            // place of one per record plus one per field within each.
             var out = TextBytes(capacity: Swift.max(1024, stream.records.count * 320))
             for instruction in stream {
                 if invocation.slim {
@@ -113,7 +98,7 @@ public enum CLI {
         return exitSuccess
     }
 
-    /// The Mach-O file mode: walk, report, render.
+    /// The Mach-O file mode.
     static func runFile(
         path: String,
         invocation: Invocation,
@@ -146,10 +131,6 @@ public enum CLI {
                 guard !invocation.quiet, let warning = streamWarning(section: section, diagnostic: diagnostic) else { return }
                 writeError(warning)
             }
-            // The file verb selects the output mode. `decode` never reaches
-            // here (the parser pairs it with word/byte input, the file
-            // verbs with a path), so it falls in with the listing path for
-            // totality rather than a trap.
             switch invocation.verb {
             case .stats:
                 var census = Census()
@@ -162,8 +143,6 @@ public enum CLI {
                 }
                 emit(census: census, json: invocation.json, slim: invocation.slim, writeOutput: writeOutput)
             case .functions:
-                // Diagnostics route through `surface` exactly as the
-                // per-instruction paths do.
                 let carved = FunctionCarver.functions(of: binary, onStreamDiagnostic: surface)
                 if invocation.json {
                     let jsonContext = JSONText.SymbolContext(binary: binary)
@@ -177,9 +156,6 @@ public enum CLI {
                     FunctionSummary.emit(functions: carved, binary: binary, palette: palette, emit: writeOutput)
                 }
             case .disasm, .decode:
-                // Resolve --function / --range to an address window before
-                // any output. A name that matches no function is a clean
-                // usage error (exit 1), reported and returned here.
                 let scope: AddressScope
                 switch resolveScope(invocation: invocation, binary: binary) {
                 case let .resolved(resolved):
@@ -196,10 +172,6 @@ public enum CLI {
                         for diagnostic in stream.diagnostics {
                             surface(section, diagnostic)
                         }
-                        // The referenced-data idiom reads the preceding
-                        // record, carried forward across the section (across
-                        // filtered-out lines too, so the idiom still resolves
-                        // when only its completing half is in scope).
                         var preceding: Instruction?
                         var out = TextBytes(capacity: Swift.max(1024, stream.records.count * 320))
                         for instruction in stream {
@@ -232,9 +204,7 @@ public enum CLI {
         }
     }
 
-    /// A resolved `disasm` output scope: an inclusive-low, exclusive-high
-    /// VM-address predicate. The whole-binary default accepts every
-    /// address; `--range` and `--function` narrow it to one window.
+    /// A resolved `disasm` output scope.
     struct AddressScope {
         let lowerBound: UInt64
         let upperBound: UInt64
@@ -248,19 +218,13 @@ public enum CLI {
         }
     }
 
-    /// Result of resolving a `disasm` scope: a window, or a usage error
-    /// (a `--function` name no function carries).
+    /// Result of resolving a `disasm` scope.
     enum ScopeResolution {
         case resolved(AddressScope)
         case error(String)
     }
 
     /// Resolve `--function` / `--range` against the walked binary.
-    /// `--range` came pre-validated from the parser (start < end), so it
-    /// maps straight to a window. `--function` is resolved here, where the
-    /// function table exists: the named function's `[address, endAddress)`
-    /// span, or a usage error naming the closest the binary does carry.
-    /// With neither flag, the scope is the whole binary.
     static func resolveScope(invocation: Invocation, binary: WalkedBinary) -> ScopeResolution {
         if let name = invocation.function {
             let functions = FunctionCarver.functions(of: binary)
@@ -279,10 +243,9 @@ public enum CLI {
         return .resolved(.all)
     }
 
-    /// The stderr line for one stream-level decode diagnostic, or `nil`
-    /// for the kinds the listing already carries inline
-    /// (data-in-code span echoes are provenance: every covered word is
-    /// rendered as data with its kind, and `--json` carries `isData`).
+    /// The stderr line for one stream-level decode diagnostic, or `nil` for
+    /// the kinds the listing already carries inline (data-in-code span echoes
+    /// are provenance.
     static func streamWarning(section: CodeSection, diagnostic: Diagnostic) -> String? {
         switch diagnostic.kind {
         case .dataInCodeSpanEncountered:
@@ -292,8 +255,8 @@ public enum CLI {
         }
     }
 
-    /// Census output: one JSON object (slim drops its two constant keys)
-    /// or the table.
+    /// Census output: one JSON object (slim drops its two constant keys) or
+    /// the table.
     static func emit(census: Census, json: Bool, slim: Bool, writeOutput: (String) -> Void) {
         if json {
             writeOutput((slim ? census.slimJsonObject() : census.jsonObject()) + "\n")
@@ -304,8 +267,7 @@ public enum CLI {
         }
     }
 
-    /// The help to print: the top-level overview when `verb` is `nil`,
-    /// otherwise that verb's usage and flag set.
+    /// The help to print.
     public static func helpText(for verb: Verb?) -> String {
         switch verb {
         case nil: helpText
@@ -316,8 +278,7 @@ public enum CLI {
         }
     }
 
-    /// Top-level `iris --help` (and bare `iris`): the verb list and the
-    /// global options.
+    /// Top-level `iris --help` (and bare `iris`).
     public static let helpText = """
     iris is an ARM64/ARM64E disassembler.
 
@@ -411,6 +372,10 @@ public enum CLI {
     (little-endian), so "1f 20 03 d5" is the same instruction.
 
     options:
+      --at <address>               the VM base address of the first word
+                                   (0x-hex or decimal, default 0), so a
+                                   relative branch in a lifted window
+                                   resolves where it really points
       --features <arm64e>          decode with the ARM64E extensions
                                    (LDRAA/LDRAB and the rest)
       --semantics                  append per-line semantic annotations

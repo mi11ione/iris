@@ -6,21 +6,14 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates the `--slim` JSON projection: it drops the zero-signal
-/// constants (`kind`, `schemaVersion`) and the empty/false fields, keeps
-/// every signal-bearing field in the same order, drops the redundant
-/// per-instruction `symbol` in the functions case, leaves the default
-/// `--json` untouched, and is a clean usage error without `--json`.
+/// Validates `--slim`: it drops the zero-signal constants and empty fields,
+/// keeps field order, and is a usage error without `--json`.
 @Suite("Slim JSON projection")
 struct SlimJSONTests {
     func object(_ line: some StringProtocol) -> [String: Any]? {
         (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any]
     }
 
-    /// Order-independent equality for two parsed JSON values. A nested
-    /// object (`flagEffect`) is an unordered Swift dictionary, so its
-    /// string interpolation orders keys differently across platforms;
-    /// scalars and arrays compare by value, objects compare key by key.
     func sameJSON(_ a: Any?, _ b: Any?) -> Bool {
         switch (a, b) {
         case let (a as [String: Any], b as [String: Any]):
@@ -32,15 +25,11 @@ struct SlimJSONTests {
         }
     }
 
-    /// The comparator's own contract, including the absent-value sentinel: two
-    /// missing values are equal, a missing value differs from a present one.
     @Test func sameJSONComparesAbsentValues() {
         #expect(sameJSON(nil, nil))
         #expect(!sameJSON(nil, 1))
         #expect(!sameJSON(1, nil))
     }
-
-    // MARK: Goldens
 
     @Test func slimStreamMatchesGolden() {
         let run = runCLI(["--json", "--slim", cliFixturePath("strings-arm64")])
@@ -54,28 +43,21 @@ struct SlimJSONTests {
         #expect(run.stdout == golden("strings-arm64.functions.slim.ndjson"))
     }
 
-    // MARK: Field omission
-
     @Test func slimDropsConstantsAndEmpties() throws {
         let run = runCLI(["--json", "--slim", cliFixturePath("hello-arm64")])
         for line in run.stdout.split(separator: "\n") {
             let fields = try #require(object(line))
             #expect(fields["kind"] == nil)
             #expect(fields["schemaVersion"] == nil)
-            // A relaxed ordering / no-flag effect / false witness is gone. The
-            // hello fixture has no ordered access at all, so `ordering` is
-            // asserted as "absent, or present and non-empty".
             #expect((fields["ordering"] as? [Any])?.isEmpty != true)
             if let branch = fields["branchClass"] as? String { #expect(branch != "none") }
             if let memory = fields["memoryAccess"] as? String { #expect(memory != "none") }
-            #expect(fields["isData"] == nil) // false is omitted; only true appears
+            #expect(fields["isData"] == nil)
             #expect(fields["isUndefined"] == nil)
         }
     }
 
     @Test func slimKeepsSignalBearingFields() throws {
-        // A nop carries no flag/ordering/branch/memory; a branch carries
-        // branchClass + branchTarget; a flag-setter carries flagEffect.
         let nop = try #require(object(runCLI(["decode", "--json", "--slim", "0xd503201f"]).stdout))
         #expect(nop["mnemonic"] as? String == "nop")
         #expect(nop["flagEffect"] == nil && nop["ordering"] == nil && nop["branchClass"] == nil)
@@ -107,8 +89,6 @@ struct SlimJSONTests {
     }
 
     @Test func slimDirectStreamKeepsReferencedAndCharFields() throws {
-        // The slim projection still carries the new referenced-data and
-        // char-literal fields (they are signal, present only when resolved).
         let run = runCLI(["--json", "--slim", cliFixturePath("strings-arm64")])
         let stringLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"referencedString\"") })
         #expect(object(stringLine)?["referencedSection"] as? String == "__TEXT,__cstring")
@@ -116,14 +96,12 @@ struct SlimJSONTests {
         #expect(object(charLine)?["charLiteral"] is String)
     }
 
-    // MARK: Functions case
-
     @Test func slimFunctionsDropPerInstructionSymbol() throws {
         let run = runCLI(["functions", "--json", "--slim", cliFixturePath("hello-arm64")])
         for line in run.stdout.split(separator: "\n") {
             let function = try #require(object(line))
             #expect(function["kind"] == nil && function["schemaVersion"] == nil)
-            #expect(function["symbol"] is String) // the function still names itself
+            #expect(function["symbol"] is String)
             let instructions = try #require(function["instructions"] as? [[String: Any]])
             for inst in instructions {
                 #expect(inst["symbol"] == nil, "per-instruction symbol must be dropped")
@@ -132,12 +110,9 @@ struct SlimJSONTests {
     }
 
     @Test func functionsCarryUsesPACMirroringTheTable() throws {
-        // The full functions object always carries usesPAC (true or false);
-        // hello-arm64e has both PAC and non-PAC functions.
         let full = runCLI(["functions", "--json", cliFixturePath("hello-arm64e")])
         #expect(full.stdout.contains("\"usesPAC\":true"))
         #expect(full.stdout.contains("\"usesPAC\":false"))
-        // Slim follows the drop-false rule: present only on PAC functions.
         let slim = runCLI(["functions", "--json", "--slim", cliFixturePath("hello-arm64e")])
         var pacFunctions = 0
         var nonPACFunctions = 0
@@ -155,17 +130,12 @@ struct SlimJSONTests {
     }
 
     @Test func slimStreamKeepsPerInstructionSymbol() throws {
-        // The standalone disasm stream keeps symbol (no parent to carry it).
         let run = runCLI(["--json", "--slim", cliFixturePath("hello-arm64")])
         let line = try #require(run.stdout.split(separator: "\n").first)
         #expect(object(line)?["symbol"] as? String == "_add42")
     }
 
-    // MARK: Faithfulness + default untouched
-
     @Test func slimIsAFaithfulSubsetOfDefault() throws {
-        // Every slim key has the same value as the default line's; every
-        // dropped default key is a constant or an empty/false field.
         let full = runCLI(["--json", cliFixturePath("strings-arm64")]).stdout.split(separator: "\n")
         let slim = runCLI(["--json", "--slim", cliFixturePath("strings-arm64")]).stdout.split(separator: "\n")
         #expect(full.count == slim.count)
@@ -189,7 +159,6 @@ struct SlimJSONTests {
     }
 
     @Test func defaultJSONIsUnchangedByTheSlimFeature() {
-        // The opt-in projection must not perturb the default stream.
         let run = runCLI(["--json", cliFixturePath("hello-arm64")])
         #expect(run.stdout == golden("hello-arm64.ndjson"))
     }
@@ -201,9 +170,6 @@ struct SlimJSONTests {
     }
 
     @Test func slimKeepsScalableStateVerbatim() throws {
-        // The scalable fields are already absent-when-empty in the default
-        // form, so slim has nothing to drop: what survives is identical,
-        // and a base-ISA line still carries none of them.
         let slim = try #require(object(runCLI(["decode", "--json", "--slim", "0x04C303E1"]).stdout))
         let full = try #require(object(runCLI(["decode", "--json", "0x04C303E1"]).stdout))
         #expect((slim["scalableReads"] as? [String: Any])?["predicates"] as? [String] == ["p0"])

@@ -1,24 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Canonical llvm-mc-parity text for SVE-permute/memory (SVE / SVE2 permute, memory,
-// and crypto) records. Mirrors the SVE-predicate/SVE-integer/SVE-FP canonicalizer conventions:
-// lowercase, `, `-joined operands. A scalable-tier hole never reaches here —
-// the text router renders it as `.long` before dispatching. The
-// SVE-permute/memory-specific rules
-// are the memory-bracket composition (base + scalar/vector index +
-// extend/scale + displacement + `mul vl`, dropping a zero displacement), the
-// vector-group range form (`{ z0.b - z3.b }` for a contiguous ascending run of
-// three or more, comma-list otherwise), and the prefetch-op naming ({0-5}/
-// {8-13} named, {6,7,14,15} raw).
 
-/// Formats SVE-permute/memory SVE permute / memory / crypto records exactly as llvm-mc
-/// renders them.
+/// Formats SVE-permute/memory SVE permute / memory / crypto records exactly as
+/// llvm-mc renders them.
 enum SVEPermuteMemoryCanonicalizer {
-    /// The byte path — rendered straight into a UTF-8 buffer.
+    /// The byte path.
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
-        // This family's own table: a mnemonic from outside the group
-        // renders nothing rather than the spelling another family owns.
         if let spelling = name(instruction.mnemonic) { out.put(spelling) }
         let ops = instruction.operands
         if ops.isEmpty { return }
@@ -28,8 +15,6 @@ enum SVEPermuteMemoryCanonicalizer {
             put(ops[i], into: &out)
         }
     }
-
-    // MARK: per-operand rendering
 
     private static func put(_ op: Operand, into out: inout TextBytes) {
         switch op {
@@ -90,11 +75,9 @@ enum SVEPermuteMemoryCanonicalizer {
         }
     }
 
-    // MARK: multi-vector group
-
     /// `{ z0.b, z1.b }` for a pair, `{ z0.b - z3.b }` for a contiguous
-    /// ascending run of three or more with no register-file wrap, else a
-    /// comma list.
+    /// ascending run of three or more with no register-file wrap, else a comma
+    /// list.
     private static func putGroup(_ g: ScalableVectorGroup, into out: inout TextBytes) {
         if g.count >= 3, g.layout == .consecutive, Int(g.firstIndex) + Int(g.count) - 1 <= 31 {
             let last = g.firstIndex &+ g.count &- 1
@@ -123,8 +106,6 @@ enum SVEPermuteMemoryCanonicalizer {
         out.put(UInt8(ascii: "."))
         putSuffix(element, into: &out)
     }
-
-    // MARK: memory bracket
 
     private static func putMemory(_ m: ScalableMemoryOperand, into out: inout TextBytes) {
         out.put(UInt8(ascii: "["))
@@ -175,8 +156,6 @@ enum SVEPermuteMemoryCanonicalizer {
         out.put(UInt8(ascii: "]"))
     }
 
-    // MARK: prefetch op
-
     private static func putPrefetch(_ p: PrefetchOperation, into out: inout TextBytes) {
         switch p.rawValue {
         case 0: out.put("pldl1keep")
@@ -196,8 +175,6 @@ enum SVEPermuteMemoryCanonicalizer {
             out.putDecimal(UInt64(p.rawValue))
         }
     }
-
-    // MARK: register text
 
     private static func putRegister(_ r: RegisterRef, into out: inout TextBytes) {
         if r.canonicalIndex == 31 {
@@ -241,12 +218,9 @@ enum SVEPermuteMemoryCanonicalizer {
         }
     }
 
-    // MARK: mnemonic text
-
     @_effects(readonly)
     static func name(_ m: Mnemonic) -> StaticString? {
         switch m {
-        // loads
         case .ld1b: "ld1b"; case .ld1h: "ld1h"; case .ld1w: "ld1w"; case .ld1d: "ld1d"
         case .ld1sb: "ld1sb"; case .ld1sh: "ld1sh"; case .ld1sw: "ld1sw"; case .ld1q: "ld1q"
         case .ldff1b: "ldff1b"; case .ldff1h: "ldff1h"; case .ldff1w: "ldff1w"; case .ldff1d: "ldff1d"
@@ -263,16 +237,13 @@ enum SVEPermuteMemoryCanonicalizer {
         case .ld3b: "ld3b"; case .ld3h: "ld3h"; case .ld3w: "ld3w"; case .ld3d: "ld3d"; case .ld3q: "ld3q"
         case .ld4b: "ld4b"; case .ld4h: "ld4h"; case .ld4w: "ld4w"; case .ld4d: "ld4d"; case .ld4q: "ld4q"
         case .ldr: "ldr"
-        // stores
         case .st1b: "st1b"; case .st1h: "st1h"; case .st1w: "st1w"; case .st1d: "st1d"; case .st1q: "st1q"
         case .st2b: "st2b"; case .st2h: "st2h"; case .st2w: "st2w"; case .st2d: "st2d"; case .st2q: "st2q"
         case .st3b: "st3b"; case .st3h: "st3h"; case .st3w: "st3w"; case .st3d: "st3d"; case .st3q: "st3q"
         case .st4b: "st4b"; case .st4h: "st4h"; case .st4w: "st4w"; case .st4d: "st4d"; case .st4q: "st4q"
         case .stnt1b: "stnt1b"; case .stnt1h: "stnt1h"; case .stnt1w: "stnt1w"; case .stnt1d: "stnt1d"
         case .str: "str"
-        // prefetch
         case .prfb: "prfb"; case .prfh: "prfh"; case .prfw: "prfw"; case .prfd: "prfd"
-        // permute / move
         case .insr: "insr"; case .splice: "splice"; case .compact: "compact"; case .expand: "expand"
         case .lasta: "lasta"; case .lastb: "lastb"; case .clasta: "clasta"; case .clastb: "clastb"
         case .sunpkhi: "sunpkhi"; case .sunpklo: "sunpklo"; case .uunpkhi: "uunpkhi"; case .uunpklo: "uunpklo"
@@ -285,7 +256,6 @@ enum SVEPermuteMemoryCanonicalizer {
         case .dupq: "dupq"; case .extq: "extq"; case .tblq: "tblq"; case .tbxq: "tbxq"
         case .uzpq1: "uzpq1"; case .uzpq2: "uzpq2"; case .zipq1: "zipq1"; case .zipq2: "zipq2"
         case .pmov: "pmov"
-        // crypto / lut
         case .aese: "aese"; case .aesd: "aesd"; case .aesmc: "aesmc"; case .aesimc: "aesimc"
         case .aesemc: "aesemc"; case .aesdimc: "aesdimc"
         case .sm4e: "sm4e"; case .sm4ekey: "sm4ekey"; case .rax1: "rax1"

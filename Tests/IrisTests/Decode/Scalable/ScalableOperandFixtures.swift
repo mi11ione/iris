@@ -3,13 +3,6 @@
 
 import Iris
 
-/// One value of each scalable SVE/SME `Operand` case — the
-/// complete scalable operand grammar, in declaration order.
-///
-/// No base-ISA decoder emits any of these, so every existing family
-/// canonicalizer must route each one to its "unsupported" sentinel rather
-/// than crashing or silently rendering something wrong. The canonicalizer
-/// suites sweep this list to prove that.
 let everyScalableOperand: [Operand] = [
     .scalableVector(ScalableVectorRef(registerIndex: 0, element: .s)),
     .scalablePredicate(ScalablePredicateRef(registerIndex: 1, qualifier: .merging)),

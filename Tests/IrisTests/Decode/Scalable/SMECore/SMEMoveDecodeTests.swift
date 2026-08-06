@@ -12,8 +12,6 @@ private func text(_ encoding: UInt32) -> String {
     decode(encoding).text
 }
 
-/// The five MOVA blocks, in element order. `insert` moves a `Z` vector into a
-/// tile slice; `extract` moves a tile slice into a `Z` vector.
 private let movaBlocks: [(element: String, insert: UInt32, extract: UInt32)] = [
     ("b", 0xC000_0000, 0xC002_0000),
     ("h", 0xC040_0000, 0xC042_0000),
@@ -22,9 +20,6 @@ private let movaBlocks: [(element: String, insert: UInt32, extract: UInt32)] = [
     ("q", 0xC0C1_0000, 0xC0C3_0000),
 ]
 
-/// The tile|offset nibble split per element size, transcribed from the ARM
-/// encoding diagrams: the tile field grows and the offset field shrinks as the
-/// element narrows, and `.q` has no offset bits at all.
 private struct NibbleSplit {
     let nibble: UInt32
     let b: (tile: UInt8, offset: UInt8)
@@ -63,14 +58,7 @@ private func split(_ row: NibbleSplit, _ element: String) -> (tile: UInt8, offse
     }
 }
 
-/// Validates the MOVA decoder — the tile↔vector move that ARM specifies is
-/// *unconditionally* rendered as its `MOV` alias in both directions. The two
-/// directions share a cell with a dense SME2 population, so each is claimed at
-/// exact block granularity: the insert form must not swallow the multi-vector
-/// MOVA, and the extract form must not swallow MOVAZ, which is the very same
-/// word with bit9 set. The tile|offset nibble is the load-bearing field — one
-/// 4-bit slot encodes both the tile number and the slice offset, split
-/// differently at each of the five element sizes.
+/// Validates the MOVA decoder.
 @Suite("SME core / MOVA decode")
 struct SMEMovaDecodeTests {
     @Test func everyInsertBlockRendersTheAliasedMovIntoATileSlice() {
@@ -97,8 +85,6 @@ struct SMEMovaDecodeTests {
     }
 
     @Test func theVerticalBitFlipsTheDirectionLetterInBothDirections() {
-        // Bit15 selects a vertical slice; the letter sits between the tile
-        // digit and the element suffix, never after it.
         for block in movaBlocks {
             #expect(
                 text(block.insert | 0x8000) == "mov za0v.\(block.element)[w12, 0], p0/m, z0.\(block.element)",
@@ -112,7 +98,6 @@ struct SMEMovaDecodeTests {
     }
 
     @Test func theTileOffsetNibbleSplitsPerElementSizeOnInsert() {
-        // The insert form carries the nibble at bits[3:0].
         for block in movaBlocks {
             for row in nibbleSplits {
                 let (tile, offset) = split(row, block.element)
@@ -126,7 +111,6 @@ struct SMEMovaDecodeTests {
     }
 
     @Test func theTileOffsetNibbleSplitsPerElementSizeOnExtract() {
-        // The extract form carries the same nibble at bits[8:5].
         for block in movaBlocks {
             for row in nibbleSplits {
                 let (tile, offset) = split(row, block.element)
@@ -140,8 +124,6 @@ struct SMEMovaDecodeTests {
     }
 
     @Test func theQuadwordFormAlwaysPrintsAZeroOffset() {
-        // `.q` slices have no offset bits, but llvm-mc still prints the
-        // mandatory `, 0` — a suppressed zero would diverge from the oracle.
         for tile in UInt32(0) ... 15 {
             #expect(text(0xC0C1_0000 | tile) == "mov za\(tile)h.q[w12, 0], p0/m, z0.q")
             #expect(text(0xC0C3_0000 | (tile << 5)) == "mov z0.q, p0/m, za\(tile)h.q[w12, 0]")
@@ -149,7 +131,6 @@ struct SMEMovaDecodeTests {
     }
 
     @Test func theSelectRegisterIsW12PlusRv() {
-        // The 2-bit Rv field names W12-W15 and nothing else.
         for rv in UInt32(0) ... 3 {
             #expect(text(0xC000_0000 | (rv << 13)) == "mov za0h.b[w\(12 + rv), 0], p0/m, z0.b")
             #expect(text(0xC002_0000 | (rv << 13)) == "mov z0.b, p0/m, za0h.b[w\(12 + rv), 0]")
@@ -171,8 +152,6 @@ struct SMEMovaDecodeTests {
     }
 
     @Test func theMovazTwinDecodesAsItsOwnMnemonicNotAsAnExtract() {
-        // MOVAZ is a core extract word plus bit9. Claiming it would render a
-        // zeroing move as a merging one — the same text, different semantics.
         for block in movaBlocks {
             let movaz = block.extract | 0x0200
             #expect(decode(movaz).mnemonic == .movaz, "movaz .\(block.element)")
@@ -180,18 +159,11 @@ struct SMEMovaDecodeTests {
     }
 }
 
-/// Validates the semantic attributes of the MOVA records. The two directions
-/// are asymmetric in a way the text does not show: an insert reads *and* writes
-/// its tile (the merging predicate preserves inactive elements), while an
-/// extract reads the tile and partially writes the `Z` destination. Both read
-/// the select GPR `Wv`, which appears in the text only as a register name
-/// inside the slice brackets.
+/// Validates the semantic attributes of the MOVA records.
 @Suite("SME core / MOVA semantics")
 struct SMEMovaSemanticsTests {
     @Test func anInsertReadsAndWritesTheWholeDestinationTile() {
-        // The slice index is dynamic, so the touched storage is the whole tile
-        // — a sound over-approximation, not the single addressed slice.
-        let draft = decode(0xC080_0000 | 0x4) // tile ZA1.S
+        let draft = decode(0xC080_0000 | 0x4)
         let tile = ZATileMask(tile: 1, element: .s)
         #expect(draft.scalableReads.zaMask == tile)
         #expect(draft.scalableWrites.zaMask == tile)
@@ -200,18 +172,15 @@ struct SMEMovaSemanticsTests {
     }
 
     @Test func anExtractReadsTheTileAndPartiallyWritesTheVector() {
-        let draft = decode(0xC082_0000 | (0x4 << 5) | 7) // z7 ← ZA1.S slice
+        let draft = decode(0xC082_0000 | (0x4 << 5) | 7)
         #expect(draft.scalableReads.zaMask == ZATileMask(tile: 1, element: .s))
         #expect(draft.scalableWrites.zaMask == .none)
         #expect(draft.semanticWrites.contains(RegisterRef.simd(7)))
-        // The merging qualifier makes the destination read-modify-write.
         #expect(draft.semanticReads.contains(RegisterRef.simd(7)))
         #expect(draft.scalableEffect == [.readsStreamingMode, .partialWrite])
     }
 
     @Test func theByteTileTouchesTheWholeArray() {
-        // ZA0.B is the single byte tile; by the residue model it covers every
-        // position, so a `.b` move overlaps every other tile.
         let draft = decode(0xC000_0000)
         #expect(draft.scalableWrites.zaMask == .whole)
         #expect(draft.scalableReads.zaMask == .whole)
@@ -240,16 +209,9 @@ struct SMEMovaSemanticsTests {
     }
 }
 
-/// Validates the ZERO decoder — the one exact-mask producer in 2s.6. Its 8-bit
-/// operand selects `ZA` tiles at `.d` granularity, but llvm-mc renders the
-/// shortest uniform tile list that covers the same storage, which means an
-/// alias table (`{}`, `{za}`, the two `.h` forms, twelve `.s` forms) sitting on
-/// top of the generic `.d` decomposition, plus a comma-spacing quirk that
-/// differs between the alias lists and the generic one. The whole 256-value
-/// space is swept because every value is a distinct rendering decision.
+/// Validates the ZERO decoder, the one exact-mask producer in 2s.6.
 @Suite("SME core / ZERO decode")
 struct SMEZeroDecodeTests {
-    /// The `.s` alias tile bit patterns: `za0.s` = 0x11 … `za3.s` = 0x88.
     private static func expectedText(_ imm8: UInt8) -> String {
         if imm8 == 0 { return "zero {}" }
         if imm8 == 0xFF { return "zero {za}" }
@@ -274,9 +236,6 @@ struct SMEZeroDecodeTests {
         #expect(text(0xC008_00FF) == "zero {za}")
         #expect(text(0xC008_0055) == "zero {za0.h}")
         #expect(text(0xC008_00AA) == "zero {za1.h}")
-        // The `.s` alias lists are comma-*no*-space; the generic `.d` lists
-        // are comma-space. The difference is an llvm InstAlias-string artifact
-        // the oracle text carries verbatim.
         #expect(text(0xC008_0011) == "zero {za0.s}")
         #expect(text(0xC008_0033) == "zero {za0.s,za1.s}")
         #expect(text(0xC008_00EE) == "zero {za1.s,za2.s,za3.s}")
@@ -285,8 +244,6 @@ struct SMEZeroDecodeTests {
     }
 
     @Test func theWriteMaskIsTheExactReplicatedImmediate() {
-        // ZERO is the only 2s.6 producer whose destination state is statically
-        // known, so the write is exact and never `.partialWrite`.
         for imm8 in UInt32(0) ... 255 {
             let draft = decode(0xC008_0000 | imm8)
             let expected = ZATileMask(bits: UInt16(imm8) | (UInt16(imm8) << 8))
@@ -296,8 +253,6 @@ struct SMEZeroDecodeTests {
     }
 
     @Test func theWriteMaskAgreesWithTheRenderedTileList() {
-        // The operand list and the residue mask are two derivations of the same
-        // immediate; they must cover identical storage.
         for imm8 in UInt32(0) ... 255 {
             let draft = decode(0xC008_0000 | imm8)
             var fromOperands = ZATileMask.none
@@ -311,7 +266,6 @@ struct SMEZeroDecodeTests {
     }
 
     @Test func zeroIsNonStreamingSafeAndCarriesNoEffectFlags() {
-        // ARM gates ZERO on ZA alone, not on streaming mode.
         for imm8 in UInt32(0) ... 255 {
             let draft = decode(0xC008_0000 | imm8)
             #expect(draft.scalableEffect == .none, "imm8 \(imm8)")
@@ -323,15 +277,11 @@ struct SMEZeroDecodeTests {
     }
 
     @Test func aZeroHoleFallsThroughToUndefined() {
-        // Bit8 is reserved; setting it leaves the ZERO block entirely.
         #expect(decode(0xC008_0100).mnemonic == .undefined)
     }
 }
 
-/// Validates the ADDHA / ADDVA decoder — the predicated horizontal and vertical
-/// accumulate into a `ZA` tile. The two differ by a single selector bit and the
-/// two element widths differ by another, so all four combinations are asserted;
-/// the `.d` forms also widen the tile field from two bits to three.
+/// Validates the ADDHA / ADDVA decoder.
 @Suite("SME core / ADDHA and ADDVA decode")
 struct SMEAddHVDecodeTests {
     @Test func allFourBlocksResolveToTheirMnemonicAndElement() {
@@ -346,8 +296,6 @@ struct SMEAddHVDecodeTests {
     }
 
     @Test func theTileFieldWidensWithTheElementSize() {
-        // `.s` reads bits[1:0] (ZA0-3); `.d` reads bits[2:0] (ZA0-7). The bits
-        // above each field are reserved, so the ranges do not overlap.
         for tile in UInt32(0) ... 3 {
             #expect(text(0xC090_0000 | tile) == "addha za\(tile).s, p0/m, p0/m, z0.s")
         }
@@ -357,7 +305,6 @@ struct SMEAddHVDecodeTests {
     }
 
     @Test func thePredicateOrderMatchesTheOuterProducts() {
-        // Pn is bits[12:10] and renders first; Pm is bits[15:13] second.
         let encoding: UInt32 = 0xC090_0000 | (5 << 13) | (2 << 10) | (21 << 5) | 2
         #expect(text(encoding) == "addha za2.s, p2/m, p5/m, z21.s")
     }
@@ -373,8 +320,6 @@ struct SMEAddHVDecodeTests {
     }
 
     @Test func onlyTheSingleSourceVectorIsRead() {
-        // Unlike an outer product, ADDHA/ADDVA have no Zm field at all — bits
-        // [31:16] are fixed — so exactly one vector is read.
         for zn in UInt32(0) ... 31 {
             let draft = decode(0xC090_0000 | (zn << 5))
             #expect(draft.semanticReads.contains(RegisterRef.simd(UInt8(zn))), "z\(zn)")
@@ -389,8 +334,6 @@ struct SMEAddHVDecodeTests {
     }
 
     @Test func anAccumulateHoleFallsThroughToUndefined() {
-        // Bits[4:2] are reserved in the `.s` frame and bits[4:3] in the `.d`
-        // frame; a set reserved bit leaves the block.
         for encoding: UInt32 in [0xC090_0004, 0xC090_0008, 0xC090_0010, 0xC0D0_0008, 0xC0D0_0010] {
             #expect(decode(encoding).mnemonic == .undefined, "0x\(String(encoding, radix: 16))")
         }

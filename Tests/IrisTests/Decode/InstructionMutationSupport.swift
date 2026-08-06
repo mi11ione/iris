@@ -3,11 +3,6 @@
 
 import Iris
 
-/// Copy `instruction` with selected semantic fields replaced — the
-/// mutation vehicle for the checker rejection tests, which feed
-/// deliberately-corrupted instructions to the semantic checkers and
-/// assert the exact issue discriminator. (Decoded `Instruction` values
-/// are immutable; this re-materializes one through the public init.)
 func mutated(
     _ instruction: Instruction,
     mnemonic: Mnemonic? = nil,
@@ -41,10 +36,6 @@ func mutated(
     )
 }
 
-/// The mutable image of a decoded record. Decoded `Instruction` values are
-/// immutable, so the scalable checker-rejection suites edit an image and
-/// rebuild through the public init — which lets a perturbation read as an
-/// in-place field edit at the call site.
 struct InstructionImage {
     var address: UInt64
     var encoding: UInt32
@@ -91,8 +82,6 @@ struct InstructionImage {
     }
 }
 
-/// `instruction` with `body`'s edits applied — the mutation vehicle for the
-/// scalable checker-rejection suites.
 func perturbing(_ instruction: Instruction, _ body: (inout InstructionImage) -> Void) -> Instruction {
     var image = InstructionImage(instruction)
     body(&image)

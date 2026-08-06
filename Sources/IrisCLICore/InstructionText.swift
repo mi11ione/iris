@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Presentation-layer text utilities over the library's canonical
-// rendering. The library's `text` is the one true assembly form (its
-// branch labels are relative `#offset`s, oracle-parity); the CLI
-// composes absolute targets and per-operand fragments *from* it, never
-// re-rendering instructions itself.
 
 import Iris
 
@@ -17,18 +11,13 @@ public enum InstructionText {
         "0x" + String(value, radix: 16)
     }
 
-    /// The mnemonic token of a rendered instruction: everything before
-    /// the first space (the whole text for operand-less instructions).
+    /// The mnemonic token of a rendered instruction.
     public static func mnemonicToken(of text: String) -> Substring {
         text.prefix { $0 != " " }
     }
 
-    /// The canonical text with a direct branch's relative `#offset`
-    /// label rewritten to its absolute target (`bl #0x40` at 0x1000 →
-    /// `bl 0x1040`). Direct-branch encodings place the label last, so
-    /// the rewrite replaces the text's final `#`-token; instructions
-    /// without a resolved `Instruction/branchTarget` pass through
-    /// unchanged.
+    /// The canonical text with a direct branch's relative `#offset` label
+    /// rewritten to its absolute target (`bl #0x40` at 0x1000 → `bl 0x1040`).
     public static func absoluteBranchText(_ instruction: Instruction) -> String {
         guard let target = instruction.branchTarget else { return instruction.text }
         let text = instruction.text
@@ -36,13 +25,7 @@ public enum InstructionText {
         return text[..<hashIndex] + hex(target)
     }
 
-    /// A C string rendered for a listing comment: wrapped in double
-    /// quotes, with the C-style escapes for the characters that would
-    /// break a one-line comment (`\`, `"`, the whitespace controls) and
-    /// `\x<hh>` for any other non-printing byte, then capped at
-    /// `maxScalars` visible source characters with a trailing `…` when it
-    /// runs longer. The same shape `otool`'s `"…"` annotation uses, so a
-    /// listing reads like the disassemblers an analyst already knows.
+    /// A C string rendered for a listing comment.
     public static func quotedString(_ value: String, maxScalars: Int = 64) -> String {
         var out = "\""
         var emitted = 0
@@ -68,11 +51,7 @@ public enum InstructionText {
         return out + "\""
     }
 
-    /// Split a rendered instruction into per-operand fragments: the
-    /// mnemonic token is dropped and the remainder is split on top-level
-    /// commas, commas inside `[...]` (memory operands) and `{...}`
-    /// (vector register lists) do not split. Derived from the canonical
-    /// text, so the fragments can never drift from it.
+    /// Split a rendered instruction into per-operand fragments.
     public static func operandFragments(of text: String) -> [String] {
         guard let spaceIndex = text.firstIndex(of: " ") else { return [] }
         let operandText = text[text.index(after: spaceIndex)...]

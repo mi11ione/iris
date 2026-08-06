@@ -3,24 +3,10 @@
 
 import Iris
 
-/// The `--semantics` per-line annotation: a compact, fixed-vocabulary
-/// rendering of an instruction's semantic record.
-///
-/// Tokens appear in a fixed order, each only when non-empty, joined by
-/// single spaces:
-///
-///     reads=x0,x1 writes=x2 flags=r:c,w:nzcv mem=load order=acquire branch=call
-///
-/// Vocabulary: register names are `RegisterRef/name` at architectural
-/// width; flags letters are `n`/`z`/`c`/`v` with `r:`/`w:` halves;
-/// `mem` is one of `load`, `store`, `atomic`, `exclusive-load`,
-/// `exclusive-store`, `prefetch`; `order` is `acquire`, `release`, or
-/// `acquire-release`; `branch` is one of `direct`, `indirect`,
-/// `conditional`, `call`, `return`, `exception`. An instruction with no
-/// semantic effects (a NOP) produces the empty string.
+/// The `--semantics` per-line annotation.
 public enum SemanticsAnnotation {
-    /// Render the annotation for one instruction; `""` when every
-    /// component is empty.
+    /// Render the annotation for one instruction; `""` when every component is
+    /// empty.
     public static func annotation(for instruction: Instruction) -> String {
         var tokens: [String] = []
         let reads = registerList(instruction.semanticReads)
@@ -52,8 +38,8 @@ public enum SemanticsAnnotation {
         set.map(\.name).joined(separator: ",")
     }
 
-    /// `r:<letters>,w:<letters>` with absent halves omitted; `""` for no
-    /// flag effect.
+    /// `r:<letters>,w:<letters>` with absent halves omitted; `""` for no flag
+    /// effect.
     public static func flagsToken(_ effect: FlagEffect) -> String {
         var halves: [String] = []
         let reads = flagLetters(effect.readFlags, reading: true)

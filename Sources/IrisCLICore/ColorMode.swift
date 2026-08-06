@@ -4,7 +4,7 @@
 /// `--color` policy: when the listing is allowed to emit ANSI escapes.
 @frozen
 public enum ColorMode: String, Sendable, Hashable, CaseIterable {
-    /// Color iff standard output is a terminal — never when piped.
+    /// Color when standard output is a terminal.
     case auto
     /// Color unconditionally.
     case always
@@ -22,10 +22,7 @@ public enum ColorMode: String, Sendable, Hashable, CaseIterable {
     }
 }
 
-/// The listing's ANSI palette. One method per role keeps the choice of
-/// codes in one place; every method is the identity when `enabled` is
-/// false, and **callers pad before colorizing** so column alignment is
-/// computed on plain text and survives the escapes.
+/// The listing's ANSI palette, one method per role.
 @frozen
 public struct Palette: Sendable {
     /// Whether escapes are emitted.
@@ -42,7 +39,7 @@ public struct Palette: Sendable {
         return "\u{1B}[\(code)m\(text)\u{1B}[0m"
     }
 
-    /// Function labels and section headers: bold.
+    /// Function labels and section headers.
     @inlinable
     public func label(_ text: String) -> String {
         wrap(text, in: "1")
@@ -54,13 +51,13 @@ public struct Palette: Sendable {
         wrap(text, in: "36")
     }
 
-    /// Data directives (`.long`, `.byte`): yellow.
+    /// Data directives (`.long`, `.byte`).
     @inlinable
     public func data(_ text: String) -> String {
         wrap(text, in: "33")
     }
 
-    /// Annotations (everything after `;`): bright black.
+    /// Annotations (everything after `;`).
     @inlinable
     public func annotation(_ text: String) -> String {
         wrap(text, in: "90")

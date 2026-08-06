@@ -4,22 +4,15 @@
 import Iris
 import Testing
 
-/// Validates the FEAT_CMPBR compare-and-branch family: CB<cc> register
-/// (W and X), CBB<cc> byte, CBH<cc> halfword, and CB<cc> immediate —
-/// every cc arm of all four mnemonic maps, the reserved cc values
-/// (100/101), the reserved bits15:14 = 01 class, the sf=1 rejections of
-/// the byte/halfword forms, the fixed bit-14 of the immediate form, and
-/// the signed imm9 (scaled-by-4) label with `branchTarget` resolution.
+/// Validates the FEAT_CMPBR family.
 @Suite("BES / FEAT_CMPBR compare-and-branch")
 struct BESCompareBranchRegTests {
-    /// Register-form word: `sf 1110100 cc Rm 00 imm9 Rt`.
     private func registerWord(
         sf: UInt32, cc: UInt32, rm: UInt32, bits15_14: UInt32, imm9: UInt32, rt: UInt32,
     ) -> UInt32 {
         sf << 31 | 0x74 << 24 | cc << 21 | rm << 16 | bits15_14 << 14 | imm9 << 5 | rt
     }
 
-    /// Immediate-form word: `sf 1110101 cc imm6 0 imm9 Rt`.
     private func immediateWord(
         sf: UInt32, cc: UInt32, imm6: UInt32, bit14: UInt32, imm9: UInt32, rt: UInt32,
     ) -> UInt32 {
@@ -110,7 +103,6 @@ struct BESCompareBranchRegTests {
     }
 
     @Test func negativeOffsetSignExtendsAndScalesBy4() {
-        // imm9 = 0x1FF = -1 → byte offset -4.
         let d = decode(registerWord(sf: 1, cc: 0b000, rm: 2, bits15_14: 0b00, imm9: 0x1FF, rt: 1),
                        at: 0x1000)
         #expect(Array(d.operands) == [

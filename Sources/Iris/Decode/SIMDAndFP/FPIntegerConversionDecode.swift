@@ -1,30 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FP integer conversion per ARM ARM § C4.1.96.34.
-// Encoding: `sf 0 0 11110 ftype 1 rmode opcode 000000 Rn Rd`.
-// (rmode, opcode) selects the FCVT family + FMOV register-int
-// transfers + FJCVTZS + SCVTF/UCVTF (int form).
-//
-// Mnemonic table (per ARM ARM § C7.2):
-//   rmode opcode mnemonic                 direction      ftype constraints
-//   00    000    FCVTNS    FP→GPR (signed, nearest-tie-even)
-//   00    001    FCVTNU    FP→GPR (unsigned, nearest-tie-even)
-//   01    000    FCVTPS    FP→GPR (signed, +∞)
-//   01    001    FCVTPU    FP→GPR (unsigned, +∞)
-//   10    000    FCVTMS    FP→GPR (signed, -∞)
-//   10    001    FCVTMU    FP→GPR (unsigned, -∞)
-//   11    000    FCVTZS    FP→GPR (signed, toward 0)
-//   11    001    FCVTZU    FP→GPR (unsigned, toward 0)
-//   00    100    FCVTAS    FP→GPR (signed, ties away)
-//   00    101    FCVTAU    FP→GPR (unsigned, ties away)
-//   11    110    FJCVTZS   FP→GPR (signed, JavaScript) — ftype=01 sf=0 only
-//   00    010    SCVTF (int)  GPR→FP
-//   00    011    UCVTF (int)  GPR→FP
-//   00    110    FMOV (FP→GPR)
-//   00    111    FMOV (GPR→FP)
-//   01    110    FMOV (V.D[1]→X) — ftype=10 sf=1 only
-//   01    111    FMOV (X→V.D[1]) — ftype=10 sf=1 only
 
 enum FPIntegerConversionDecode {
     @_optimize(speed)
@@ -36,9 +11,6 @@ enum FPIntegerConversionDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // Handle the FMOV V.D[1] ↔ X family first — they have ftype=10
-        // (otherwise reserved) and a unique (rmode, opcode) ∈ {(01, 110),
-        // (01, 111)}.
         if ftype == 0b10 {
             return decodeFMOVTopHalf(
                 encoding: encoding, address: address,
@@ -46,14 +18,17 @@ enum FPIntegerConversionDecode {
             )
         }
 
-        // ftype == 0b10 already routed above to decodeFMOVTopHalf; only
-        // 00/01/11 reach here.
         let size = scalarSizeFromFtypeNonReserved(ftype)
         let intWidth: RegisterWidth = sf == 1 ? .x64 : .w32
 
-        // FCVT family (FP → GPR int).
+        if let converted = decodeFPRCVT(
+            encoding: encoding, address: address,
+            sf: sf, size: size, rmode: rmode, opcode: opcode, Rn: Rn, Rd: Rd, &sink,
+        ) {
+            return converted
+        }
+
         if let mnemonic = fcvtMnemonic(rmode: rmode, opcode: opcode) {
-            // FJCVTZS is constrained: sf=0, ftype=01.
             if mnemonic == .fjcvtzs, !(sf == 0 && ftype == 0b01) {
                 return .undefined(at: address, encoding: encoding)
             }
@@ -69,7 +44,6 @@ enum FPIntegerConversionDecode {
             )
         }
 
-        // SCVTF/UCVTF int forms.
         if rmode == 0b00, opcode == 0b010 || opcode == 0b011 {
             let mnemonic: Mnemonic = opcode == 0b010 ? .scvtf : .ucvtf
             let srcGPR = simdfpGprOperand(encoding: Rn, width: intWidth, spOrGeneral: false)
@@ -84,13 +58,8 @@ enum FPIntegerConversionDecode {
             )
         }
 
-        // FMOV FP→GPR and GPR→FP. ftype determines the FP-side scalar
-        // width; sf must match the matching GPR width (H/S require sf=0,
-        // D requires sf=1; otherwise reserved).
         if rmode == 0b00, opcode == 0b110 || opcode == 0b111 {
             let fpToGPR = (opcode == 0b110)
-            // Width-pair constraint: S ⇒ Wd/Wn (sf=0); D ⇒ Xd/Xn (sf=1);
-            // H (FEAT_FP16) has BOTH W↔H (sf=0) and X↔H (sf=1) forms.
             switch size {
             case .s where sf != 0: return .undefined(at: address, encoding: encoding)
             case .d where sf != 1: return .undefined(at: address, encoding: encoding)
@@ -124,8 +93,8 @@ enum FPIntegerConversionDecode {
         return .undefined(at: address, encoding: encoding)
     }
 
-    /// FCVT family: maps (rmode, opcode) → mnemonic when the pair names
-    /// an FCVT mnemonic; returns nil otherwise.
+    /// FCVT family: maps (rmode, opcode) → mnemonic when the pair names an
+    /// FCVT mnemonic; returns nil otherwise.
     @inline(__always)
     @_effects(readonly)
     private static func fcvtMnemonic(rmode: UInt8, opcode: UInt8) -> Mnemonic? {
@@ -145,21 +114,70 @@ enum FPIntegerConversionDecode {
         }
     }
 
-    /// FMOV V.D[1] ↔ X — ftype=10 sf=1, (rmode, opcode) ∈ {(01,110), (01,111)}.
+    /// FEAT_FPRCVT: both operands are SIMD&FP scalars, one size named by
+    /// `ftype` and the other by `sf`, and the encoding is allocated only where
+    /// the two differ.
+    @inline(__always)
+    @_optimize(speed)
+    private static func decodeFPRCVT(
+        encoding: UInt32, address: UInt64,
+        sf: UInt8, size: ScalarSize, rmode: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8,
+        _ sink: inout OperandSink,
+    ) -> DecodedDraft? {
+        guard let (mnemonic, sourceIsFtype) = fprcvtMnemonic(rmode: rmode, opcode: opcode) else {
+            return nil
+        }
+        let sfSize: ScalarSize = sf == 1 ? .d : .s
+        let destination = sourceIsFtype ? sfSize : size
+        let source = sourceIsFtype ? size : sfSize
+        if destination == source {
+            return .undefined(at: address, encoding: encoding)
+        }
+        return DecodedDraft(
+            address: address, encoding: encoding,
+            mnemonic: mnemonic,
+            semanticReads: simdfpInsertingVector(Rn, into: .empty),
+            semanticWrites: simdfpInsertingVector(Rd, into: .empty),
+            branchClass: .none, memoryAccess: .none, memoryOrdering: [],
+            flagEffect: .none, category: .simdAndFP,
+            operandCount: sink.emit(simdfpScalarOperand(Rd, size: destination), simdfpScalarOperand(Rn, size: source)),
+        )
+    }
+
+    /// FPRCVT (rmode, opcode) → mnemonic and whether `ftype` names the source
+    /// rather than the destination.
+    @inline(__always)
+    @_effects(readonly)
+    private static func fprcvtMnemonic(rmode: UInt8, opcode: UInt8) -> (Mnemonic, Bool)? {
+        switch (rmode, opcode) {
+        case (0b01, 0b010): (.fcvtns, true)
+        case (0b01, 0b011): (.fcvtnu, true)
+        case (0b10, 0b010): (.fcvtps, true)
+        case (0b10, 0b011): (.fcvtpu, true)
+        case (0b10, 0b100): (.fcvtms, true)
+        case (0b10, 0b101): (.fcvtmu, true)
+        case (0b10, 0b110): (.fcvtzs, true)
+        case (0b10, 0b111): (.fcvtzu, true)
+        case (0b11, 0b010): (.fcvtas, true)
+        case (0b11, 0b011): (.fcvtau, true)
+        case (0b11, 0b100): (.scvtf, false)
+        case (0b11, 0b101): (.ucvtf, false)
+        default: nil
+        }
+    }
+
+    /// FMOV V.D[1] ↔ X.
     @inline(__always)
     @_optimize(speed)
     private static func decodeFMOVTopHalf(
         encoding: UInt32, address: UInt64,
         sf: UInt8, rmode: UInt8, opcode: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
-        // ftype=10 is reserved except for these two encodings (with sf=1
-        // and rmode=01 and opcode ∈ {110, 111}).
         if sf != 1 || rmode != 0b01 {
             return .undefined(at: address, encoding: encoding)
         }
         switch opcode {
         case 0b110:
-            // FMOV X, V.D[1]: dst = X-reg, src = V.D[1] element.
             let gpr = simdfpGprOperand(encoding: Rd, width: .x64, spOrGeneral: false)
             let velt = simdfpElementOperand(Rn, elementSize: .d, index: 1)
             return DecodedDraft(
@@ -172,9 +190,6 @@ enum FPIntegerConversionDecode {
                 operandCount: sink.emit(.register(gpr), velt),
             )
         case 0b111:
-            // FMOV V.D[1], X: dst = V.D[1] element, src = X-reg. The
-            // destination is destructive — other lane of Vd preserved —
-            // so semanticReads contains Rd.
             let gpr = simdfpGprOperand(encoding: Rn, width: .x64, spOrGeneral: false)
             let velt = simdfpElementOperand(Rd, elementSize: .d, index: 1)
             var reads = simdfpInsertingNonZeroGPR(reg: gpr, into: .empty)

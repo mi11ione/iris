@@ -20,16 +20,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the unpredicated region at top byte 0x04 (bit21 set): the plain
-/// three-register arithmetic and saturating adds, the always-doubleword
-/// logical family with its ORR-of-itself `mov` alias, the SVE2 multiplies,
-/// shifts by wide element and by immediate, the ADR vector address
-/// generation, and G17's four-operand bitwise ternary plus XAR. G6 writes a
-/// fresh destination; G17 is destructive (the destination is read, but every
-/// lane is recomputed, so the write stays full).
+/// Validates the unpredicated region at 0x04 (bit21 set).
 @Suite("SVE integer / unpredicated arithmetic, ADR, ternary")
 struct SVEIntUnpredicatedDecodeTests {
-    /// The unpredicated arithmetic block, opc at bits 12:10, Zd=0 Zn=1 Zm=2.
     private static let arithmetic: [(UInt32, Mnemonic, String)] = [
         (0x0422_0020, .add, "add z0.b, z1.b, z2.b"),
         (0x0422_0420, .sub, "sub z0.b, z1.b, z2.b"),
@@ -88,14 +81,12 @@ struct SVEIntUnpredicatedDecodeTests {
     }
 
     @Test func orrOfARegisterWithItselfIsTheVectorMove() {
-        let d = decode(0x0461_3020) // mov z0.d, z1.d
+        let d = decode(0x0461_3020)
         #expect(d.mnemonic == .mov)
         #expect(text(0x0461_3020) == "mov z0.d, z1.d")
         #expect(Array(d.operands) == [z(0, .d), z(1, .d)])
         #expect(canonicalIndices(d.semanticReads) == [33])
         #expect(canonicalIndices(d.semanticWrites) == [32])
-        // One register apart, the alias must not fire — and EOR with equal
-        // sources has no alias at all.
         #expect(decode(0x0462_3020).mnemonic == .orr)
         #expect(decode(0x04A0_3020).mnemonic == .eor)
         #expect(text(0x04A0_3020) == "eor z0.d, z1.d, z0.d")
@@ -133,8 +124,6 @@ struct SVEIntUnpredicatedDecodeTests {
     }
 
     @Test func addressGenerationRendersItsFourExtendShapes() {
-        // Bits 23:22 select unpacked sxtw/uxtw doubleword and packed word/
-        // doubleword; the packed forms elide `lsl #0` and print it otherwise.
         let rows: [(UInt32, String)] = [
             (0x0422_A020, "adr z0.d, [z1.d, z2.d, sxtw]"),
             (0x0422_A820, "adr z0.d, [z1.d, z2.d, sxtw #2]"),
@@ -176,7 +165,7 @@ struct SVEIntUnpredicatedDecodeTests {
     }
 
     @Test func rotateXorDecodesTheTszRotationAtEverySize() {
-        let d = decode(0x042F_3420) // xar z0.b, z0.b, z1.b, #1
+        let d = decode(0x042F_3420)
         #expect(d.mnemonic == .xar)
         #expect(text(0x042F_3420) == "xar z0.b, z0.b, z1.b, #1")
         #expect(Array(d.operands) == [z(0, .b), z(0, .b), z(1, .b), .immediate(value: 1, width: 8)])

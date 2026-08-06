@@ -1,16 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Foundation `Process` wrapper with concurrent stdin write and
-// stdout/stderr drains (a child writing faster than we read must never
-// deadlock on a full pipe) plus a timeout watchdog: SIGTERM at the
-// deadline (`Process.terminate()`), escalating to SIGKILL after a
-// short grace period for a child that ignores it. Cross-platform
-// (Darwin + corelibs-foundation on Linux). The parity tool's subprocess
-// volume is low — tens of llvm-mc invocations per run, each with a
-// bounded payload — so `Process` is sufficient here; the parent
-// project's posix_spawn escape hatch exists for sustained
-// thousands-of-spawns pressure this tool never reaches.
 
 import Foundation
 
@@ -25,10 +14,9 @@ struct SubprocessResult {
     let timedOut: Bool
 }
 
-/// Run `launchPath args...`, optionally feeding `stdin`, draining both
-/// output pipes concurrently, SIGTERMing the child after
-/// `timeoutSeconds` (SIGKILL if it is still alive 5s later).
-/// Returns nil only when the process cannot be launched at all.
+/// Run `launchPath args...`, optionally feeding stdin, draining both pipes
+/// concurrently and SIGTERMing the child after `timeoutSeconds` (SIGKILL 5s
+/// later).
 func runSubprocess(
     _ launchPath: String,
     _ args: [String],
@@ -54,8 +42,6 @@ func runSubprocess(
         return nil
     }
 
-    // Watchdog: `terminate()` is SIGTERM (a chance to exit cleanly);
-    // a child that ignores it gets SIGKILL after the grace period.
     let sigkillGraceSeconds = 5.0
     let pid = process.processIdentifier
     let escalation = DispatchWorkItem {
@@ -97,7 +83,6 @@ func runSubprocess(
     killer.cancel()
     escalation.cancel()
 
-    // Lenient decode: one non-UTF8 byte must not blank a multi-MB capture.
     return SubprocessResult(
         stdout: String(decoding: outData, as: UTF8.self),
         stderr: String(decoding: errData, as: UTF8.self),

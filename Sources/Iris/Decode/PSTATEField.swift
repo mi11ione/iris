@@ -1,18 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// PSTATEField. The PSTATE fields accessible via
-// the `MSR (immediate)` instruction. Each field's encoding is the
-// (op1, op2) sub-field tuple from the MSR instruction; the decoder
-// captures the canonical enum case and the raw tuple for round-trip.
 
 /// PSTATE field selector for the `MSR (immediate)` instruction.
 ///
-/// Carried by ``Operand/pstateField(_:)``. The cases enumerated here
-/// correspond to PSTATE fields documented across ARMv8.0 through
-/// ARMv9.x; ``unknown(op1:op2:)`` round-trips any field that the
-/// decoder does not recognize (forward-compatibility for future
-/// architecture additions).
+/// The cases cover the fields documented across ARMv8.0 through ARMv9.x;
+/// ``unknown(op1:op2:)`` round-trips anything the decoder does not recognize,
+/// so future additions stay representable.
 @frozen
 public enum PSTATEField: Sendable, Hashable {
     /// `SPSel` — selects between SP_EL0 and SP_ELx.

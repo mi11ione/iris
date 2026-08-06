@@ -16,16 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the unpredicated forms: G5 three-operand arithmetic
-/// (`sve_fp_3op_u_zd` — FADD/FSUB/FMUL/FTSMUL/FRECPS/FRSQRTS and the bf16
-/// twins at sz=00), G6 reciprocal estimates (`sve_fp_2op_u_zd`), G23 clamp
-/// (`sve_fp_clamp` — the three-source FCLAMP/BFCLAMP), and the G25 carve-outs
-/// at top byte 0x04: FABS/FNEG in both merging and the SVE2p2 zeroing forms,
-/// and the trig helpers FTSSEL/FEXPA. All are full writes; FCLAMP reads its
-/// destination and FABS/FNEG-`/M` reads it through the merging predicate.
+/// Validates the unpredicated forms.
 @Suite("SVE floating-point / unpredicated arithmetic, clamp, trig carve-outs")
 struct SVEFPUnpredicatedDecodeTests {
-    /// fadd z0.h, z1.h, z2.h — G5 base (opc=000, sz=.h).
     private static let threeOpBase: UInt32 = 0x6542_0020
 
     @Test func everyUnpredicatedThreeOpDecodes() {
@@ -55,7 +48,6 @@ struct SVEFPUnpredicatedDecodeTests {
         #expect(decode(base | (0b011 << 10)).mnemonic == .undefined, "no bf16 ftsmul")
     }
 
-    /// frecpe z0.h, z1.h — G6 base.
     private static let recipBase: UInt32 = 0x654E_3020
 
     @Test func reciprocalEstimateSelectsOnBitSixteen() {
@@ -75,7 +67,6 @@ struct SVEFPUnpredicatedDecodeTests {
         #expect(decode(base).mnemonic == .undefined, "sz=00 hole")
     }
 
-    /// fclamp z0.h, z1.h, z2.h — G23 base.
     private static let clampBase: UInt32 = 0x6462_2420
 
     @Test func clampIsAThreeSourceDestructiveForm() {
@@ -85,15 +76,12 @@ struct SVEFPUnpredicatedDecodeTests {
         #expect(canonicalIndices(d.semanticReads) == [32, 33, 34], "fclamp reads Zd, Zn and Zm")
         #expect(canonicalIndices(d.semanticWrites) == [32])
         #expect(d.scalableEffect == .readsStreamingMode, "every lane is recomputed — a full write")
-        // sz=00 is BFCLAMP.
         #expect(text(Self.clampBase & ~(UInt32(0b11) << 22)) == "bfclamp z0.h, z1.h, z2.h")
     }
 
-    /// fabs z0.h, p1/m, z1.h — G25 base (/M, sz=.h, opcode fabs).
     private static let fabsMergeBase: UInt32 = 0x045C_A420
 
     @Test func fabsAndFnegDecodeInBothQualifiers() {
-        // bit16 selects fabs/fneg, bit20 selects merging/zeroing.
         #expect(text(Self.fabsMergeBase) == "fabs z0.h, p1/m, z1.h")
         #expect(text(Self.fabsMergeBase | (1 << 16)) == "fneg z0.h, p1/m, z1.h")
         #expect(text(Self.fabsMergeBase & ~(UInt32(1) << 20)) == "fabs z0.h, p1/z, z1.h")
@@ -116,7 +104,6 @@ struct SVEFPUnpredicatedDecodeTests {
         #expect(text(base | (0b11 << 22)) == "fabs z0.d, p1/m, z1.d")
     }
 
-    /// ftssel z0.h, z1.h, z2.h — G25 trig-select base.
     private static let ftsselBase: UInt32 = 0x0462_B020
 
     @Test func ftsselIsAnUnpredicatedTwoSourceForm() {
@@ -129,7 +116,6 @@ struct SVEFPUnpredicatedDecodeTests {
         #expect(text(base | (0b10 << 22)) == "ftssel z0.s, z1.s, z2.s")
     }
 
-    /// fexpa z0.h, z1.h — G25 exponential-accelerator base.
     private static let fexpaBase: UInt32 = 0x0460_B820
 
     @Test func fexpaIsAnUnpredicatedUnaryForm() {

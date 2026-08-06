@@ -20,17 +20,10 @@ private func expectFamily(_ e: UInt32, _ m: Mnemonic, _ label: String) {
     #expect(!t.isEmpty && !t.contains("?") && !t.contains("\n"), "\(label) -> \(t)")
 }
 
-/// Validates the SME2 op0=2 predicate-as-counter carve (top byte `0x25`,
-/// b21=1) — the words the four SVE subpiece decoders (2s.2–2s.5) reject: WHILE
-/// producing a counter predicate or a predicate pair, PEXT, PTRUE-counter,
-/// CNTP-counter, FIRSTP/LASTP, and PSEL. The carve keeps the SVE-family
-/// identity (`category = .sve`), sets NZCV only on WHILE, and rejects its holes
-/// to a well-formed UNDEFINED.
+/// Validates the op0=2 predicate-as-counter carve.
 @Suite("SME2 / predicate-as-counter carve decode")
 struct SME2PredicateDecodeTests {
     @Test func theWhileCounterConditionsCoverEveryComparison() {
-        // (unsigned, less, or-equal) select the eight WHILE conditions; the
-        // destination is a counter predicate PN8-PN15 with a mandatory vlx.
         let conditions: [(UInt32, Mnemonic)] = [
             (0x2520_4010, .whilege), (0x2520_4018, .whilegt),
             (0x2520_4410, .whilelt), (0x2520_4418, .whilele),
@@ -78,14 +71,11 @@ struct SME2PredicateDecodeTests {
     }
 
     @Test func pselSelectsAPredicateByIndexedElement() {
-        // The tsz trailing-one scheme sets the element and index; tsz==0000 is
-        // reserved.
         expectFamily(0x2524_4000, .psel, "psel .b")
         expectFamily(0x2528_4000, .psel, "psel .h")
         expectFamily(0x2530_4000, .psel, "psel .s")
         expectFamily(0x2560_4000, .psel, "psel .d")
         #expect(text(0x2524_4000) == "psel p0, p0, p0.b[w12, 0]")
-        // tsz == 0000 is the reserved PSEL hole.
         #expect(decode(0x2520_4000).mnemonic == .undefined)
     }
 
@@ -104,8 +94,6 @@ struct SME2PredicateDecodeTests {
     }
 
     @Test func theFamilyDecoderRoutesTheCarveThroughTheSVEGate() {
-        // SVEDecoder intercepts the carve after the four subpiece predicates
-        // reject it, so a carve word decodes to a real record via the family.
         let d = Iris.decode(0x2520_4010, at: 0x8000)
         #expect(d.mnemonic == .whilege)
         #expect(d.address == 0x8000)

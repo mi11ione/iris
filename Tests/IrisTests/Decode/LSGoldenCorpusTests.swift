@@ -6,29 +6,14 @@ import Iris
 import IrisValidation
 import Testing
 
-// ARM64E context so the corpus's LDRAA/LDRAB rows decode rather than
-// producing UNDEFINED.
-
-/// Decode through the real dispatcher with the standard family set —
-/// exactly the path stream construction takes. This proves op0
-/// routing and the L/S family's registration in the standard dispatch
-/// table, not just the family decoder in isolation (golden rows decode
-/// through the full dispatcher).
 private func dispatchDecode(_ encoding: UInt32) -> Instruction {
     decode(encoding, at: 0, features: .arm64e)
 }
 
-/// Golden-corpus parity check at the unit-test level. Reads the L/S
-/// synthetic corpus TSV — llvm-mc-harvested ground truth — and verifies
-/// that for every in-scope row decode → canonicalize reproduces the
-/// harvested `expected_text` exactly, every decoded record passes
-/// `LSSemanticChecker.verify`, and the fixture itself spans the family's
-/// instruction matrix (every reachable mnemonic, every prefetch
-/// operand) — so regressions are caught by `swift test` alone.
+/// Golden-corpus parity: every in-scope L/S row reproduces its harvested
+/// `expected_text`, every record passes `LSSemanticChecker.verify`, and the.
 @Suite("L/S golden synthetic corpus parity (every row)")
 struct LSGoldenCorpusParityTests {
-    /// In-repo fixture by default; an external corpus tree when
-    /// `IRIS_DECODE_CORPUS` is set — see `decodeCorpusTSVPath(family:)`.
     private static var corpusPath: String {
         decodeCorpusTSVPath(family: "ls")
     }
@@ -56,9 +41,6 @@ struct LSGoldenCorpusParityTests {
         return rows
     }
 
-    /// Deferred-OOS mnemonics catalogued for the L/S family decoder:
-    /// V=1 structured SIMD, FEAT_MTE tags, FEAT_RPRES, FEAT_LS64,
-    /// FEAT_MOPS, FEAT_LSE128. STGP and CASP stay in scope.
     private static let deferredOosMnemonics: Set<String> = [
         "ld1", "ld2", "ld3", "ld4", "st1", "st2", "st3", "st4",
         "ld1r", "ld2r", "ld3r", "ld4r",
@@ -75,9 +57,6 @@ struct LSGoldenCorpusParityTests {
         "ldsetp", "ldsetpa", "ldsetpl", "ldsetpal",
     ]
 
-    /// True iff `text` begins with a deferred-OOS mnemonic, or is a V=1
-    /// SIMD/FP single-register load/store (integer mnemonic, but a
-    /// `b/h/s/d/q<N>` destination register).
     private static func isDeferredOos(_ text: String) -> Bool {
         let fields = text.split(separator: " ", maxSplits: 1)
         let mnemonic = fields.first.map(String.init) ?? ""
@@ -103,9 +82,6 @@ struct LSGoldenCorpusParityTests {
         for row in rows {
             if Self.isDeferredOos(row.expectedText) { continue }
             let d = dispatchDecode(row.encoding)
-            // The oracle's "" convention marks undefined encodings; Iris
-            // text is total (`.long 0x…`), so the comparison maps "" to
-            // the undefined witness.
             #expect(
                 row.expectedText.isEmpty ? d.isUndefined : d.text == row.expectedText,
                 "L\(row.lineNumber) 0x\(String(format: "%08x", row.encoding)): iris=`\(d.text)` expected=`\(row.expectedText)`",
@@ -119,9 +95,6 @@ struct LSGoldenCorpusParityTests {
         let rows = try Self.loadRows()
         for row in rows {
             let d = dispatchDecode(row.encoding)
-            // V=1 (SIMD/FP L/S) is delegated to the SIMD/FP family;
-            // those records carry category .simdAndFP and are validated
-            // by SIMDFPSemanticChecker, not LSSemanticChecker.
             if d.category == .simdAndFP { continue }
             let issue = LSSemanticChecker.verify(d)
             #expect(
@@ -132,16 +105,11 @@ struct LSGoldenCorpusParityTests {
     }
 
     @Test func everyDecodedRecordCarriesLoadsAndStoresInvariants() throws {
-        // Universal invariants for every non-UNDEFINED record.
         let rows = try Self.loadRows()
         for row in rows {
             let d = dispatchDecode(row.encoding)
             if d.mnemonic == .undefined { continue }
-            // V=1 records are delegated to SIMD/FP (.simdAndFP category);
-            // the LS invariants apply only to V=0 (.loadsAndStores) records.
             if d.category == .simdAndFP { continue }
-            // MTE L/S records flow through the L/S family decoder but
-            // carry category .memoryTagging; their invariants differ.
             if d.category == .memoryTagging { continue }
             #expect(d.category == .loadsAndStores, "L\(row.lineNumber): category")
             #expect(d.branchClass == .none, "L\(row.lineNumber): branchClass")
@@ -151,8 +119,6 @@ struct LSGoldenCorpusParityTests {
     }
 
     @Test func reservedRowsDecodeToUndefinedInBothColumns() throws {
-        // Rows whose oracle text is empty are llvm-mc reserved-encoding
-        // negatives; the decoder must emit UNDEFINED for each.
         let rows = try Self.loadRows()
         var reservedSeen = 0
         for row in rows where row.expectedText.isEmpty {
@@ -167,10 +133,6 @@ struct LSGoldenCorpusParityTests {
     }
 
     @Test func syntheticCorpusSpansEveryDecoderReachableMnemonic() throws {
-        // Counting rows proves nothing about matrix coverage. Decode every
-        // row, collect the emitted mnemonics, then assert the fixture
-        // contains an encoding for every L/S mnemonic — the full 249-entry
-        // surface, all of which the decoder can emit.
         let rows = try Self.loadRows()
         var seen: Set<UInt16> = []
         for row in rows {
@@ -186,10 +148,6 @@ struct LSGoldenCorpusParityTests {
     }
 
     @Test func syntheticCorpusSpansEveryPrefetchOperation() throws {
-        // PRFM/PRFUM carry a 5-bit prefetch operand (op × level × policy,
-        // plus reserved bytes). Assert the fixture exercises every one of
-        // the 32 raw values so the canonicalizer's symbolic-and-reserved
-        // rendering is proven from real decoded records, not just drafts.
         let rows = try Self.loadRows()
         var prefetchValues: Set<UInt8> = []
         for row in rows {
@@ -210,19 +168,14 @@ struct LSGoldenCorpusParityTests {
     }
 
     @Test func deferredOosClassifierAcceptsAndRejectsByCatalogue() {
-        // The skip filter must catch genuinely out-of-scope rows without
-        // swallowing in-scope ones — a false negative would leave SIMD
-        // rows compared as gating divergences, a false positive would
-        // skip a real L/S regression. STGP and CASP stay in scope
-        // despite their MTE / LSE128 adjacency.
         let outOfScope = [
-            "ldr q0, [x1]", // V=1 SIMD single-register
-            "str d3, [sp, #8]", // V=1 SIMD single-register
-            "ld1 { v0.16b }, [x1]", // structured SIMD
-            "stg x0, [x1, #0]", // FEAT_MTE memory tag
-            "ld64b x0, [x1]", // FEAT_LS64
-            "rprfm pldl1keep, x2, [x1]", // FEAT_RPRES range prefetch
-            "swpp x0, x1, [x2]", // FEAT_LSE128 atomic pair
+            "ldr q0, [x1]",
+            "str d3, [sp, #8]",
+            "ld1 { v0.16b }, [x1]",
+            "stg x0, [x1, #0]",
+            "ld64b x0, [x1]",
+            "rprfm pldl1keep, x2, [x1]",
+            "swpp x0, x1, [x2]",
         ]
         for text in outOfScope {
             #expect(Self.isDeferredOos(text), "expected deferred-OOS: `\(text)`")
@@ -232,8 +185,8 @@ struct LSGoldenCorpusParityTests {
             "ldraa x0, [x0]",
             "ldp x0, x1, [x2]",
             "prfm pldl1keep, [x0]",
-            "stgp x0, x1, [x2]", // MTE-adjacent but in scope
-            "casp x0, x1, x2, x3, [x4]", // LSE128-adjacent but in scope
+            "stgp x0, x1, [x2]",
+            "casp x0, x1, x2, x3, [x4]",
             "ldaddal x0, x1, [x2]",
         ]
         for text in inScope {

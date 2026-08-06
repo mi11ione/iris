@@ -16,16 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the predicated FP binary arithmetic groups: G1 register form
-/// (`sve_fp_2op_p_zds`), G2 the two-constant arith immediate
-/// (`sve_fp_2op_i_p_zds`), and G16 pairwise (`sve2_fp_pairwise_pred`). All
-/// three are merging-predicated destructive forms — the destination is read,
-/// the write is partial, the governing predicate is `/m` — and the sz=00 slots
-/// are either the B16B16 bf16 twin or an architectural hole, decided per
-/// opcode rather than by a blanket size gate.
+/// Validates the predicated FP binary arithmetic groups.
 @Suite("SVE floating-point / predicated binary, immediate, pairwise")
 struct SVEFPBinaryDecodeTests {
-    /// fadd z0.h, p1/m, z0.h, z2.h — the class base (opc=0, sz=.h, Pg=1, Zm=2).
     private static let g1Base: UInt32 = 0x6540_8440
 
     @Test func everyRegisterOpcodeDecodesAtHalfPrecision() {
@@ -50,7 +43,6 @@ struct SVEFPBinaryDecodeTests {
     }
 
     @Test func theRegisterFormTakesEverySize() {
-        // sz 01/10/11 → h/s/d; the base opcode fadd renders each.
         let base = Self.g1Base & ~(UInt32(0b11) << 22)
         #expect(text(base | (0b01 << 22)) == "fadd z0.h, p1/m, z0.h, z2.h")
         #expect(text(base | (0b10 << 22)) == "fadd z0.s, p1/m, z0.s, z2.s")
@@ -58,8 +50,7 @@ struct SVEFPBinaryDecodeTests {
     }
 
     @Test func theSizeZeroSlotsAreTheBf16Twins() {
-        // sz=00 replaces the fp form with its bfloat16 sibling where one exists.
-        let base = Self.g1Base & ~(UInt32(0b11) << 22) // sz=00
+        let base = Self.g1Base & ~(UInt32(0b11) << 22)
         let rows: [(UInt32, Mnemonic, String)] = [
             (0x0, .bfadd, "bfadd"), (0x1, .bfsub, "bfsub"), (0x2, .bfmul, "bfmul"),
             (0x4, .bfmaxnm, "bfmaxnm"), (0x5, .bfminnm, "bfminnm"), (0x6, .bfmax, "bfmax"),
@@ -70,17 +61,14 @@ struct SVEFPBinaryDecodeTests {
             #expect(decode(encoding).mnemonic == mnemonic, "0x\(String(encoding, radix: 16))")
             #expect(text(encoding) == "\(name) z0.h, p1/m, z0.h, z2.h")
         }
-        // sz=00 with an opcode that has no bf16 twin is a hole (fdiv, famax…).
         for opc: UInt32 in [0x3, 0x8, 0xA, 0xC, 0xD, 0xE, 0xF] {
             #expect(decode(base | (opc << 16)).mnemonic == .undefined, "sz=00 opc \(opc) is a hole")
         }
     }
 
-    /// fadd z0.h, p1/m, z0.h, #0.5 — the immediate class base (opc=0, i1=0).
     private static let g2Base: UInt32 = 0x6558_8400
 
     @Test func everyImmediateOpcodeRendersItsConstantPair() {
-        // i1 selects the low/high constant, and the pair differs per mnemonic.
         let rows: [(UInt32, Mnemonic, String, String, String)] = [
             (0b000, .fadd, "fadd", "#0.5", "#1.0"),
             (0b001, .fsub, "fsub", "#0.5", "#1.0"),
@@ -108,12 +96,10 @@ struct SVEFPBinaryDecodeTests {
     }
 
     @Test func theImmediateFormRejectsANonZeroFixedFieldAndSizeZero() {
-        // bits[9:6] are a fixed zero field; sz=00 has no immediate form.
         #expect(decode(Self.g2Base | (1 << 6)).mnemonic == .undefined, "nonzero fixed field")
         #expect(decode(Self.g2Base & ~(UInt32(0b11) << 22)).mnemonic == .undefined, "sz=00 hole")
     }
 
-    /// faddp z0.h, p1/m, z0.h, z2.h — the pairwise class base.
     private static let g16Base: UInt32 = 0x6450_8440
 
     @Test func everyPairwiseOpcodeDecodes() {

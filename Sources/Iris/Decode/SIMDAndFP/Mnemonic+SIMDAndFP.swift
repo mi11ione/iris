@@ -1,29 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Mnemonic constants for the SIMD & Floating-Point family.
-// Raw values within the family's reserved 6144..12287 slab.
-//
-// Mnemonics already declared by other families are REUSED here without
-// redeclaration. From DPI: .add, .sub, .adds, .subs, .and, .orr,
-// .eor, .ands, .mov, .cmp, .cmn, .tst, .lsl, .lsr, .asr, .ror,
-// .movz/movn/movk, .adr/adrp, .bfm/sbfm/ubfm + aliases, .extr, .sxtb,
-// .sxth, .sxtw, .uxtb, .uxth.
-// From L/S: .ldr/.str/.ldp/.stp/.ldur/.stur/.ldnp/.stnp/.ldpsw/.stgp,
-// .ldrb/.ldrh/.ldrsb/.ldrsh/.ldrsw/.strb/.strh + matching .ldurb-/.sturh-,
-// .prfm/.prfum, the LDx/STx exclusive/acquire-release families, the
-// LSE atomics LDADD/LDSET/LDCLR/LDEOR/SWP/CAS plus aliases, .ldraa/.ldrab,
-// .ldtr/.sttr/.ldtrb-/.ldtrsw etc.
-// From DPR: .bic, .orn, .eon, .bics, .mvn, .adc/.adcs/.sbc/.sbcs/.ngc/.ngcs,
-// .neg/.negs, .ccmn/.ccmp, .csel/.csinc/.csinv/.csneg + .cset/.csetm/.cinc/.cinv/.cneg,
-// .madd/.msub/.smaddl/.smsubl/.umaddl/.umsubl, .smulh/.umulh,
-// .mul/.mneg/.smull/.smnegl/.umull/.umnegl, .udiv/.sdiv,
-// .lslv/.lsrv/.asrv/.rorv (allocated but never emitted),
-// .clz/.cls/.rbit/.rev/.rev16/.rev32, .crc32b-cx.
 
 public extension Mnemonic {
-    // MARK: - Slab 6144..6191 — AdvSIMD scalar arithmetic / compare / misc / pairwise / three-different / three-same-extra (new)
-
     static let sqadd = Mnemonic(rawValue: 6144)
     static let uqadd = Mnemonic(rawValue: 6145)
     static let sqsub = Mnemonic(rawValue: 6146)
@@ -63,9 +41,6 @@ public extension Mnemonic {
     static let sqxtun2 = Mnemonic(rawValue: 6180)
     static let addp = Mnemonic(rawValue: 6181)
     static let abs = Mnemonic(rawValue: 6182)
-    // .neg, .mul, .cls, .bic, .smull, .umull, .rbit, .rev, .rev16, .rev32 — REUSED from DPR
-
-    // MARK: - Slab 6192..6239 — AdvSIMD scalar shift-by-immediate / x-indexed-element + SXTL/UXTL aliases
 
     static let sshr = Mnemonic(rawValue: 6192)
     static let ssra = Mnemonic(rawValue: 6193)
@@ -104,8 +79,6 @@ public extension Mnemonic {
     static let uxtl = Mnemonic(rawValue: 6226)
     static let uxtl2 = Mnemonic(rawValue: 6227)
 
-    // MARK: - Slab 6240..6271 — AdvSIMD scalar three-same FP16 / two-reg-misc FP16 (FRECPE / FRSQRTE / FCMxx-zero shared with vector forms)
-
     static let fmulx = Mnemonic(rawValue: 6240)
     static let frecps = Mnemonic(rawValue: 6241)
     static let frsqrts = Mnemonic(rawValue: 6242)
@@ -117,11 +90,9 @@ public extension Mnemonic {
     static let facge = Mnemonic(rawValue: 6248)
     static let facgt = Mnemonic(rawValue: 6249)
     static let fabd = Mnemonic(rawValue: 6250)
-    static let frecpe = Mnemonic(rawValue: 6251) // scalar AND vector FRECPE share this mnemonic
+    static let frecpe = Mnemonic(rawValue: 6251)
     static let frecpx = Mnemonic(rawValue: 6252)
-    static let frsqrte = Mnemonic(rawValue: 6253) // scalar AND vector FRSQRTE share this mnemonic
-
-    // MARK: - Slab 6272..6383 — AdvSIMD vector three-same (and FP family)
+    static let frsqrte = Mnemonic(rawValue: 6253)
 
     static let shadd = Mnemonic(rawValue: 6272)
     static let srhadd = Mnemonic(rawValue: 6273)
@@ -162,9 +133,6 @@ public extension Mnemonic {
     static let faddp = Mnemonic(rawValue: 6309)
     static let fmaxp = Mnemonic(rawValue: 6310)
     static let fminp = Mnemonic(rawValue: 6311)
-    // .mul, .neg, .abs, .bic — see above (.bic, .mul, .neg are reused; .abs is new at 6182)
-
-    // MARK: - Slab 6384..6463 — AdvSIMD vector three-different / two-reg-misc / across-lanes (new mnemonics)
 
     static let saddl = Mnemonic(rawValue: 6384)
     static let saddl2 = Mnemonic(rawValue: 6385)
@@ -213,7 +181,7 @@ public extension Mnemonic {
     static let sqdmlal2 = Mnemonic(rawValue: 6430)
     static let sqdmlsl2 = Mnemonic(rawValue: 6431)
     static let sqdmull2 = Mnemonic(rawValue: 6432)
-    static let rev64 = Mnemonic(rawValue: 6433) // .rev16, .rev32 reused from DPR; rev64 is new
+    static let rev64 = Mnemonic(rawValue: 6433)
     static let saddlp = Mnemonic(rawValue: 6434)
     static let uaddlp = Mnemonic(rawValue: 6435)
     static let sadalp = Mnemonic(rawValue: 6436)
@@ -236,9 +204,7 @@ public extension Mnemonic {
     static let fmaxv = Mnemonic(rawValue: 6455)
     static let fminnmv = Mnemonic(rawValue: 6456)
     static let fminv = Mnemonic(rawValue: 6457)
-    static let not = Mnemonic(rawValue: 6459) // canonical NOT vector; MVN alias preferred (.mvn reused from DPR)
-
-    // MARK: - Slab 6464..6527 — AdvSIMD vector three-reg-extension (DOT/MMLA/USDOT/BFDOT/BFMMLA)
+    static let not = Mnemonic(rawValue: 6459)
 
     static let sdot = Mnemonic(rawValue: 6464)
     static let udot = Mnemonic(rawValue: 6465)
@@ -257,17 +223,12 @@ public extension Mnemonic {
     static let fmlsl = Mnemonic(rawValue: 6478)
     static let fmlsl2 = Mnemonic(rawValue: 6479)
 
-    // MARK: - Slab 6576..6623 — AdvSIMD modified-immediate / vector copy (DUP/INS/UMOV/SMOV)
-
     static let movi = Mnemonic(rawValue: 6576)
     static let mvni = Mnemonic(rawValue: 6577)
     static let dup = Mnemonic(rawValue: 6578)
     static let ins = Mnemonic(rawValue: 6579)
     static let umov = Mnemonic(rawValue: 6580)
     static let smov = Mnemonic(rawValue: 6581)
-    // .bic for vector immediate REUSES DPR's .bic; .mov for register/element/UMOV-S/D aliases REUSES DPI's .mov
-
-    // MARK: - Slab 6624..6671 — AdvSIMD permute / extract / table lookup
 
     static let uzp1 = Mnemonic(rawValue: 6624)
     static let uzp2 = Mnemonic(rawValue: 6625)
@@ -278,8 +239,6 @@ public extension Mnemonic {
     static let ext = Mnemonic(rawValue: 6630)
     static let tbl = Mnemonic(rawValue: 6631)
     static let tbx = Mnemonic(rawValue: 6632)
-
-    // MARK: - Slab 6672..6735 — FP data-processing 1-source
 
     static let fmov = Mnemonic(rawValue: 6672)
     static let fabs = Mnemonic(rawValue: 6673)
@@ -304,19 +263,12 @@ public extension Mnemonic {
     static let fcvtxn = Mnemonic(rawValue: 6692)
     static let fcvtxn2 = Mnemonic(rawValue: 6693)
 
-    // MARK: - Slab 6736..6783 — FP data-processing 2/3-source
-
     static let fnmul = Mnemonic(rawValue: 6736)
     static let fmadd = Mnemonic(rawValue: 6737)
     static let fmsub = Mnemonic(rawValue: 6738)
     static let fnmadd = Mnemonic(rawValue: 6739)
     static let fnmsub = Mnemonic(rawValue: 6740)
 
-    // MARK: - Slab 6784..6815 — FP integer conversion (FCVT family + FJCVTZS + SCVTF/UCVTF)
-
-    // SCVTF/UCVTF/FCVTZS/FCVTZU mnemonics are shared between integer and
-    // fixed-point conversion forms (llvm-mc emits same name for both
-    // shapes); a single Mnemonic per name covers both.
     static let fcvtas = Mnemonic(rawValue: 6784)
     static let fcvtau = Mnemonic(rawValue: 6785)
     static let fcvtms = Mnemonic(rawValue: 6786)
@@ -329,9 +281,6 @@ public extension Mnemonic {
     static let fcvtzu = Mnemonic(rawValue: 6793)
     static let fjcvtzs = Mnemonic(rawValue: 6794)
 
-    // FEAT_FAMINMAX (vector FAMAX/FAMIN) + FEAT_FP8 FSCALE — three-same v9.
-    // Raw values 6932-6934 (after the prior max 6931); 6795-6797 collided
-    // with scvtf/ucvtf and silently shadowed them in the canonicalizer.
     static let famax = Mnemonic(rawValue: 6932)
     static let famin = Mnemonic(rawValue: 6933)
     static let fscale = Mnemonic(rawValue: 6934)
@@ -359,18 +308,12 @@ public extension Mnemonic {
     static let scvtf = Mnemonic(rawValue: 6795)
     static let ucvtf = Mnemonic(rawValue: 6796)
 
-    // MARK: - Slab 6832..6863 — FP compare / cond-compare / cond-select / immediate
-
     static let fcmp = Mnemonic(rawValue: 6832)
     static let fcmpe = Mnemonic(rawValue: 6833)
     static let fccmp = Mnemonic(rawValue: 6834)
     static let fccmpe = Mnemonic(rawValue: 6835)
     static let fcsel = Mnemonic(rawValue: 6836)
 
-    // MARK: - Slab 6864..6927 — AdvSIMD load/store multi-structure mnemonics
-
-    // LD1/LD2/LD3/LD4 cover both multi-structure and single-structure (with
-    // element subscript) forms — same mnemonic, different operand shape.
     static let ld1 = Mnemonic(rawValue: 6864)
     static let ld2 = Mnemonic(rawValue: 6865)
     static let ld3 = Mnemonic(rawValue: 6866)
@@ -380,30 +323,80 @@ public extension Mnemonic {
     static let st3 = Mnemonic(rawValue: 6870)
     static let st4 = Mnemonic(rawValue: 6871)
 
-    // FEAT_RCPC3 ordered SIMD single-element: load-acquire / store-release of
-    // one .d lane (`ldap1`/`stl1 { Vt.d }[index], [Xn]`), distinct from ld1/st1
-    // by their acquire/release ordering. Raw values continue past the current
-    // SIMD maximum.
     static let ldap1 = Mnemonic(rawValue: 6956)
     static let stl1 = Mnemonic(rawValue: 6957)
 
-    // MARK: - Slab 6928..6991 — AdvSIMD load/store single-structure replicate
+    static let ldbfadd = Mnemonic(rawValue: 6960)
+    static let ldbfadda = Mnemonic(rawValue: 6961)
+    static let ldbfaddl = Mnemonic(rawValue: 6962)
+    static let ldbfaddal = Mnemonic(rawValue: 6963)
+    static let ldbfmax = Mnemonic(rawValue: 6964)
+    static let ldbfmaxa = Mnemonic(rawValue: 6965)
+    static let ldbfmaxl = Mnemonic(rawValue: 6966)
+    static let ldbfmaxal = Mnemonic(rawValue: 6967)
+    static let ldbfmin = Mnemonic(rawValue: 6968)
+    static let ldbfmina = Mnemonic(rawValue: 6969)
+    static let ldbfminl = Mnemonic(rawValue: 6970)
+    static let ldbfminal = Mnemonic(rawValue: 6971)
+    static let ldbfmaxnm = Mnemonic(rawValue: 6972)
+    static let ldbfmaxnma = Mnemonic(rawValue: 6973)
+    static let ldbfmaxnml = Mnemonic(rawValue: 6974)
+    static let ldbfmaxnmal = Mnemonic(rawValue: 6975)
+    static let ldbfminnm = Mnemonic(rawValue: 6976)
+    static let ldbfminnma = Mnemonic(rawValue: 6977)
+    static let ldbfminnml = Mnemonic(rawValue: 6978)
+    static let ldbfminnmal = Mnemonic(rawValue: 6979)
+    static let ldfadd = Mnemonic(rawValue: 6980)
+    static let ldfadda = Mnemonic(rawValue: 6981)
+    static let ldfaddl = Mnemonic(rawValue: 6982)
+    static let ldfaddal = Mnemonic(rawValue: 6983)
+    static let ldfmax = Mnemonic(rawValue: 6984)
+    static let ldfmaxa = Mnemonic(rawValue: 6985)
+    static let ldfmaxl = Mnemonic(rawValue: 6986)
+    static let ldfmaxal = Mnemonic(rawValue: 6987)
+    static let ldfmin = Mnemonic(rawValue: 6988)
+    static let ldfmina = Mnemonic(rawValue: 6989)
+    static let ldfminl = Mnemonic(rawValue: 6990)
+    static let ldfminal = Mnemonic(rawValue: 6991)
+    static let ldfmaxnm = Mnemonic(rawValue: 6992)
+    static let ldfmaxnma = Mnemonic(rawValue: 6993)
+    static let ldfmaxnml = Mnemonic(rawValue: 6994)
+    static let ldfmaxnmal = Mnemonic(rawValue: 6995)
+    static let ldfminnm = Mnemonic(rawValue: 6996)
+    static let ldfminnma = Mnemonic(rawValue: 6997)
+    static let ldfminnml = Mnemonic(rawValue: 6998)
+    static let ldfminnmal = Mnemonic(rawValue: 6999)
+
+    static let stbfadd = Mnemonic(rawValue: 7000)
+    static let stbfaddl = Mnemonic(rawValue: 7001)
+    static let stbfmax = Mnemonic(rawValue: 7002)
+    static let stbfmaxl = Mnemonic(rawValue: 7003)
+    static let stbfmin = Mnemonic(rawValue: 7004)
+    static let stbfminl = Mnemonic(rawValue: 7005)
+    static let stbfmaxnm = Mnemonic(rawValue: 7006)
+    static let stbfmaxnml = Mnemonic(rawValue: 7007)
+    static let stbfminnm = Mnemonic(rawValue: 7008)
+    static let stbfminnml = Mnemonic(rawValue: 7009)
+    static let stfadd = Mnemonic(rawValue: 7010)
+    static let stfaddl = Mnemonic(rawValue: 7011)
+    static let stfmax = Mnemonic(rawValue: 7012)
+    static let stfmaxl = Mnemonic(rawValue: 7013)
+    static let stfmin = Mnemonic(rawValue: 7014)
+    static let stfminl = Mnemonic(rawValue: 7015)
+    static let stfmaxnm = Mnemonic(rawValue: 7016)
+    static let stfmaxnml = Mnemonic(rawValue: 7017)
+    static let stfminnm = Mnemonic(rawValue: 7018)
+    static let stfminnml = Mnemonic(rawValue: 7019)
 
     static let ld1r = Mnemonic(rawValue: 6928)
     static let ld2r = Mnemonic(rawValue: 6929)
     static let ld3r = Mnemonic(rawValue: 6930)
     static let ld4r = Mnemonic(rawValue: 6931)
-
-    // MARK: - Slab 7168..7295 reserved sentinel (must be in-range; not directly emitted)
-
-    // Held back for future SIMD/FP additions as a reserved tail.
 }
 
 extension Mnemonic {
-    /// Canonical lowercase name for every SIMD & Floating-Point mnemonic constant —
-    /// the family's slice of ``Mnemonic/name``, declared beside the
-    /// constants it names so the two cannot drift. Unallocated raw
-    /// values in the family's range return `"?<raw>"`.
+    /// Canonical lowercase name for every SIMD & Floating-Point mnemonic;
+    /// unallocated raw values in the range return `"?<raw>"`.
     static func simdAndFPName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .sqadd: "sqadd"
@@ -719,6 +712,66 @@ extension Mnemonic {
         case .bf2cvtl2: "bf2cvtl2"
         case .ldap1: "ldap1"
         case .stl1: "stl1"
+        case .ldbfadd: "ldbfadd"
+        case .ldbfadda: "ldbfadda"
+        case .ldbfaddl: "ldbfaddl"
+        case .ldbfaddal: "ldbfaddal"
+        case .ldbfmax: "ldbfmax"
+        case .ldbfmaxa: "ldbfmaxa"
+        case .ldbfmaxl: "ldbfmaxl"
+        case .ldbfmaxal: "ldbfmaxal"
+        case .ldbfmin: "ldbfmin"
+        case .ldbfmina: "ldbfmina"
+        case .ldbfminl: "ldbfminl"
+        case .ldbfminal: "ldbfminal"
+        case .ldbfmaxnm: "ldbfmaxnm"
+        case .ldbfmaxnma: "ldbfmaxnma"
+        case .ldbfmaxnml: "ldbfmaxnml"
+        case .ldbfmaxnmal: "ldbfmaxnmal"
+        case .ldbfminnm: "ldbfminnm"
+        case .ldbfminnma: "ldbfminnma"
+        case .ldbfminnml: "ldbfminnml"
+        case .ldbfminnmal: "ldbfminnmal"
+        case .ldfadd: "ldfadd"
+        case .ldfadda: "ldfadda"
+        case .ldfaddl: "ldfaddl"
+        case .ldfaddal: "ldfaddal"
+        case .ldfmax: "ldfmax"
+        case .ldfmaxa: "ldfmaxa"
+        case .ldfmaxl: "ldfmaxl"
+        case .ldfmaxal: "ldfmaxal"
+        case .ldfmin: "ldfmin"
+        case .ldfmina: "ldfmina"
+        case .ldfminl: "ldfminl"
+        case .ldfminal: "ldfminal"
+        case .ldfmaxnm: "ldfmaxnm"
+        case .ldfmaxnma: "ldfmaxnma"
+        case .ldfmaxnml: "ldfmaxnml"
+        case .ldfmaxnmal: "ldfmaxnmal"
+        case .ldfminnm: "ldfminnm"
+        case .ldfminnma: "ldfminnma"
+        case .ldfminnml: "ldfminnml"
+        case .ldfminnmal: "ldfminnmal"
+        case .stbfadd: "stbfadd"
+        case .stbfaddl: "stbfaddl"
+        case .stbfmax: "stbfmax"
+        case .stbfmaxl: "stbfmaxl"
+        case .stbfmin: "stbfmin"
+        case .stbfminl: "stbfminl"
+        case .stbfmaxnm: "stbfmaxnm"
+        case .stbfmaxnml: "stbfmaxnml"
+        case .stbfminnm: "stbfminnm"
+        case .stbfminnml: "stbfminnml"
+        case .stfadd: "stfadd"
+        case .stfaddl: "stfaddl"
+        case .stfmax: "stfmax"
+        case .stfmaxl: "stfmaxl"
+        case .stfmin: "stfmin"
+        case .stfminl: "stfminl"
+        case .stfmaxnm: "stfmaxnm"
+        case .stfmaxnml: "stfmaxnml"
+        case .stfminnm: "stfminnm"
+        case .stfminnml: "stfminnml"
         default: nil
         }
     }

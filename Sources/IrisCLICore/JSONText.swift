@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Hand-rolled JSON emission: a third-party encoder is out (zero
-// dependencies) and Foundation's JSONSerialization does not guarantee
-// key order, which the NDJSON goldens and the documented schema do.
-// Schema: the JSONOutput DocC article in Sources/Iris/Iris.docc
-// (schemaVersion 1).
 
 import Iris
 
@@ -14,10 +8,7 @@ public enum JSONText {
     /// The `schemaVersion` value emitted on every line.
     public static let schemaVersion = 1
 
-    /// Per-binary symbol context for file-mode NDJSON: the containing
-    /// function of each record and the resolved name of its branch target.
-    /// Absent in the direct-decode modes (raw bytes carry no symbols), so
-    /// those streams emit no `symbol` / `targetSymbol` field.
+    /// Per-binary symbol context for file-mode NDJSON.
     @frozen
     public struct SymbolContext: Sendable {
         /// Function boundaries, for the `symbol` (containing function) field.
@@ -78,14 +69,8 @@ public enum JSONText {
         "[" + values.map(string).joined(separator: ",") + "]"
     }
 
-    /// The scalable-state object for one `ScalableRegisterSet`, or `nil`
-    /// when the set is empty (the field is then omitted entirely).
-    ///
-    /// Only the non-empty members appear, so a scalable line stays close to
-    /// the `--semantics` text and a base-ISA line carries nothing at all.
-    /// `za` is the 16-bit `.Q`-position residue mask as `0x` + 4 hex digits,
-    /// not a tile name: many tile/element pairs share a mask and unions have
-    /// no single name, so the mask is the only faithful rendering.
+    /// The scalable-state object for one `ScalableRegisterSet`, or `nil` when
+    /// empty, in which case the field is omitted.
     public static func scalableSet(_ set: ScalableRegisterSet) -> String? {
         guard !set.isEmpty else { return nil }
         var members: [String] = []
@@ -108,7 +93,7 @@ public enum JSONText {
         return "{" + members.joined(separator: ",") + "}"
     }
 
-    /// `ScalableEffect` flag names, in bit order. Empty for `none`.
+    /// `ScalableEffect` flag names, in bit order.
     public static func scalableEffectNames(_ effect: ScalableEffect) -> [String] {
         var names: [String] = []
         if effect.contains(.partialWrite) { names.append("partial-write") }
@@ -121,10 +106,8 @@ public enum JSONText {
         return names
     }
 
-    /// The three scalable fields, in schema order, for whichever of them
-    /// carry signal. Shared by the default and slim emitters: these fields
-    /// are absent-when-empty in both, so scalable state costs a base-ISA
-    /// line nothing.
+    /// The three scalable fields, in schema order, for whichever of them carry
+    /// signal.
     static func scalableFields(_ instruction: Instruction) -> [String] {
         var fields: [String] = []
         if let reads = scalableSet(instruction.scalableReads) {
@@ -140,26 +123,7 @@ public enum JSONText {
         return fields
     }
 
-    /// One NDJSON instruction object. Field order is fixed by the schema:
-    /// `schemaVersion`, `kind`, `address`, `encoding`, `mnemonic`,
-    /// `text`, `category`, `operands`, `reads`, `writes`, `branchClass`,
-    /// `memoryAccess`, `ordering`, `flagEffect`, then the optional
-    /// `scalableReads` / `scalableWrites` / `scalableEffect` (scalable
-    /// records only), `branchTarget` / `pcRelativeTarget` / `symbol` /
-    /// `targetSymbol`, then `isData`, `isUndefined`.
-    ///
-    /// In file mode, `context` supplies the containing-function `symbol`
-    /// and the resolved `targetSymbol`; the direct-decode modes pass `nil`
-    /// (raw bytes carry no symbols) and emit neither field. All additions
-    /// are optional, so `schemaVersion` stays `1` per the schema's
-    /// add-only policy.
-    ///
-    /// `includeSchemaVersion` defaults to `true` (the standalone
-    /// per-instruction stream). The `functions` verb's wrapper sets it
-    /// `false` so the nested instruction object drops the redundant leading
-    /// `schemaVersion` the enclosing function object already carries;
-    /// every other field stays identical, so a nested object plucked out
-    /// is a valid instruction record but for that one owner-supplied key.
+    /// One NDJSON instruction object, in fixed schema order.
     public static func instructionLine(
         _ instruction: Instruction,
         context: SymbolContext? = nil,
@@ -174,15 +138,7 @@ public enum JSONText {
         return out.makeString()
     }
 
-    /// One NDJSON `kind:"function"` object for `functions --json`. Field
-    /// order is fixed: `schemaVersion`, `kind`, `symbol`, `address`,
-    /// `endAddress`, `instructionCount`, `usesPAC`, `instructions`. The
-    /// function object owns the `schemaVersion`, so each nested instruction
-    /// object is the per-instruction record with its redundant leading
-    /// `schemaVersion` omitted and every other field identical (including
-    /// the same `context`-supplied `symbol` / `targetSymbol`). `usesPAC`
-    /// mirrors the human table's PAC column: true when any instruction in
-    /// the function uses pointer authentication.
+    /// One NDJSON `kind:"function"` object, in fixed order.
     public static func functionLine(
         _ function: FunctionView,
         context: SymbolContext? = nil,
@@ -195,9 +151,6 @@ public enum JSONText {
         fields.append("\"endAddress\":\(string(InstructionText.hex(function.endAddress)))")
         fields.append("\"instructionCount\":\(function.instructionCount)")
         fields.append("\"usesPAC\":\(function.usesPointerAuthentication)")
-        // Thread each instruction's predecessor so the referenced-data
-        // idiom (adrp + add/ldr) resolves inside the function exactly as it
-        // does in the per-instruction stream.
         var nestedLines: [String] = []
         nestedLines.reserveCapacity(function.instructions.count)
         var preceding: Instruction?
@@ -212,20 +165,7 @@ public enum JSONText {
         return "{" + fields.joined(separator: ",") + "}"
     }
 
-    /// One `--slim` NDJSON instruction object: the same data as
-    /// ``instructionLine(_:context:includeSchemaVersion:preceding:)`` with
-    /// the zero-signal constants dropped. `kind` and `schemaVersion` are
-    /// gone, and a field that is empty or false is omitted entirely:
-    /// `ordering` when relaxed, `flagEffect` when no flags move, `isData`
-    /// and `isUndefined` when false. Every signal-bearing field survives
-    /// in the same fixed order, so a kept field's position never shifts.
-    /// The scalable fields are already absent-when-empty in the default
-    /// form, so slim carries them unchanged.
-    ///
-    /// `dropSymbol` removes the per-instruction `symbol` (the
-    /// `functions --json --slim` case names the function on the parent
-    /// object, so repeating it per line is pure boilerplate); the
-    /// per-instruction stream keeps it.
+    /// One `--slim` instruction object.
     public static func slimInstructionLine(
         _ instruction: Instruction,
         context: SymbolContext? = nil,
@@ -240,17 +180,7 @@ public enum JSONText {
         return out.makeString()
     }
 
-    /// One `--slim` NDJSON function object for
-    /// `functions --json --slim`. Same naming fields as
-    /// ``functionLine(_:context:)`` (`symbol` / `address` / `endAddress` /
-    /// `instructionCount`, all signal) with the constant `kind` and
-    /// `schemaVersion` dropped; the object is unmistakably a function (it
-    /// is the only shape carrying `instructions`). `usesPAC` follows the
-    /// slim drop-false rule: it appears only when the function uses pointer
-    /// authentication, so a present `usesPAC` always means true. The nested
-    /// instructions are the slim projection with the redundant
-    /// per-instruction `symbol` dropped (the parent object already names
-    /// the function).
+    /// One `--slim` function object.
     public static func slimFunctionLine(
         _ function: FunctionView,
         context: SymbolContext? = nil,
@@ -276,8 +206,8 @@ public enum JSONText {
         return "{" + fields.joined(separator: ",") + "}"
     }
 
-    /// Whether a category is a decoder sentinel (its text is a directive,
-    /// not mnemonic + operands, no operand fragments exist).
+    /// Whether a category is a decoder sentinel (its text is a directive, not
+    /// mnemonic + operands, no operand fragments exist).
     static func isSentinel(_ category: Category) -> Bool {
         category == .undefined || category == .dataInCodeMarker || category == .truncatedTail
     }
@@ -311,18 +241,6 @@ public enum JSONText {
         }
     }
 }
-
-// MARK: - Byte-path JSON
-
-// The builders above assemble a `[String]` of fields and join it: roughly
-// twenty allocations per instruction, plus the array, plus the join, plus
-// the line. Over a large binary that is millions of short-lived `String`s,
-// and it made `--json` the slowest thing the CLI does — over three times
-// the cost of the human listing it derives from.
-//
-// These append the same bytes into a caller-owned buffer. The
-// `String`-returning entry points remain, implemented on top, so the
-// published surface and every existing caller are unchanged.
 
 public extension JSONText {
     /// A JSON string literal with the mandatory escapes, appended.
@@ -369,7 +287,7 @@ public extension JSONText {
         out.put(UInt8(ascii: "\""))
     }
 
-    /// The per-instruction record, appended. Field order is the schema's.
+    /// The per-instruction record, appended.
     static func putInstructionLine(
         _ instruction: Instruction,
         context: SymbolContext? = nil,
@@ -464,9 +382,7 @@ public extension JSONText {
 }
 
 public extension JSONText {
-    /// The slim per-instruction record, appended. Optional fields appear
-    /// only when they carry signal, so the separator is tracked rather
-    /// than assumed.
+    /// The slim per-instruction record, appended.
     static func putSlimInstructionLine(
         _ instruction: Instruction,
         context: SymbolContext? = nil,
@@ -491,8 +407,6 @@ public extension JSONText {
         putArray(instruction.semanticReads.map(\.name), into: &out)
         out.put(",\"writes\":")
         putArray(instruction.semanticWrites.map(\.name), into: &out)
-        // branchClass / memoryAccess only when not "none" (the no-effect
-        // baseline carries no signal).
         if let branch = SemanticsAnnotation.branchName(instruction.branchClass) {
             out.put(",\"branchClass\":")
             putString(branch, into: &out)
@@ -553,8 +467,6 @@ public extension JSONText {
             out.put(",\"charLiteral\":")
             putString(String(character), into: &out)
         }
-        // isData / isUndefined only when true (the witness is the presence
-        // of the field; false is the silent default).
         if instruction.category == .dataInCodeMarker { out.put(",\"isData\":true") }
         if instruction.isUndefined { out.put(",\"isUndefined\":true") }
         out.put(UInt8(ascii: "}"))

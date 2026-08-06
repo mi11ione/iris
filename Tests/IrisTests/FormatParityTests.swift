@@ -1,19 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Old-vs-new equivalence for the two formatting sites whose
-// Foundation `String(format:)` implementations were replaced with
-// pure Swift in the library: zero-padded lowercase hex
-// (`"%0<digits>llx"`) and fixed 8-fraction-digit decimal (`"%.8f"`).
-// The test target deliberately imports Foundation to compare against
-// the original implementations.
 
 import Foundation
 import Iris
 import Testing
 
-/// Deterministic 64-bit generator (SplitMix64) so the random sweeps are
-/// reproducible run to run.
 private struct SplitMix64 {
     var state: UInt64
 
@@ -26,7 +17,6 @@ private struct SplitMix64 {
     }
 }
 
-/// Render one decoded word's SIMD/FP canonical text.
 private func simdfpText(of word: UInt32) -> String {
     let bytes: [UInt8] = [
         UInt8(word & 0xFF), UInt8((word >> 8) & 0xFF),
@@ -49,8 +39,6 @@ private func simdfpText(of word: UInt32) -> String {
     ).text
 }
 
-/// Render a hand-built single-operand FMOV draft (direct exercise of the
-/// float-immediate formatting path with arbitrary bit patterns).
 private func fmovText(bits: UInt64, kind: FloatImmediateKind) -> String {
     Instruction(
         address: 0,
@@ -61,11 +49,6 @@ private func fmovText(bits: UInt64, kind: FloatImmediateKind) -> String {
     ).text
 }
 
-/// Reference copy of the ARM VFPExpandImm pseudo-code, kept test-local
-/// so the parity sweep can construct each imm8's expanded bit pattern
-/// without consuming the library's internal expansion (the library's
-/// result is observed through the decoded text on the other side of
-/// the comparison).
 private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UInt64 {
     let sign = UInt64((imm8 >> 7) & 1)
     let b = (UInt64(imm8) >> 6) & 1
@@ -85,23 +68,7 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
     }
 }
 
-// Float16 does not exist on Intel macOS and requires macOS 11+ /
-// iOS 14+ floors elsewhere; the float-parity reference is gated
-// accordingly (the library itself no longer uses Float16).
 #if !(os(macOS) && arch(x86_64))
-    /// The reference rendering the replaced site must match: Darwin libc's
-    /// `%.8f` of the value the canonicalizer derives from (bits, kind).
-    ///
-    /// Linux carve-out: glibc's `%.8f` renders a
-    /// negative NaN as `-nan` where Darwin — the convention the library
-    /// is canonical to — prints unsigned `nan`. The carve-out removes
-    /// exactly that sign character, only when the value is NaN, only on
-    /// Linux; every other rendering (all finite values, infinities, and
-    /// positive NaN) must still match glibc byte-for-byte, and the
-    /// Darwin reference is compiled without the carve-out entirely.
-    /// NaN is unreachable from decoded FP immediates (VFPExpandImm
-    /// cannot produce an all-ones exponent), so this concerns only the
-    /// arbitrary-bit-pattern sweeps of the formatter itself.
     private func referenceFloatText(bits: UInt64, kind: FloatImmediateKind) -> String {
         let value = switch kind {
         case .half: Double(Float16(bitPattern: UInt16(truncatingIfNeeded: bits)))
@@ -116,12 +83,9 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
     }
 #endif
 
-/// Proves the pure-Swift zero-padded-hex rendering is output-identical
-/// to the replaced `String(format: "%0<digits>llx")` site, over the
-/// decode-reachable MOVI-64 domain (exhaustive) and a broad arbitrary
-/// `UInt64` sweep through the public draft surface.
+/// Proves the pure-Swift zero-padded-hex rendering is output-identical to the
+/// replaced `String(format: "%0<digits>llx")` site, over the decode-reachable.
 @Suite struct HexPaddingParityTests {
-    /// Every byte of the expansion is 0xFF where the seed bit is set.
     private func movi64Expansion(of seed: UInt8) -> UInt64 {
         var value: UInt64 = 0
         for bit in 0 ..< 8 where (seed >> bit) & 1 == 1 {
@@ -154,7 +118,6 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
             values.append(UInt64.max >> shift)
             values.append(UInt64.max << shift)
         }
-        // 2^56 digit-width boundary, both sides.
         values.append(contentsOf: [
             (1 << 56) - 1, 1 << 56, (1 << 56) + 1, 0xDEAD_BEEF_CAFE_F00D,
         ])
@@ -186,13 +149,9 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
     }
 }
 
-// Proves the pure-Swift fixed 8-fraction-digit decimal rendering is
-// output-identical to the replaced `String(format: "%.8f")` site:
-// exhaustively over the decode-reachable FMOV-immediate domain (all
-// 256 imm8 expansions at all three precisions), exhaustively over the
-// full 16-bit half-precision pattern space, and over special-value and
-// random sweeps of single and double patterns.
 #if !(os(macOS) && arch(x86_64))
+    /// Validates the pure-Swift float formatter against Darwin libc over the
+    /// exhaustive FMOV-immediate domain.
     @Suite struct FloatFormatParityTests {
         @Test func fmovImmediateDecodeDomainIsExhaustivelyIdentical() {
             let forms: [(ftype: UInt32, register: String, kind: FloatImmediateKind)] = [
@@ -219,23 +178,23 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
 
         @Test func doubleSpecialValuesMatchReference() {
             let specials: [UInt64] = [
-                0x8000_0000_0000_0000, // -0.0
-                0x7FF0_0000_0000_0000, // +inf
-                0xFFF0_0000_0000_0000, // -inf
-                0x7FF8_0000_0000_0000, // quiet nan
-                0xFFF8_0000_0000_0000, // negative quiet nan
-                0x7FF0_0000_0000_0001, // signaling nan payload
-                0x0000_0000_0000_0001, // min subnormal
-                0x000F_FFFF_FFFF_FFFF, // max subnormal
-                0x0010_0000_0000_0000, // min normal
-                0x7FEF_FFFF_FFFF_FFFF, // max finite (309 integer digits)
-                0.001953125.bitPattern, // tie at digit 9, rounds down to even
-                0.005859375.bitPattern, // tie at digit 9, rounds up to even
+                0x8000_0000_0000_0000,
+                0x7FF0_0000_0000_0000,
+                0xFFF0_0000_0000_0000,
+                0x7FF8_0000_0000_0000,
+                0xFFF8_0000_0000_0000,
+                0x7FF0_0000_0000_0001,
+                0x0000_0000_0000_0001,
+                0x000F_FFFF_FFFF_FFFF,
+                0x0010_0000_0000_0000,
+                0x7FEF_FFFF_FFFF_FFFF,
+                0.001953125.bitPattern,
+                0.005859375.bitPattern,
                 1.5.bitPattern,
                 (-13.0).bitPattern,
                 0.1.bitPattern,
                 1e-9.bitPattern,
-                (-1e-12).bitPattern, // rounds to -0.00000000
+                (-1e-12).bitPattern,
                 1e9.bitPattern,
                 123_456.123456785.bitPattern,
             ]
@@ -248,14 +207,10 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
         @Test func doubleRandomSweepMatchesReference() {
             var generator = SplitMix64(state: 0xA5A5_5A5A_DEAD_BEEF)
             for _ in 0 ..< 20000 {
-                // `| 1` keeps the draw away from all-zero bits (+0.0 renders
-                // through the special-case list above), without a skip arm the
-                // generator never takes.
                 let bits = generator.next() | 1
                 let expected = "fmov #" + referenceFloatText(bits: bits, kind: .double)
                 #expect(fmovText(bits: bits, kind: .double) == expected, "double bits 0x\(String(bits, radix: 16))")
             }
-            // Bias a sweep toward small exponents (fraction-heavy renderings).
             for _ in 0 ..< 20000 {
                 let bits = generator.next() & 0x403F_FFFF_FFFF_FFFF | 1
                 let expected = "fmov #" + referenceFloatText(bits: bits, kind: .double)
@@ -265,15 +220,15 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
 
         @Test func singleSpecialAndRandomSweepMatchesReference() {
             var patterns: [UInt32] = [
-                0x8000_0000, // -0.0
-                0x7F80_0000, // +inf
-                0xFF80_0000, // -inf
-                0x7FC0_0000, // quiet nan
-                0xFFC0_0000, // negative quiet nan
-                0x0000_0001, // min subnormal
-                0x007F_FFFF, // max subnormal
-                0x0080_0000, // min normal
-                0x7F7F_FFFF, // max finite
+                0x8000_0000,
+                0x7F80_0000,
+                0xFF80_0000,
+                0x7FC0_0000,
+                0xFFC0_0000,
+                0x0000_0001,
+                0x007F_FFFF,
+                0x0080_0000,
+                0x7F7F_FFFF,
                 Float(1.5).bitPattern,
                 Float(-13.0).bitPattern,
                 Float(0.1).bitPattern,
@@ -290,8 +245,6 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
         }
 
         @Test func storedBitsAboveKindWidthAreTruncatedIdentically() {
-            // The canonicalizer truncates stored bits to the kind's width;
-            // the reference computation mirrors it, pinning the behavior.
             let cases: [(bits: UInt64, kind: FloatImmediateKind)] = [
                 (0xFFFF_FFFF_0000_3C00, .half),
                 (0xDEAD_BEEF_3FC0_0000, .single),
@@ -303,8 +256,6 @@ private func referenceVFPExpandImm(imm8: UInt8, kind: FloatImmediateKind) -> UIn
         }
 
         @Test func zeroBitsKeepTheCompareWithZeroSpelling() {
-            // bits == 0 is the FCMP/FCMPE compare-with-zero path, deliberately
-            // rendered `#0.0` (not `#0.00000000`) — preserved, not replaced.
             #expect(fmovText(bits: 0, kind: .half) == "fmov #0.0")
             #expect(fmovText(bits: 0, kind: .single) == "fmov #0.0")
             #expect(fmovText(bits: 0, kind: .double) == "fmov #0.0")

@@ -4,8 +4,7 @@
 import Iris
 import Testing
 
-/// Validates VectorRegisterRef + VectorView + VectorArrangement +
-/// ScalarSize — the SIMD operand grammar's three view shapes.
+/// Validates VectorRegisterRef + VectorView + VectorArrangement + ScalarSize.
 @Suite("VectorRegisterRef / view shapes")
 struct VectorRegisterRefTests {
     @Test func registerIndexIsMaskedToFiveBits() {
@@ -43,8 +42,8 @@ struct VectorRegisterRefTests {
     }
 }
 
-/// Validates VectorArrangement — the 8 named element-size × count
-/// shapes (8B..2D).
+/// Validates VectorArrangement — the 8 named element-size × count shapes
+/// (8B..2D).
 @Suite("VectorArrangement / raw values and exhaustive cases")
 struct VectorArrangementTests {
     @Test func everyCaseHasStableRawValue() {

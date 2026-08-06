@@ -4,9 +4,6 @@
 import Iris
 import Testing
 
-/// Materialize a standalone Instruction from a committed record plus its
-/// operand window — exercises the public materializing init against
-/// stream-decoded values.
 private func instruction(for record: InstructionRecord, in stream: InstructionStream) -> Instruction {
     Instruction(
         address: record.address,
@@ -23,7 +20,6 @@ private func instruction(for record: InstructionRecord, in stream: InstructionSt
     )
 }
 
-/// Little-endian byte expansion of one or more 4-byte instruction words.
 private func bytes(of words: [UInt32]) -> [UInt8] {
     var out: [UInt8] = []
     out.reserveCapacity(words.count * 4)
@@ -36,11 +32,7 @@ private func bytes(of words: [UInt32]) -> [UInt8] {
     return out
 }
 
-/// Validates the bytes-in decode entry points on well-known instruction
-/// words: explicit little-endian word assembly, per-family mnemonic /
-/// category / semantics attribution, and canonical text via the
-/// per-family canonicalizers (expectations harvested from the copied
-/// decoders' actual behavior).
+/// Validates the bytes-in decode entry points on well-known words.
 @Suite struct WellKnownWordTests {
     @Test func nopDecodes() {
         let stream = InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5], at: 0x1000)
@@ -116,8 +108,7 @@ private func bytes(of words: [UInt32]) -> [UInt8] {
     }
 }
 
-/// Validates the stream's structural contracts: empty input, residual
-/// truncated tails, address-indexed lookup, and the operand side buffer.
+/// Validates the stream's structural contracts.
 @Suite struct StreamShapeTests {
     @Test func emptyBufferYieldsEmptyStream() {
         let stream = InstructionStream(bytes: [], at: 0x10000)
@@ -138,7 +129,6 @@ private func bytes(of words: [UInt32]) -> [UInt8] {
         #expect(tail.category == .truncatedTail)
         #expect(tail.address == 0x2004)
         #expect(tail.encoding == 0xCDAB)
-        // operandCount carries the residual byte count on tails.
         #expect(tail.operandCount == 2)
         #expect(tail.tailByteCount == 2)
     }
@@ -181,9 +171,7 @@ private func bytes(of words: [UInt32]) -> [UInt8] {
     }
 }
 
-/// Validates the caller-provided data-in-code seam: covered words become
-/// DataMarker records, spans beginning mid-word still mark their word,
-/// and each intersecting span is echoed as exactly one diagnostic.
+/// Validates the caller-provided data-in-code seam.
 @Suite struct DataInCodeTests {
     private let threeNops: [UInt32] = [0xD503_201F, 0xD503_201F, 0xD503_201F]
 
@@ -252,10 +240,6 @@ private func bytes(of words: [UInt32]) -> [UInt8] {
     }
 
     @Test func zeroLengthMidWordSpanStillMarksItsWord() {
-        // Faithful port pin: the inherited intersection arithmetic marks
-        // the containing word for a zero-length span that begins strictly
-        // inside it (offset not word-aligned), and echoes the span as a
-        // diagnostic with its provided zero length.
         let span = DataInCodeSpan(offset: 5, length: 0, kind: .data)
         let stream = InstructionStream(
             bytes: bytes(of: threeNops), at: 0, dataInCode: [span],
@@ -265,7 +249,6 @@ private func bytes(of words: [UInt32]) -> [UInt8] {
         #expect(stream.records[2].mnemonic == .nop)
         #expect(stream.diagnostics.count == 1)
         #expect(stream.diagnostics[0].kind == .dataInCodeSpanEncountered(kind: .data, offset: 5, length: 0))
-        // A zero-length span at a word boundary marks nothing.
         let boundary = DataInCodeSpan(offset: 4, length: 0, kind: .data)
         let boundaryStream = InstructionStream(
             bytes: bytes(of: threeNops), at: 0, dataInCode: [boundary],

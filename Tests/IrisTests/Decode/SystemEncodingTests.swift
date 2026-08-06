@@ -4,9 +4,9 @@
 import Iris
 import Testing
 
-/// Validates SystemRegisterEncoding — the 5-field tuple
-/// `(op0, op1, CRn, CRm, op2)` packed into a single UInt16, with field
-/// widths 2 / 3 / 4 / 4 / 3 bits respectively.
+/// Validates SystemRegisterEncoding — the 5-field tuple `(op0, op1, CRn, CRm,
+/// op2)` packed into a single UInt16, with field widths 2 / 3 / 4 / 4 / 3
+/// bits.
 @Suite("SystemRegisterEncoding / tuple pack and unpack")
 struct SystemRegisterEncodingTests {
     @Test func packedZeroDecodesToAllZeroSubFields() {
@@ -28,10 +28,6 @@ struct SystemRegisterEncodingTests {
     }
 
     @Test func tpidrEl0PacksToKnownLiteral() {
-        // TPIDR_EL0 — op0=3 op1=3 CRn=13 CRm=0 op2=2 — packs to 0xDE82.
-        // Literal expectation rather than re-derived formula so the
-        // test catches any reshuffle of the bit-pack layout (which
-        // would silently round-trip if both sides used the same code).
         let e = SystemRegisterEncoding(op0: 3, op1: 3, crn: 13, crm: 0, op2: 2)
         #expect(e.packed == 0xDE82)
         #expect(e.op0 == 3)
@@ -42,7 +38,6 @@ struct SystemRegisterEncodingTests {
     }
 
     @Test func cntvctEl0PacksToKnownLiteral() {
-        // CNTVCT_EL0 — op0=3 op1=3 CRn=14 CRm=0 op2=2 — packs to 0xDF02.
         let e = SystemRegisterEncoding(op0: 3, op1: 3, crn: 14, crm: 0, op2: 2)
         #expect(e.packed == 0xDF02)
     }

@@ -4,14 +4,8 @@
 import Iris
 import Testing
 
-/// Pins named rows of the IC/DC/AT/TLBI SYS alias surface through the
-/// public decode + text path: each (op1, CRn, CRm, op2) tuple is decoded
-/// at Rt = 0 and Rt = 31 and must render the documented friendly form —
-/// register-taking aliases render `name, x0` / `name, xzr`, bare aliases
-/// render the name at XZR and fall back to the generic `sys` tuple form
-/// otherwise, and unrecognized tuples always render the generic form.
-/// The decoder and the canonicalizer share the alias table, so a
-/// misaligned row would surface here and as a parity divergence.
+/// Pins named IC/DC/AT/TLBI alias rows through decode and text at Rt=0 and
+/// Rt=31.
 @Suite("BES / SYS alias rendering")
 struct BESSysAliasTableTests {
     private func sysText(_ op1: UInt8, _ CRn: UInt8, _ CRm: UInt8, _ op2: UInt8, rt: UInt32) -> String {
@@ -79,31 +73,49 @@ struct BESSysAliasTableTests {
     }
 
     @Test func tlbiFamily() {
-        let expected: [(UInt8, UInt8, UInt8, UInt8, String, Bool)] = [
-            (0, 8, 3, 0, "tlbi vmalle1is", false),
-            (0, 8, 3, 1, "tlbi vae1is", true),
-            (0, 8, 7, 0, "tlbi vmalle1", false),
-            (0, 8, 7, 1, "tlbi vae1", true),
-            (0, 8, 3, 2, "tlbi aside1is", true),
-            (0, 8, 7, 2, "tlbi aside1", true),
-            (4, 8, 3, 4, "tlbi alle1is", false),
-            (4, 8, 7, 4, "tlbi alle1", false),
-            (0, 8, 3, 5, "tlbi vale1is", true),
-            (0, 8, 7, 5, "tlbi vale1", true),
+        let expected: [(UInt8, UInt8, UInt8, UInt8, String, String)] = [
+            (0, 8, 3, 0, "tlbi vmalle1is", "optComma"),
+            (0, 8, 3, 1, "tlbi vae1is", "reg"),
+            (0, 8, 7, 0, "tlbi vmalle1", "noreg"),
+            (0, 8, 7, 1, "tlbi vae1", "reg"),
+            (0, 8, 3, 2, "tlbi aside1is", "reg"),
+            (0, 8, 7, 2, "tlbi aside1", "reg"),
+            (4, 8, 3, 4, "tlbi alle1is", "optComma"),
+            (4, 8, 7, 4, "tlbi alle1", "noreg"),
+            (0, 8, 3, 5, "tlbi vale1is", "reg"),
+            (0, 8, 7, 5, "tlbi vale1", "reg"),
+            (6, 8, 7, 4, "tlbi paall", "noreg"),
+            (6, 8, 4, 3, "tlbi rpaos", "reg"),
         ]
-        for (op1, CRn, CRm, op2, name, needsReg) in expected {
-            if needsReg {
+        for (op1, CRn, CRm, op2, name, kind) in expected {
+            switch kind {
+            case "reg":
                 #expect(sysText(op1, CRn, CRm, op2, rt: 0) == "\(name), x0")
                 #expect(sysText(op1, CRn, CRm, op2, rt: 31) == "\(name), xzr")
-            } else {
+            case "optComma":
+                #expect(sysText(op1, CRn, CRm, op2, rt: 0) == "\(name), x0")
+                #expect(sysText(op1, CRn, CRm, op2, rt: 31) == name)
+            default:
                 #expect(sysText(op1, CRn, CRm, op2, rt: 31) == name)
                 #expect(sysText(op1, CRn, CRm, op2, rt: 0) == "sys #\(op1), c\(CRn), c\(CRm), #\(op2), x0")
             }
         }
     }
 
+    @Test func newAliasFamilies() {
+        #expect(sysText(0, 10, 1, 0, rt: 0) == "plbi vmalle1os, x0")
+        #expect(sysText(0, 10, 1, 0, rt: 31) == "plbi vmalle1os")
+        #expect(sysText(0, 10, 7, 1, rt: 31) == "plbi perme1, xzr")
+        #expect(sysText(0, 12, 1, 0, rt: 2) == "gic cddis, x2")
+        #expect(sysText(0, 12, 1, 7, rt: 31) == "gic cdeoi")
+        #expect(sysText(0, 12, 0, 0, rt: 31) == "gsb sys")
+        #expect(sysText(0, 12, 0, 1, rt: 31) == "gsb ack")
+        #expect(sysText(1, 7, 2, 4, rt: 31) == "brb iall")
+        #expect(sysText(4, 7, 0, 6, rt: 3) == "mlbi vpide1, x3")
+        #expect(sysText(0, 7, 15, 1, rt: 31) == "dc civaps, xzr")
+    }
+
     @Test func unknownEncodingRendersGenericForm() {
-        // Random unknown tuple → the generic sys tuple form at every Rt.
         #expect(sysText(5, 2, 3, 7, rt: 31) == "sys #5, c2, c3, #7")
         #expect(sysText(5, 2, 3, 7, rt: 0) == "sys #5, c2, c3, #7, x0")
     }

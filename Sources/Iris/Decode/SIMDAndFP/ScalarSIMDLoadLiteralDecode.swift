@@ -1,9 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Scalar SIMD LDR-literal (PC-relative, V=1).
-// Encoding: `opc 0 11 1 V 00 imm19 Rt` with V=1. opc selects the
-// destination element width (00=S, 01=D, 10=Q; 11 reserved).
 
 enum ScalarSIMDLoadLiteralDecode {
     @_optimize(speed)

@@ -13,60 +13,52 @@ private func verify(_ draft: Instruction) -> SVEPCSemanticIssue? {
     SVEPredicateControlSemanticChecker.verify(draft: draft)
 }
 
-/// Validates the semantic-attribute checker. Disassembly text carries the
-/// mnemonic and the operands and nothing else — it says nothing about which
-/// flags an instruction writes, whether its register write is partial, whether
-/// its result depends on streaming mode, or what its read/write masks are. Those
-/// attributes are what a dataflow consumer actually runs on, and the checker is
-/// the only instrument that proves them, by deriving each one from the mnemonic
-/// and operand list independently of the decoder that produced them. So the
-/// checker's own detection has to be exercised field by field: a checker that
-/// silently returned `nil` would make the whole semantic model unvalidated.
+/// Validates the semantic-attribute checker field by field.
 @Suite("SVE predicate & control / semantic-attribute checker")
 struct SVEPredicateControlSemanticCheckerTests {
     @Test func aWellFormedRecordFromEveryGroupPasses() {
         let representatives: [UInt32] = [
-            0x2518_E000, // ptrue
-            0x2519_E3E0, // ptrues
-            0x2518_E407, // pfalse
-            0x2550_C440, // ptest
-            0x2503_4820, // and
-            0x2543_4820, // ands
-            0x2503_4A30, // sel
-            0x2584_5081, // mov (two-operand alias)
-            0x2505_4A75, // mov (merging alias)
-            0x2507_5E41, // not
-            0x2510_4443, // brka zeroing
-            0x2510_4453, // brka merging
-            0x2518_4443, // brkn
-            0x2504_C443, // brkpa
-            0x2558_C043, // pfirst
-            0x2519_C443, // pnext
-            0x2518_F043, // rdffr predicated
-            0x2519_F003, // rdffr unpredicated
-            0x2528_9040, // wrffr
-            0x252C_9000, // setffr
-            0x2520_8443, // cntp
-            0x256C_8043, // incp vector
-            0x2568_8843, // sqincp signed 32-bit scalar
-            0x2569_8843, // uqincp unsigned 32-bit scalar
-            0x2525_04C7, // whilelt
-            0x2525_30C7, // whilewr
-            0x25A5_20C0, // ctermeq
-            0x0420_E3E0, // cntb
-            0x0430_E3E4, // incb
-            0x0420_F3E1, // sqincb
-            0x0460_C3E2, // sqinch vector
-            0x0421_50A2, // addvl
-            0x043F_579F, // addvl with the stack pointer
-            0x0421_58A2, // addsvl
-            0x04BF_5020, // rdvl
-            0x04BF_5FE0, // rdsvl
-            0x0423_4020, // index (both immediates)
-            0x04E6_4CA3, // index (both registers)
-            0x0420_BC20, // movprfx unpredicated
-            0x0450_2C20, // movprfx zeroing
-            0x0491_3C20, // movprfx merging
+            0x2518_E000,
+            0x2519_E3E0,
+            0x2518_E407,
+            0x2550_C440,
+            0x2503_4820,
+            0x2543_4820,
+            0x2503_4A30,
+            0x2584_5081,
+            0x2505_4A75,
+            0x2507_5E41,
+            0x2510_4443,
+            0x2510_4453,
+            0x2518_4443,
+            0x2504_C443,
+            0x2558_C043,
+            0x2519_C443,
+            0x2518_F043,
+            0x2519_F003,
+            0x2528_9040,
+            0x252C_9000,
+            0x2520_8443,
+            0x256C_8043,
+            0x2568_8843,
+            0x2569_8843,
+            0x2525_04C7,
+            0x2525_30C7,
+            0x25A5_20C0,
+            0x0420_E3E0,
+            0x0430_E3E4,
+            0x0420_F3E1,
+            0x0460_C3E2,
+            0x0421_50A2,
+            0x043F_579F,
+            0x0421_58A2,
+            0x04BF_5020,
+            0x04BF_5FE0,
+            0x0423_4020,
+            0x04E6_4CA3,
+            0x0420_BC20,
+            0x0450_2C20,
+            0x0491_3C20,
         ]
         for encoding in representatives {
             #expect(verify(decode(encoding)) == nil, "0x\(String(encoding, radix: 16))")
@@ -104,7 +96,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aWrongFlagEffectIsRejected() {
-        // ptrue writes no flags
         let invented = perturbing(decode(0x2518_E000)) {
             $0.flagEffect = .nzcv
         }
@@ -113,7 +104,6 @@ struct SVEPredicateControlSemanticCheckerTests {
         #expect(issue?.actual == "\(FlagEffect.nzcv.rawValue)")
         #expect(issue?.expected == "\(FlagEffect.none.rawValue)")
 
-        // ptrues writes NZCV
         let dropped = perturbing(decode(0x2519_E3E0)) {
             $0.flagEffect = .none
         }
@@ -121,9 +111,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aConditionalTerminateWithAPlainFlagWriteIsRejected() {
-        // The reference disassembler's own tables model CTERM as a plain NZCV
-        // writer, which is wrong: it writes N and V and reads C. A decoder that
-        // copied those tables would produce exactly this record.
         let d = perturbing(decode(0x25A5_20C0)) {
             $0.flagEffect = .nzcv
         }
@@ -131,13 +118,11 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aWrongScalableEffectIsRejected() {
-        // ptrue depends on streaming mode
         let dropped = perturbing(decode(0x2518_E000)) {
             $0.scalableEffect = .none
         }
         #expect(verify(dropped)?.field == "scalableEffect")
 
-        // ctermeq does not
         let invented = perturbing(decode(0x25A5_20C0)) {
             $0.scalableEffect = .readsStreamingMode
         }
@@ -154,7 +139,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func anInventedPartialWriteIsRejected() {
-        // The zeroing forms and the merging MOV alias are full writes.
         for encoding: UInt32 in [0x2510_4443, 0x2505_4A75, 0x0450_2C20, 0x2519_C443] {
             let d = perturbing(decode(encoding)) {
                 $0.scalableEffect = [.readsStreamingMode, .partialWrite]
@@ -169,7 +153,6 @@ struct SVEPredicateControlSemanticCheckerTests {
         }
         #expect(verify(invented)?.field == "ffrRead")
 
-        // rdffr reads FFR
         let dropped = perturbing(decode(0x2518_F043)) {
             $0.scalableReads = ScalableRegisterSet.empty.insertingPredicate(2)
         }
@@ -182,7 +165,6 @@ struct SVEPredicateControlSemanticCheckerTests {
         }
         #expect(verify(invented)?.field == "ffrWrite")
 
-        // setffr writes FFR
         let dropped = perturbing(decode(0x252C_9000)) {
             $0.scalableWrites = .empty
         }
@@ -190,7 +172,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aWrongPredicateWriteMaskIsRejected() {
-        // ptrue p0.b — writes p0
         let d = perturbing(decode(0x2518_E000)) {
             $0.scalableWrites = ScalableRegisterSet.empty.insertingPredicate(5)
         }
@@ -201,7 +182,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aWrongPredicateReadMaskIsRejected() {
-        // ptrue reads no predicate
         let d = perturbing(decode(0x2518_E000)) {
             $0.scalableReads = ScalableRegisterSet.empty.insertingPredicate(3)
         }
@@ -212,7 +192,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aMergingFormThatForgetsToReadItsDestinationIsRejected() {
-        // brka p3.b, p1/m, p2.b
         let d = perturbing(decode(0x2510_4453)) {
             $0.scalableReads = ScalableRegisterSet.empty.insertingPredicate(1).insertingPredicate(2)
         }
@@ -220,7 +199,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aWrongRegisterWriteMaskIsRejected() {
-        // cntp x3, p1, p2.b
         let d = perturbing(decode(0x2520_8443)) {
             $0.semanticWrites = .empty
         }
@@ -230,7 +208,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aWrongRegisterReadMaskIsRejected() {
-        // cntp reads no general register
         let d = perturbing(decode(0x2520_8443)) {
             $0.semanticReads = RegisterSet.empty.inserting(.x(7))
         }
@@ -241,7 +218,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func anAccumulateFormThatForgetsToReadItsDestinationIsRejected() {
-        // incb x4 — reads and writes x4
         let d = perturbing(decode(0x0430_E3E4)) {
             $0.semanticReads = .empty
         }
@@ -249,7 +225,6 @@ struct SVEPredicateControlSemanticCheckerTests {
     }
 
     @Test func aStackPointerAdjustThatDropsItsSourceIsRejected() {
-        // addvl sp, sp, #-4
         let d = perturbing(decode(0x043F_579F)) {
             $0.semanticReads = .empty
         }
@@ -267,10 +242,7 @@ struct SVEPredicateControlSemanticCheckerTests {
 }
 
 /// Validates the per-mnemonic attribute tables the checker derives its
-/// expectations from. They are the architectural model in table form — which
-/// forms write NZCV, which preserve lanes, which touch the first-fault register,
-/// and which operand of each form is its destination — so they are pinned
-/// directly rather than only through the records they check.
+/// expectations from.
 @Suite("SVE predicate & control / semantic-attribute tables")
 struct SVEPredicateControlSemanticAttributeTests {
     @Test func everyFlagSettingFormIsListed() {
@@ -374,8 +346,6 @@ struct SVEPredicateControlSemanticAttributeTests {
     }
 
     @Test func theOperandRegisterMaskIsBoundsChecked() {
-        // Public entry point, so it must answer for an index that is not there
-        // rather than trap.
         let ops: Instruction.Operands = [.register(.x(1))]
         #expect(SVEPredicateControlSemanticAttributes.operandRegisterMask(ops, -1) == 0)
         #expect(SVEPredicateControlSemanticAttributes.operandRegisterMask(ops, 1) == 0)
@@ -383,44 +353,44 @@ struct SVEPredicateControlSemanticAttributeTests {
     }
 
     @Test func theRegisterWriteMaskIsTheDestinationOperandOnlyForTheFormsThatHaveOne() {
-        let counted = decode(0x2520_8443) // cntp x3, p1, p2.b
+        let counted = decode(0x2520_8443)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterWrites(for: counted) == 1 << 3)
 
-        let predicateOnly = decode(0x2518_E000) // ptrue writes a predicate, not a register
+        let predicateOnly = decode(0x2518_E000)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterWrites(for: predicateOnly) == 0)
 
-        let compared = decode(0x25A5_20C0) // ctermeq writes nothing at all
+        let compared = decode(0x25A5_20C0)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterWrites(for: compared) == 0)
     }
 
     @Test func theRegisterReadMaskFollowsEachFormsOperandOrder() {
-        let loop = decode(0x25E5_14C7) // whilelt p7.d, x6, x5 — reads operands 1 and 2
+        let loop = decode(0x25E5_14C7)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: loop) == (1 << 6) | (1 << 5))
 
-        let compare = decode(0x25E5_20D0) // ctermne x6, x5 — reads operands 0 and 1
+        let compare = decode(0x25E5_20D0)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: compare) == (1 << 6) | (1 << 5))
 
-        let adjust = decode(0x0421_50A2) // addvl x2, x1, #5 — reads operand 1 only
+        let adjust = decode(0x0421_50A2)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: adjust) == 1 << 1)
 
-        let accumulate = decode(0x0430_E3E4) // incb x4 — reads its destination
+        let accumulate = decode(0x0430_E3E4)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: accumulate) == 1 << 4)
 
-        let generated = decode(0x0423_4020) // index z0.b, #1, #3 — reads nothing
+        let generated = decode(0x0423_4020)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: generated) == 0)
 
-        let read = decode(0x04BF_5020) // rdvl x0, #1 — reads nothing
+        let read = decode(0x04BF_5020)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: read) == 0)
     }
 
     @Test func theConstructivePrefixReadsItsDestinationOnlyWhenMerging() {
-        let unpredicated = decode(0x0420_BC20) // movprfx z0, z1
+        let unpredicated = decode(0x0420_BC20)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: unpredicated) == 1 << 33)
 
-        let zeroing = decode(0x0450_2C20) // movprfx z0.h, p3/z, z1.h
+        let zeroing = decode(0x0450_2C20)
         #expect(SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: zeroing) == 1 << 33)
 
-        let merging = decode(0x0491_3C20) // movprfx z0.s, p7/m, z1.s
+        let merging = decode(0x0491_3C20)
         #expect(
             SVEPredicateControlSemanticAttributes.expectedRegisterReads(for: merging)
                 == (1 << 32) | (1 << 33),

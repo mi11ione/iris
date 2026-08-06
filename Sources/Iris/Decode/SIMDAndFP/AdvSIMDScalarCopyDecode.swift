@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD scalar copy per ARM ARM § C4.1.96.9.
-// Encoding: `0 1 op 0 1110 000 imm5 0 imm4 1 Rn Rd`. Only the DUP
-// element form is valid here (op=0, imm4=0000); decoder emits DUP with
-// scalar destination view derived from the element size encoded in imm5
-// per the same first-set-bit convention as vector copy.
 
 enum AdvSIMDScalarCopyDecode {
     @_optimize(speed)
@@ -24,7 +18,6 @@ enum AdvSIMDScalarCopyDecode {
         }
         let dst = simdfpScalarOperand(Rd, size: elementSize)
         let src = simdfpElementOperand(Rn, elementSize: elementSize, index: index)
-        // DUP-element scalar is aliased to MOV in ARM ARM canonical form.
         return DecodedDraft(
             address: address, encoding: encoding,
             mnemonic: .mov,

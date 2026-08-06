@@ -13,15 +13,10 @@ private func field(_ draft: Instruction) -> String? {
     SMECoreSemanticChecker.verify(draft: draft)?.field
 }
 
-/// Decode `encoding`, perturb exactly one field of the resulting record, and
-/// report which check fires. Starting from a record the decoder really produced
-/// keeps every other attribute self-consistent, so the reported field pins the
-/// perturbation rather than an incidental second violation.
 private func perturbed(_ encoding: UInt32, _ body: (inout InstructionImage) -> Void) -> SMECoreSemanticIssue? {
     SMECoreSemanticChecker.verify(draft: perturbing(decode(encoding), body))
 }
 
-/// One representative encoding per family the checker classifies.
 private let familyRepresentatives: [(UInt32, String)] = [
     (0x8080_0000, "fmopa — outer product .s"),
     (0x80C0_0000, "fmopa — outer product .d"),
@@ -43,13 +38,7 @@ private let familyRepresentatives: [(UInt32, String)] = [
 ]
 
 /// Validates that the independently-derived semantic model agrees with every
-/// record the decoder produces. The checker re-derives the memory-access kind,
-/// the streaming and partial-write flags, the `ZA` overlap masks and the
-/// select-register read from the mnemonic and operand shape alone, so a record
-/// that renders perfect text but mis-tags any of them is still caught. Each
-/// family is represented because the derivation branches per family, and the
-/// `mov` token is represented twice because its two directions are told apart
-/// only by which operand comes first.
+/// record the decoder produces.
 @Suite("SME core semantics / consistent records pass")
 struct SMECoreSemanticsPassTests {
     @Test func everyFamilyRepresentativePassesTheChecker() {
@@ -59,8 +48,6 @@ struct SMECoreSemanticsPassTests {
     }
 
     @Test func anUndefinedRecordIsVacuouslyValid() {
-        // An UNDEFINED carries no semantic content, so the checker
-        // short-circuits before any invariant could contradict it.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .undefined,
             branchClass: .exception, memoryAccess: .load, category: .undefined,
@@ -79,11 +66,9 @@ struct SMECoreSemanticsPassTests {
     }
 }
 
-/// Validates that the checker actually reports a record that renders plausibly
-/// but mis-tags its semantics. Each case starts from a real decode and perturbs
-/// exactly one attribute, so the reported field name pins which invariant fired
-/// — a checker that silently accepted any of these would let the validator's
-/// semantic sweep pass over a real classification bug.
+/// Validates that the checker reports a record rendering plausibly but
+/// mis-tagging its semantics; each case perturbs one attribute so the
+/// reported.
 @Suite("SME core semantics / mismatches are reported")
 struct SMECoreSemanticsMismatchTests {
     @Test func aForeignCategoryIsReported() {
@@ -98,7 +83,6 @@ struct SMECoreSemanticsMismatchTests {
     }
 
     @Test func aFlagEffectIsReported() {
-        // No SME-core instruction touches NZCV.
         #expect(perturbed(0x8080_0000) { $0.flagEffect = .writesN }?.field == "flagEffect")
     }
 
@@ -109,8 +93,6 @@ struct SMECoreSemanticsMismatchTests {
     }
 
     @Test func anUnknownMnemonicIsReported() {
-        // A record tagged `.sme` whose mnemonic belongs to no 2s.6 family is a
-        // decoder that leaked another tier's token into this category.
         let draft = Instruction(address: 0, encoding: 0, mnemonic: .add, category: .sme)
         let issue = SMECoreSemanticChecker.verify(draft: draft)
         #expect(issue?.field == "family")
@@ -132,9 +114,6 @@ struct SMECoreSemanticsMismatchTests {
     }
 
     @Test func aSpuriousStreamingFlagOnANonStreamingFormIsReported() {
-        // LDR/STR ZA and ZERO are safe outside streaming mode; claiming
-        // otherwise would make Piece 4 insert a mode requirement that is not
-        // architecturally there.
         let issue = perturbed(0xE120_0000) { $0.scalableEffect = [.readsStreamingMode] }
         #expect(issue?.field == "readsStreamingMode")
         #expect(issue?.actual == "set")
@@ -148,8 +127,6 @@ struct SMECoreSemanticsMismatchTests {
     }
 
     @Test func aSpuriousPartialWriteOnAnExactWriteIsReported() {
-        // ZERO is the one exact full-def in 2s.6; marking it partial would
-        // block a legitimate liveness kill.
         let issue = perturbed(0xC008_0011) { $0.scalableEffect = [.partialWrite] }
         #expect(issue?.field == "partialWrite")
         #expect(perturbed(0xE120_0000) { $0.scalableEffect = [.partialWrite] }?.field == "partialWrite")
@@ -157,7 +134,6 @@ struct SMECoreSemanticsMismatchTests {
     }
 
     @Test func aStreamingModeWriteIsReported() {
-        // Only the 2.3 SMSTART/SMSTOP records transition streaming mode.
         let issue = perturbed(0x8080_0000) { $0.scalableEffect.insert(.writesStreamingMode) }
         #expect(issue?.field == "writesStreamingMode")
         #expect(issue?.actual == "set")
@@ -198,8 +174,6 @@ struct SMECoreSemanticsMismatchTests {
     }
 
     @Test func aDroppedSelectRegisterReadIsReported() {
-        // `Wv` appears in the text as a register name inside the slice
-        // brackets, but only the read set makes it visible to dataflow.
         for encoding: UInt32 in [0xE01F_0000, 0xE03F_0000, 0xC000_0000, 0xC002_0000, 0xE100_0000, 0xE120_0000] {
             let issue = perturbed(encoding) { $0.semanticReads = .empty }
             #expect(issue?.field == "semanticReads.selectRegister", "0x\(String(encoding, radix: 16))")
@@ -209,21 +183,13 @@ struct SMECoreSemanticsMismatchTests {
     }
 
     @Test func aMovaExtractIsToldFromAnInsertByItsFirstOperand() {
-        // The two directions share the `mov` token; only the operand order
-        // distinguishes them, so an insert's masks must not satisfy an
-        // extract's expectation.
-        // insert: tile slice first; reversed, a Z vector comes first — an extract
         let draft = perturbing(decode(0xC000_0000)) { $0.operands.reverse() }
         #expect(field(draft) == "scalableWrites.za")
     }
 }
 
-/// Validates that the checker stays total over records the 2s.6 decoder never
-/// produces. `verify` is called by the validator on whatever a decode returns,
-/// so every derivation helper must have a defined answer for an operand list
-/// that carries no `ZA` operand, carries one in an unexpected position, or
-/// carries a shape from another tier — never a wrong answer dressed as a pass
-/// and never a crash.
+/// Validates that the checker stays total over records the decoder never
+/// produces.
 @Suite("SME core semantics / total over unexpected operand shapes")
 struct SMECoreSemanticsTotalityTests {
     private func draft(
@@ -240,8 +206,6 @@ struct SMECoreSemanticsTotalityTests {
     }
 
     @Test func anOuterProductWithoutAZAOperandExpectsAnEmptyMask() {
-        // No ZA operand means no tile to name, so the expectation is the empty
-        // mask rather than an arbitrary default.
         #expect(SMECoreSemanticChecker.verify(draft: draft(mnemonic: .fmopa)) == nil)
         let mismatch = draft(
             mnemonic: .fmopa,
@@ -251,14 +215,10 @@ struct SMECoreSemanticsTotalityTests {
     }
 
     @Test func aMovWithoutOperandsClassifiesAsAnExtractWithNoTile() {
-        // `operands.first` is not a tile slice, so the record reads as an
-        // extract; with no slice present the expected read mask is empty.
         #expect(SMECoreSemanticChecker.verify(draft: draft(mnemonic: .mov)) == nil)
     }
 
     @Test func aZAOperandBehindOtherOperandsIsStillFound() {
-        // The mask search scans the whole operand list, so an unexpected
-        // leading operand cannot hide the ZA touch behind it.
         let operands: [Operand] = [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 0, qualifier: .merging)),
             .zaArrayVector(ZAArrayVectorOperand(selectRegister: .w(12), offset: 0)),
@@ -272,9 +232,6 @@ struct SMECoreSemanticsTotalityTests {
     }
 
     @Test func aSuffixLessTileOperandCoversTheWholeArray() {
-        // `element == nil` names the whole `za`. Outside ZERO's list the mask
-        // helper must widen it to every position rather than reading the index
-        // as a tile number, which would understate the touched storage.
         let whole = ScalableRegisterSet.empty.inserting(.whole)
         let record = draft(
             mnemonic: .addha, operands: [.zaTile(index: 0, element: nil)],
@@ -296,8 +253,6 @@ struct SMECoreSemanticsTotalityTests {
     }
 
     @Test func aZeroTileListMixesSizedAndWholeArrayEntries() {
-        // The `{za}` entry has no element size and covers the whole array; a
-        // sized entry beside it must union, not replace.
         let operands: [Operand] = [
             .zaTile(index: 0, element: .s),
             .zaTile(index: 0, element: nil),
@@ -311,16 +266,12 @@ struct SMECoreSemanticsTotalityTests {
     }
 
     @Test func aRecordWithNoSelectRegisterSkipsTheSelectCheck() {
-        // The select check only fires when a ZA operand actually carries a
-        // select register; without one there is nothing to require.
         let operands: [Operand] = [.scalableVector(ScalableVectorRef(registerIndex: 0, element: .b))]
         #expect(SMECoreSemanticChecker.verify(draft: draft(mnemonic: .mov, operands: operands)) == nil)
     }
 }
 
-/// Validates the `SMECoreSemanticIssue` value itself — the three fields carry
-/// the mismatch report to the validator's log, and it composes into sets like
-/// every other value type in the record model.
+/// Validates the `SMECoreSemanticIssue` value.
 @Suite("SME core semantics / issue value")
 struct SMECoreSemanticIssueTests {
     @Test func theIssueCarriesItsThreeFields() {

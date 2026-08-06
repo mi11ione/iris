@@ -16,21 +16,12 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates FP compare to predicate: G9 vector-register form
-/// (`sve_fp_3op_p_pd`) and G10 compare-with-zero (`sve_fp_2op_p_pd`). The
-/// headline semantic is checked here — every compare writes a
-/// destination predicate and NEVER touches NZCV, so `flagEffect` is `.none`
-/// in deliberate contrast with 2s.3's integer compares. The governing
-/// predicate is `/z`, the destination predicate carries the element suffix,
-/// and the swapped-operand vector aliases (FCMLE/FCMLT/FACLE/FACLT) are never
-/// emitted — only the compare-with-zero FCMLE/FCMLT are real.
+/// Validates FP compare to predicate, vector-register and compare-with-zero.
 @Suite("SVE floating-point / compare to predicate")
 struct SVEFPCompareDecodeTests {
-    /// fcmge p5.h, p1/z, z2.h, z3.h — G9 base (selector key 000).
     private static let vectorBase: UInt32 = 0x6543_4445
 
     @Test func everyVectorCompareSelectorDecodes() {
-        // The selector is (bit15, bit13, bit4); each maps to one mnemonic.
         let rows: [(UInt32, Mnemonic, String)] = [
             (0x0000, .fcmge, "fcmge"),
             (0x0010, .fcmgt, "fcmgt"),
@@ -52,18 +43,12 @@ struct SVEFPCompareDecodeTests {
             #expect(d.scalableReads.predicateMask == (1 << 1), "\(name) reads Pg")
             #expect(d.scalableEffect == .readsStreamingMode, "a fresh Pd is a full write")
         }
-        // (bit15,bit13,bit4)=(1,1,0) is a hole.
         #expect(decode(Self.vectorBase | 0xA000).mnemonic == .undefined)
         #expect(decode(Self.vectorBase & ~(UInt32(0b11) << 22)).mnemonic == .undefined, "sz=00 hole")
     }
 
     @Test func theVectorSwapAliasesAreNeverEmitted() {
-        // Sweep the whole vector-compare selector and size space: not one word
-        // decodes to a vector-register fcmle/fcmlt/facle/faclt — those spellings
-        // are assembler-only swaps of fcmge/fcmgt/facge/facgt.
         let trap: Set<Mnemonic> = [.fcmle, .fcmlt]
-        // vectorBase with sz and the (bit15,bit13,bit4) selector cleared, bit14
-        // (the region marker) kept.
         let cleared: UInt32 = 0x6503_4445
         for sz: UInt32 in [0b01, 0b10, 0b11] {
             for selector: UInt32 in 0 ..< 8 {
@@ -74,11 +59,9 @@ struct SVEFPCompareDecodeTests {
         }
     }
 
-    /// fcmge p5.h, p1/z, z2.h, #0.0 — G10 base (selector key 000).
     private static let zeroBase: UInt32 = 0x6550_2445
 
     @Test func everyCompareWithZeroSelectorDecodes() {
-        // Selector is (bits[17:16], bit4); the real fcmle/fcmlt live only here.
         let rows: [(UInt32, Mnemonic, String)] = [
             (0x00000, .fcmge, "fcmge"),
             (0x00010, .fcmgt, "fcmgt"),
@@ -96,7 +79,6 @@ struct SVEFPCompareDecodeTests {
             #expect(canonicalIndices(d.semanticReads) == [34], "compare-with-zero reads only Zn")
             #expect(d.scalableWrites.predicateMask == (1 << 5))
         }
-        // (bits[17:16],bit4) = (10,1) and (11,1) are holes.
         #expect(decode(Self.zeroBase | 0x20010).mnemonic == .undefined)
         #expect(decode(Self.zeroBase | 0x30010).mnemonic == .undefined)
     }
@@ -107,7 +89,7 @@ struct SVEFPCompareDecodeTests {
     }
 
     @Test func compareWithZeroTakesEverySize() {
-        let base = Self.zeroBase & ~(UInt32(0b11) << 22) // clear sz
+        let base = Self.zeroBase & ~(UInt32(0b11) << 22)
         #expect(text(base | (0b01 << 22)) == "fcmge p5.h, p1/z, z2.h, #0.0")
         #expect(text(base | (0b10 << 22)) == "fcmge p5.s, p1/z, z2.s, #0.0")
         #expect(text(base | (0b11 << 22)) == "fcmge p5.d, p1/z, z2.d, #0.0")

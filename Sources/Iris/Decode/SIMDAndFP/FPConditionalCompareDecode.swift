@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FP conditional compare per ARM ARM § C4.1.96.38.
-// Encoding: `0 0 0 11110 ftype 1 Rm cond 01 Rn op nzcv`. `op` = bit[4]
-// (0 = FCCMP, 1 = FCCMPE). `cond` = bits[15:12]. `nzcv` = bits[3:0].
-//
-// Operand layout: `[Vn, Vm, #nzcv, <cond>]`. Flag-effect = .nzcv.
 
 enum FPConditionalCompareDecode {
     @_optimize(speed)
@@ -20,8 +14,6 @@ enum FPConditionalCompareDecode {
         guard let size = scalarSizeFromFtype(ftype) else {
             return .undefined(at: address, encoding: encoding)
         }
-        // ConditionCode covers raw values 0..15 exhaustively; `cond & 0xF`
-        // always indexes a valid case via the table lookup.
         let cc = conditionCodeTable[Int(cond & 0xF)]
 
         let mnemonic: Mnemonic = op == 1 ? .fccmpe : .fccmp
@@ -45,9 +37,8 @@ enum FPConditionalCompareDecode {
     }
 }
 
-/// Dense 16-entry table mapping a 4-bit `cond` field to the
-/// corresponding ``ConditionCode``. Avoids the failable init?(rawValue:)
-/// when the caller has already masked the input to 4 bits.
+/// Dense 16-entry table mapping a 4-bit `cond` field to the corresponding
+/// ``ConditionCode``.
 @usableFromInline
 let conditionCodeTable: [ConditionCode] = [
     .eq, .ne, .cs, .cc, .mi, .pl, .vs, .vc,

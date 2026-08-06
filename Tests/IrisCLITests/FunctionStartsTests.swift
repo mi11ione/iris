@@ -5,14 +5,10 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates `LC_FUNCTION_STARTS` ULEB128 decoding: anchoring at the
-/// `__TEXT` vmaddr, multi-byte deltas, the zero-delta terminator, and
-/// the malformed-stream degradations (oversized values, truncation
-/// mid-value, cumulative overflow, missing anchor segment).
+/// Validates `LC_FUNCTION_STARTS` ULEB128 decoding and its malformed-stream
+/// degradations.
 @Suite("Function starts decoding")
 struct FunctionStartsTests {
-    /// A one-section binary (`__TEXT` at `textAddr`) whose
-    /// `LC_FUNCTION_STARTS` payload is exactly `uleb`.
     func binaryWithStarts(uleb: [UInt8], textAddr: UInt64 = 0x1000) -> WalkedBinary? {
         let bytes = minimalBinary(words: [0xD503_201F], textAddr: textAddr, extraSize: 16, extraCommands: { a in
             a.linkeditDataCommand(cmd: 0x26, dataoff: 264, datasize: UInt32(uleb.count))
@@ -36,7 +32,6 @@ struct FunctionStartsTests {
     }
 
     @Test func multiByteDeltaDecodes() throws {
-        // 0xE8 0x07 = 0x3E8 = 1000.
         let binary = try #require(binaryWithStarts(uleb: [0xE8, 0x07, 0x00]))
         #expect(binary.functionStarts == [0x1000 + 1000 as UInt64])
     }
@@ -48,15 +43,12 @@ struct FunctionStartsTests {
     }
 
     @Test func streamWithoutTerminatorStopsAtEnd() throws {
-        // No zero delta: the loop consumes the whole region and stops.
         let binary = try #require(binaryWithStarts(uleb: [0x08, 0x04]))
         #expect(binary.functionStarts == [0x1008, 0x100C])
         #expect(binary.diagnostics.isEmpty)
     }
 
     @Test func valueWiderThan64BitsIsDiagnosed() throws {
-        // Ten 0x80 continuation bytes push shift past 63 before any
-        // terminator: the walker keeps what it has and diagnoses.
         let uleb: [UInt8] = [0x08] + [UInt8](repeating: 0x80, count: 10) + [0x01]
         let binary = try #require(binaryWithStarts(uleb: uleb))
         let diagnostic = try #require(binary.diagnostics.first { $0.kind == .functionStartsMalformed })
@@ -65,7 +57,6 @@ struct FunctionStartsTests {
     }
 
     @Test func truncationMidValueIsDiagnosed() throws {
-        // The last byte carries a continuation bit with nothing after it.
         let binary = try #require(binaryWithStarts(uleb: [0x08, 0x80]))
         let diagnostic = try #require(binary.diagnostics.first { $0.kind == .functionStartsMalformed })
         #expect(diagnostic.detail == "ULEB128 stream ends mid-value; keeping the 1 addresses decoded so far")
@@ -73,8 +64,6 @@ struct FunctionStartsTests {
     }
 
     @Test func cumulativeOverflowIsDiagnosed() throws {
-        // __TEXT vmaddr at the top of the address space; one delta of
-        // 0x80 (0x80 0x01) overflows the cumulative address.
         let binary = try #require(binaryWithStarts(uleb: [0x80, 0x01], textAddr: UInt64.max - 0x40))
         let diagnostic = try #require(binary.diagnostics.first { $0.kind == .functionStartsMalformed })
         #expect(diagnostic.detail == "cumulative address overflows UInt64; keeping the 0 addresses decoded so far")
@@ -82,8 +71,6 @@ struct FunctionStartsTests {
     }
 
     @Test func missingTextSegmentLeavesStartsUnanchored() throws {
-        // The deltas are anchored at __TEXT's vmaddr; without that
-        // segment the chain is meaningless and is dropped, diagnosed.
         var a = MachOAssembler()
         a.machHeader64(ncmds: 2, sizeofcmds: 72 + 80 + 16)
         a.segmentCommand64(name: "__CODE", vmaddr: 0x1000, nsects: 1, cmdsize: 72 + 80)

@@ -1,21 +1,8 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// BarrierOption. The 4-bit option field for
-// `DSB`, `DMB`, and (degenerate) `ISB`. Raw values match the architectural
-// encoding; the reserved values (0b0000, 0b0100, 0b1000, 0b1100) make
-// `init?(rawOptionBits:)` return nil — the caller is responsible for
-// preserving the raw 4-bit value separately when it observes a reserved
-// encoding (the BES family routes reserved DSB/DMB options to the
-// instruction's `.undefined` path rather than fabricating a barrier
-// kind).
 
-/// Memory-barrier option for the `DSB`, `DMB`, and `ISB` instructions.
-///
-/// Carried by ``Operand/barrierOption(_:)``. The architecturally-defined
-/// options cover shareability domains (outer/inner/non-shareable, full
-/// system) crossed with read/write/all access types. `SY` is the default
-/// for `ISB`.
+/// Memory-barrier option for `DSB`, `DMB` and `ISB`: the shareability domains
+/// crossed with read/write/all access types. `SY` is the default for `ISB`.
 @frozen
 public enum BarrierOption: UInt8, Sendable, Hashable {
     /// Outer Shareable, Reads.

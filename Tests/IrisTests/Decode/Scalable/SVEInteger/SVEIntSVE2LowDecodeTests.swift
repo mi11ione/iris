@@ -16,16 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the SVE2 integer delta at top byte 0x44 (vector half): the
-/// predicated saturating/rounding/halving/pairwise family, the multiply-add-
-/// long cluster with its same-width SQRDMLAH exception, the complex rotated
-/// forms, the dot products including the two-way SVE2p1 pair, SCLAMP/UCLAMP,
-/// the predicated saturating unaries, SADALP/UADALP, SABAL/UABAL, and the
-/// FEAT_CPA MADPT/MLAPT. Accumulators read their destination but rewrite
-/// every lane; only the `/M` predicated forms mark the write partial.
+/// Validates the SVE2 integer delta at 0x44.
 @Suite("SVE integer / SVE2 saturating, multiply-add-long, dot, clamp")
 struct SVEIntSVE2LowDecodeTests {
-    /// Every allocated saturating-predicated opcode (bit13 clear half).
     private static let saturating: [(UInt32, Mnemonic)] = [
         (0x4402_8020, .srshl), (0x4403_8020, .urshl),
         (0x4406_8020, .srshlr), (0x4407_8020, .urshlr),
@@ -100,11 +93,9 @@ struct SVEIntSVE2LowDecodeTests {
             #expect(canonicalIndices(d.semanticReads) == [32, 33, 34], "\(expected) reads its accumulator")
             #expect(d.scalableEffect == .readsStreamingMode, "\(expected) rewrites every lane")
         }
-        // SQRDMLAH/SQRDMLSH are the two same-width members — legal at byte.
         #expect(text(0x4482_7020) == "sqrdmlah z0.s, z1.s, z2.s")
         #expect(text(0x4482_7420) == "sqrdmlsh z0.s, z1.s, z2.s")
         #expect(text(0x4402_7020) == "sqrdmlah z0.b, z1.b, z2.b")
-        // The widening members have no byte destination.
         #expect(decode(0x4402_0820).mnemonic == .undefined)
         #expect(decode(0x4402_4020).mnemonic == .undefined)
     }
@@ -123,7 +114,6 @@ struct SVEIntSVE2LowDecodeTests {
             #expect(canonicalIndices(d.semanticReads) == [32, 33, 34])
         }
         #expect(decode(0x4482_1C20).operands[3] == .immediate(value: 270, width: 16))
-        // CDOT reads a quarter-width source and needs at least a word element.
         #expect(decode(0x4442_1020).mnemonic == .undefined, "cdot at halfword")
         #expect(text(0x44C2_1020) == "cdot z0.d, z1.h, z2.h, #0")
     }
@@ -147,8 +137,6 @@ struct SVEIntSVE2LowDecodeTests {
     }
 
     @Test func theTwoWayDotSplitsVectorFromIndexedOnTheSizeField() {
-        // Bits 15:10 = 11001x holds the two-way vector dot at sz=00 and the
-        // SVE2p1 indexed two-way dot at sz=10; the remaining sizes are holes.
         #expect(text(0x4402_C820) == "sdot z0.s, z1.h, z2.h")
         #expect(text(0x4402_CC20) == "udot z0.s, z1.h, z2.h")
         #expect(text(0x4482_C820) == "sdot z0.s, z1.h, z2.h[0]")

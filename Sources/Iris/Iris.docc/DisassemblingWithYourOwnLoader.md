@@ -4,7 +4,7 @@ Feed iris bytes from any container — Mach-O, ELF, a crash buffer, a JIT region
 
 ## Overview
 
-The bulk tier is deliberately **bytes-in**: iris does not parse executable containers (that wall is documented in <doc:ScopeAndGuarantees>; the `iris` command-line tool has its own internal Mach-O walker, which is not library API). Your loader owns file formats, segment mapping, and architecture selection, and hands iris four things:
+The bulk tier is bytes-in: iris does not parse executable containers, and the command-line tool's Mach-O walker is not library API. Your loader owns file formats, segment mapping and architecture selection, and hands iris four things:
 
 ```swift
 func disassemble(_ textSection: UnsafeRawBufferPointer) -> InstructionStream {
@@ -17,11 +17,11 @@ func disassemble(_ textSection: UnsafeRawBufferPointer) -> InstructionStream {
 }
 ```
 
-Decode is a pure function of exactly those four inputs. The `UnsafeRawBufferPointer` entry is zero-copy — point it at your mapped file — and an `[UInt8]` convenience initializer delegates to it. Map your loader's architecture knowledge to ``Features``: an `arm64e` slice means ``Features/arm64e``, plain `arm64` means the empty set.
+Decode is a pure function of exactly those four inputs. The `UnsafeRawBufferPointer` entry is zero-copy, so point it at your mapped file; an `[UInt8]` convenience initializer delegates to it. An `arm64e` slice means ``Features/arm64e``, plain `arm64` the empty set.
 
 ## What a stream gives you
 
-``InstructionStream`` is a `RandomAccessCollection` of ``Instruction`` values, one per 4-byte word, plus one truncated-tail record when the buffer length is not a multiple of 4 — nothing is silently dropped. Iteration forms ergonomic views over packed storage with zero heap allocation.
+``InstructionStream`` is a `RandomAccessCollection` of ``Instruction`` values, one per 4-byte word, plus one truncated-tail record when the buffer length is not a multiple of 4. Iteration forms ergonomic views over packed storage with zero heap allocation.
 
 ```swift
 let bytes: [UInt8] = [0xFD, 0x7B, 0xBF, 0xA9,     // stp x29, x30, [sp, #-16]!
@@ -37,7 +37,7 @@ for instruction in stream where instruction.isCall {
 print(callSites.map { String($0, radix: 16) })    // ["100004008"]
 ```
 
-Address lookup is constant-time arithmetic. ``InstructionStream/instruction(at:)`` requires a record's start address; ``InstructionStream/instruction(containing:)`` rounds an unaligned address down to its word — the crash-pipeline idiom.
+Address lookup is constant-time arithmetic. ``InstructionStream/instruction(at:)`` requires a record's start address; ``InstructionStream/instruction(containing:)`` rounds an unaligned address down to its word, which is the crash-pipeline idiom.
 
 ```swift
 if let faulting = stream.instruction(containing: 0x1_0000_4006) {
@@ -46,15 +46,15 @@ if let faulting = stream.instruction(containing: 0x1_0000_4006) {
 print(stream[address: 0x1_0000_400C]?.text ?? "-")  // "ret"
 ```
 
-Diagnostics (data-in-code spans encountered, address-space wrap) are typed values on ``InstructionStream/diagnostics`` — never silent, never fatal.
+Data-in-code spans encountered and address-space wrap surface on ``InstructionStream/diagnostics``.
 
 ## The three access tiers
 
-The stream stores records in a flat 57-byte-per-instruction array with one shared operand buffer. That layout is the performance architecture, and all three tiers over it are public API.
+The stream stores records in a flat 57-byte-per-instruction array with one shared operand buffer. All three tiers over it are public API.
 
-The **ergonomic tier** is ``Instruction``: full semantics, text, resolved targets. Use it everywhere that is not a measured hot loop.
+``Instruction`` is the ergonomic tier: full semantics, text, resolved targets. Use it everywhere that is not a measured hot loop.
 
-The **session tier** is ``InstructionStream/withSession(_:)``. It pins the buffers once and serves ``BorrowedInstruction`` views with no per-element reference counting, giving stable nanosecond-scale lookups and walks regardless of what the optimizer can prove at your call site. Use it for hot loops that touch operands.
+``InstructionStream/withSession(_:)`` pins the buffers once and serves ``BorrowedInstruction`` views with no per-element reference counting, giving stable nanosecond-scale lookups and walks regardless of what the optimizer can prove at your call site. Use it for hot loops that touch operands.
 
 ```swift
 let stores = stream.withSession { session -> Int in
@@ -67,11 +67,9 @@ let stores = stream.withSession { session -> Int in
 print(stores)                                     // 1 (the stp)
 ```
 
-That example reaches into ``BorrowedInstruction/record`` only because it wants the exact ``MemoryAccess`` case — a store, not an atomic. Everything the ergonomic tier exposes, the borrowed view carries directly: ``BorrowedInstruction/isCall``, `readsMemory`, `writesMemory`, `branchTarget`, the register sets, and the rest of the predicate and resolved-target surface. A call-graph or dataflow pass over a session never needs `record`; drop to it only for a packed field the projections do not name.
+That example reaches into ``BorrowedInstruction/record`` only because it wants the exact ``MemoryAccess`` case. The borrowed view carries the projections directly — ``BorrowedInstruction/isCall``, `readsMemory`, `branchTarget`, the register sets — so a call-graph or dataflow pass never needs `record`. Borrowed views must not escape the closure; the rules are on ``InstructionStream/withSession(_:)``.
 
-The closure scope is the safety contract — borrowed views must not escape it. The rules are documented on ``InstructionStream/withSession(_:)``.
-
-The **raw tier** is ``InstructionStream/records``, the packed ``InstructionRecord`` array itself, for scans needing only record fields at index-arithmetic cost.
+``InstructionStream/records`` is the raw tier, the packed ``InstructionRecord`` array itself, for scans needing only record fields at index-arithmetic cost.
 
 ```swift
 var undefinedWords = 0
@@ -83,7 +81,7 @@ print(undefinedWords)                             // 0
 
 ## Decoding around an arbitrary PC
 
-Streams need no section discipline — a window around a faulting PC works the same way. Decode it at the address your loader knows, then ask for the faulting instruction.
+A window around a faulting PC works the same way. Decode it at the address your loader knows, then ask for the faulting instruction.
 
 ```swift
 let pc: UInt64 = 0x1_0000_4008
@@ -94,4 +92,4 @@ if let at = window.instruction(at: pc) {
 }
 ```
 
-Buffers whose `baseAddress` sits near the top of the address space wrap modulo 2^64 by the documented address model: decode stays total, every record is reachable at the address it carries, and construction surfaces the wrap as a ``Diagnostic/Kind/addressSpaceWrapped(offset:)`` diagnostic.
+A `baseAddress` near the top of the address space wraps modulo 2^64: decode stays total, every record is reachable at the address it carries, and construction surfaces the wrap as a ``Diagnostic/Kind/addressSpaceWrapped(offset:)``.

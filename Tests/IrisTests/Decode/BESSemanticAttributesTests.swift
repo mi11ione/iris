@@ -5,12 +5,8 @@ import Iris
 import IrisValidation
 import Testing
 
-/// Validates `BESSemanticChecker.verify(draft:)` + `BESSemanticAttributes`
-/// Drives the checker through every kind of BES record
-/// — direct/call/indirect/return/conditional/exception/none branch
-/// classes — to confirm the checker accepts each correctly-formed
-/// record AND rejects deliberately-mutated drafts with the expected
-/// `BESSemanticIssue.field` discriminator.
+/// Validates `BESSemanticChecker.verify(draft:)` across every BES branch
+/// class.
 @Suite("BES / Semantic attributes + checker")
 struct BESSemanticAttributesTests {
     @Test func expectedBranchClassDirect() {
@@ -57,11 +53,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedBranchClassUDFIsException() {
-        // UDF is dispatcher-owned (op0=0 reserved tier) but routes to BES;
-        // it generates an Undefined Instruction exception — same class as
-        // BRK/HLT. The decode record carried .exception from the start
-        // (UDFDecodeTests); this pins the checker table's agreement
-        // (formerly the catalogued `udf-checker-branchclass` defect).
         #expect(BESSemanticAttributes.expectedBranchClass(for: .udf) == .exception)
         #expect(BESSemanticChecker.verify(decode(0x0000_0000, at: 0)) == nil)
         #expect(BESSemanticChecker.verify(decode(0x0000_ABCD, at: 0)) == nil)
@@ -128,7 +119,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func verifyAcceptsUndefined() {
-        // Undefined records are skipped — always nil regardless of state.
         let undef = Instruction(address: 0, encoding: 0xFFFF_FFFF, mnemonic: .undefined, category: .undefined)
         #expect(BESSemanticChecker.verify(undef) == nil)
     }
@@ -158,28 +148,24 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func verifyRejectsWrongBranchClass() {
-        // B should be .direct.
         let d = mutated(decode(0x1400_0000, at: 0), branchClass: .indirect)
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "branchClass")
     }
 
     @Test func verifyRejectsExtraneousSemanticReads() {
-        // B has empty reads expected — adding X5 should fail.
         let d = mutated(decode(0x1400_0000, at: 0), semanticReads: .empty.inserting(.x(5)))
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "semanticReads.extraneous")
     }
 
     @Test func verifyRejectsMissingSemanticReads() {
-        // BR X0 requires Rn (X0) in reads — empty it.
         let d = mutated(decode(0xD61F_0000, at: 0), semanticReads: .empty)
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "semanticReads.missing")
     }
 
     @Test func verifyRejectsWrongSemanticWrites() {
-        // BL must write X30 — wipe it.
         let d = mutated(decode(0x9400_0000, at: 0), semanticWrites: .empty)
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "semanticWrites")
@@ -242,9 +228,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskSysNoRegAliasIsEmpty() {
-        // IC IALLUIS takes no register (needsReg = false) — expected reads = {}.
-        // The checker mirrors the alias-table gating rather than deferring
-        // to whatever the decoder produced.
         let d = decode(0xD508_711F, at: 0)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
         #expect(r?.required == 0)
@@ -252,7 +235,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskSysWithRegAliasIsRt() {
-        // DC CVAC, X5 — needsReg = true; expected reads = {X5}.
         let d = decode(0xD50B_7A25, at: 0)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
         let x5Bit = UInt64(1) << 5
@@ -261,21 +243,18 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskSysUnknownAliasFallback() {
-        // Unknown SYS encoding with Rt != 31 → readsRt heuristic.
         let d = decode(0xD509_2380, at: 0)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
-        #expect(r?.required == 1) // Rt = 0
+        #expect(r?.required == 1)
     }
 
     @Test func expectedReadMaskSysUnknownAliasRtZrNoRead() {
-        // Unknown SYS with Rt = 31 → no read.
         let d = decode(0xD509_239F, at: 0)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
         #expect(r?.required == 0)
     }
 
     @Test func expectedReadMaskSyslIsEmpty() {
-        // SYSL never reads Rt (it WRITES Rt — see expectedWriteMask).
         let d = decode(0xD52B_7C20, at: 0)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
         #expect(r?.required == 0)
@@ -288,12 +267,11 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedWriteMaskMrsExtractsRt() {
-        let d = decode(0xD53B_D040, at: 0) // MRS X0
+        let d = decode(0xD53B_D040, at: 0)
         #expect(BESSemanticAttributes.expectedWriteMask(for: d) == 1)
     }
 
     @Test func expectedWriteMaskSyslExtractsRt() {
-        // SYSL X0, ... — writes X0 (Rt = 0).
         let d = decode(0xD52B_7C20, at: 0)
         #expect(BESSemanticAttributes.expectedWriteMask(for: d) == 1)
     }
@@ -304,11 +282,20 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedFlagEffectForFlagManipulators() {
-        #expect(BESSemanticAttributes.expectedFlagEffect(for: .cfinv) == [.writesC, .readsC])
-        #expect(BESSemanticAttributes.expectedFlagEffect(for: .xaflag) == [.nzcv, .readsNZCV])
-        #expect(BESSemanticAttributes.expectedFlagEffect(for: .axflag) == [.nzcv, .readsNZCV])
-        #expect(BESSemanticAttributes.expectedFlagEffect(for: .bCond) == .readsNZCV)
-        #expect(BESSemanticAttributes.expectedFlagEffect(for: .nop) == FlagEffect.none)
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD500_401F, at: 0)) == [.writesC, .readsC])
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD500_403F, at: 0)) == [.nzcv, .readsNZCV])
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD500_405F, at: 0)) == [.nzcv, .readsNZCV])
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0x5400_0000, at: 0)) == .readsNZCV)
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD503_201F, at: 0)) == FlagEffect.none)
+    }
+
+    @Test func expectedFlagEffectFollowsTheNZCVSystemRegister() {
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD51B_4200, at: 0)) == .nzcv)
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD53B_4200, at: 0)) == .readsNZCV)
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD51B_4020, at: 0)) == FlagEffect.none)
+        #expect(BESSemanticAttributes.expectedFlagEffect(for: decode(0xD53B_4020, at: 0)) == FlagEffect.none)
+        #expect(BESSemanticAttributes.namesNZCV(0xD51B_4200))
+        #expect(!BESSemanticAttributes.namesNZCV(0xD51B_4020))
     }
 
     @Test func expectedBranchClassCompareBranchFamily() {
@@ -321,17 +308,14 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskCompareBranchReadsBothRegisters() {
-        // CBGT w1, w2, #16 — register form reads Rt + Rm.
         let reg = decode(0x7400_0000 | 2 << 16 | 4 << 5 | 1)
         #expect(reg.mnemonic == .cbgt)
         let r = BESSemanticAttributes.expectedReadMask(for: reg)
         #expect(r?.required == ((UInt64(1) << 1) | (UInt64(1) << 2)))
-        // CBBGT / CBHGT byte/halfword forms read both registers too.
         let byte = decode(0x7400_0000 | 2 << 16 | 0b10 << 14 | 4 << 5 | 1)
         #expect(byte.mnemonic == .cbbgt)
         #expect(BESSemanticAttributes.expectedReadMask(for: byte)?.required
             == ((UInt64(1) << 1) | (UInt64(1) << 2)))
-        // CBGT w1, #5, #16 — immediate form reads only Rt.
         let imm = decode(0x7500_0000 | 5 << 15 | 4 << 5 | 1)
         #expect(imm.mnemonic == .cbgt)
         let ri = BESSemanticAttributes.expectedReadMask(for: imm)
@@ -339,7 +323,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskMrrsIsEmpty() {
-        // MRRS reads the system register only (it writes the GP pair).
         let d = decode(0xD570_0006)
         #expect(d.mnemonic == .mrrs)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
@@ -355,7 +338,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskSyspAliasedReadsPair() {
-        // TLBIP VAE1OS, x4, x5 — (op1=0, CRn=8, CRm=1, op2=1) is aliased.
         let d = decode(0xD548_0000 | 8 << 12 | 1 << 8 | 1 << 5 | 4)
         #expect(d.mnemonic == .sysp)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
@@ -364,7 +346,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskSyspGenericReadsPair() {
-        // Generic SYSP (no TLBIP alias) with Rt != 31 renders the pair.
         let d = decode(0xD548_0000 | 2)
         #expect(d.mnemonic == .sysp)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
@@ -380,9 +361,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskSyspAliasedRt31MatchesDecodedReads() {
-        // Aliased SYSP with Rt == 31 renders the xzr pair; checker and
-        // decoder agree on the encoding-31 bit (the pair collapses to one
-        // canonical index).
         let d = decode(0xD548_0000 | 8 << 12 | 1 << 8 | 1 << 5 | 31)
         #expect(d.mnemonic == .sysp)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
@@ -398,8 +376,6 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func expectedWriteMaskSyslAliasedGatesOnRt() {
-        // GCSPOPM (op1=3, CRn=7, CRm=7, op2=1) is `.optReg`: Rt != 31
-        // writes Rt; Rt == 31 writes nothing.
         let withReg = decode(0xD52B_7725)
         #expect(withReg.mnemonic == .sysl)
         #expect(BESSemanticAttributes.expectedWriteMask(for: withReg) == (UInt64(1) << 5))
@@ -423,19 +399,14 @@ struct BESSemanticAttributesTests {
         #expect(r.allowed == 2)
     }
 
-    /// `.msr` path of `expectedReadMask`: a real MSR-register draft
-    /// produces a mask whose required bit matches Rt (the last register
-    /// operand).
     @Test func expectedReadMaskForMsrExtractsRt() {
-        let d = decode(0xD51B_D040, at: 0) // MSR ..., X0
+        let d = decode(0xD51B_D040, at: 0)
         #expect(d.mnemonic == .msr)
         let r = BESSemanticAttributes.expectedReadMask(for: d)
-        #expect(r?.required == 1) // X0 bit
+        #expect(r?.required == 1)
         #expect(r?.allowed == 1)
     }
 
-    /// `.msr` defensive path: artificial draft with NO register operand
-    /// — the `lastRegisterMask` returns nil → 0/0xFFFF... fallback.
     @Test func expectedReadMaskForMsrWithoutRegisterReturnsWildcard() {
         let weird = Instruction(
             address: 0, encoding: 0, mnemonic: .msr,
@@ -447,22 +418,17 @@ struct BESSemanticAttributesTests {
         #expect(r?.allowed == 0xFFFF_FFFF_FFFF_FFFF)
     }
 
-    /// Variable-Rn case with operand list missing the register (defensive):
-    /// hits the `firstRegisterMask` nil branch.
     @Test func expectedReadMaskForBrWithoutRegisterReturnsWildcard() {
         let weird = Instruction(
             address: 0, encoding: 0, mnemonic: .br,
             category: .branchesExceptionSystem,
-            operands: [], // no register
+            operands: [],
         )
         let r = BESSemanticAttributes.expectedReadMask(for: weird)
         #expect(r?.required == 0)
         #expect(r?.allowed == 0xFFFF_FFFF_FFFF_FFFF)
     }
 
-    /// `expectedReadMask` default branch — pass a non-BES mnemonic. The
-    /// switch only enumerates BES mnemonics; anything else returns nil
-    /// so the checker defers to the decoder.
     @Test func expectedReadMaskForNonBesMnemonicReturnsNil() {
         let foreign = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
@@ -472,7 +438,6 @@ struct BESSemanticAttributesTests {
         #expect(BESSemanticAttributes.expectedReadMask(for: foreign) == nil)
     }
 
-    /// `expectedWriteMask` default branch — pass a non-BES mnemonic.
     @Test func expectedWriteMaskForNonBesMnemonicReturnsNil() {
         let foreign = Instruction(
             address: 0, encoding: 0, mnemonic: .add,
@@ -482,8 +447,6 @@ struct BESSemanticAttributesTests {
         #expect(BESSemanticAttributes.expectedWriteMask(for: foreign) == nil)
     }
 
-    /// `expectedWriteMask` MRS-empty-operand defensive: returns 0 via
-    /// the `?? 0` fallback when there's no register operand.
     @Test func expectedWriteMaskForMrsWithoutRegister() {
         let weird = Instruction(
             address: 0, encoding: 0, mnemonic: .mrs,
@@ -494,47 +457,35 @@ struct BESSemanticAttributesTests {
     }
 
     @Test func verifyRejectsSysWithMissingRtRead() {
-        // DC CVAC X0 reads X0 (needsReg=true). Mutate the draft to
-        // remove the read — checker must flag semanticReads.missing.
         let d = mutated(decode(0xD50B_7A20, at: 0), semanticReads: .empty)
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "semanticReads.missing")
     }
 
     @Test func verifyRejectsSysWithExtraneousRtRead() {
-        // IC IALLUIS (needsReg=false) shouldn't read Rt. Mutate the
-        // draft to add an extraneous read — checker must flag extraneous.
         let d = mutated(decode(0xD508_711F, at: 0), semanticReads: .empty.inserting(.x(5)))
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "semanticReads.extraneous")
     }
 
     @Test func verifyRejectsSyslWithMissingRtWrite() {
-        // SYSL X0, ... writes X0. Mutate the draft to drop the write —
-        // checker must flag semanticWrites.
         let d = mutated(decode(0xD52B_7C20, at: 0), semanticWrites: .empty)
         let issue = BESSemanticChecker.verify(d)
         #expect(issue?.field == "semanticWrites")
     }
 
-    // MARK: - HINT-space PAC implicit register sets (ARM ARM K1)
-
-    /// The checker accepts every HINT-space PAC form when the decoder
-    /// emits its implicit register set. This pins decoder↔checker
-    /// agreement on the corrected reads/writes.
     @Test func verifyAcceptsHintSpacePac() {
         for word: UInt32 in [
-            0xD503_20FF, // xpaclri
-            0xD503_211F, 0xD503_215F, 0xD503_219F, 0xD503_21DF, // *1716
-            0xD503_231F, 0xD503_233F, 0xD503_235F, 0xD503_237F, // paci{a,a sp,b,b sp}
-            0xD503_239F, 0xD503_23BF, 0xD503_23DF, 0xD503_23FF, // auti{a,a sp,b,b sp}
+            0xD503_20FF,
+            0xD503_211F, 0xD503_215F, 0xD503_219F, 0xD503_21DF,
+            0xD503_231F, 0xD503_233F, 0xD503_235F, 0xD503_237F,
+            0xD503_239F, 0xD503_23BF, 0xD503_23DF, 0xD503_23FF,
         ] {
             #expect(BESSemanticChecker.verify(decode(word, at: 0)) == nil,
                     "checker rejected hint-space PAC 0x\(String(word, radix: 16))")
         }
     }
 
-    /// SP-modifier forms read {x30, sp} and write {x30}.
     @Test func expectedMasksHintSpacePacSpForms() {
         let x30: UInt64 = 1 << 30
         let sp: UInt64 = 1 << 31
@@ -546,7 +497,6 @@ struct BESSemanticAttributesTests {
         }
     }
 
-    /// Zero-modifier forms and XPACLRI read {x30} and write {x30}.
     @Test func expectedMasksHintSpacePacZeroFormsAndXpaclri() {
         let x30: UInt64 = 1 << 30
         for word: UInt32 in [0xD503_231F, 0xD503_235F, 0xD503_239F, 0xD503_23DF, 0xD503_20FF] {
@@ -557,7 +507,6 @@ struct BESSemanticAttributesTests {
         }
     }
 
-    /// The *1716 forms read {x16, x17} and write {x17}.
     @Test func expectedMasksHintSpacePac1716Forms() {
         let x16: UInt64 = 1 << 16
         let x17: UInt64 = 1 << 17
@@ -569,16 +518,91 @@ struct BESSemanticAttributesTests {
         }
     }
 
-    /// Mutating a hint-space PAC draft to drop its required reads is
-    /// caught — proves the corrected mask is enforced, not merely emitted.
     @Test func verifyRejectsHintSpacePacWithMissingReads() {
-        let d = mutated(decode(0xD503_233F, at: 0), semanticReads: .empty) // paciasp
+        let d = mutated(decode(0xD503_233F, at: 0), semanticReads: .empty)
         #expect(BESSemanticChecker.verify(d)?.field == "semanticReads.missing")
     }
 
-    /// Mutating a hint-space PAC draft to drop its write is caught.
     @Test func verifyRejectsHintSpacePacWithMissingWrite() {
-        let d = mutated(decode(0xD503_237F, at: 0), semanticWrites: .empty) // pacibsp
+        let d = mutated(decode(0xD503_237F, at: 0), semanticWrites: .empty)
         #expect(BESSemanticChecker.verify(d)?.field == "semanticWrites")
+    }
+
+    @Test func expectedBranchClassCoversTheNewReturnsAndTIndex() {
+        for m: Mnemonic in [.retaasppc, .retabsppc, .retaasppcr, .retabsppcr, .texit, .texitNb] {
+            #expect(BESSemanticAttributes.expectedBranchClass(for: m) == .return)
+        }
+        #expect(BESSemanticAttributes.expectedBranchClass(for: .tenter) == .exception)
+        #expect(BESSemanticAttributes.expectedBranchClass(for: .tenterNb) == .exception)
+        for m: Mnemonic in [.tchangef, .tchangefNb, .tchangeb, .tchangebNb,
+                            .pacm, .stshh, .shuh, .stcph, .dfb]
+        {
+            #expect(BESSemanticAttributes.expectedBranchClass(for: m) == .none)
+        }
+    }
+
+    @Test func expectedMasksForTheNewHintAndBarrierAliases() {
+        for word: UInt32 in [0xD503_24FF, 0xD503_261F, 0xD503_265F, 0xD503_269F, 0xD503_3C9F] {
+            let d = decode(word, at: 0)
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.allowed == 0)
+            #expect(BESSemanticAttributes.expectedWriteMask(for: d) == 0)
+            #expect(BESSemanticChecker.verify(d) == nil)
+        }
+    }
+
+    @Test func expectedMasksForTheImmediateAndRegisterFormReturns() {
+        let x30: UInt64 = 1 << 30
+        let sp: UInt64 = 1 << 31
+        for word: UInt32 in [0x5500_003F, 0x5520_003F] {
+            let d = decode(word, at: 0)
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.required == (x30 | sp))
+            #expect(BESSemanticAttributes.expectedWriteMask(for: d) == 0)
+        }
+        for (word, modifier) in [(UInt32(0xD65F_0BE5), UInt64(5)), (UInt32(0xD65F_0FE0), UInt64(0))] {
+            let d = decode(word, at: 0)
+            #expect(BESSemanticAttributes.expectedReadMask(for: d)?.required
+                == (x30 | (UInt64(1) << modifier)))
+            #expect(BESSemanticAttributes.expectedWriteMask(for: d) == 0)
+        }
+    }
+
+    @Test func expectedMasksForTIndex() {
+        let d = decode(0xD580_00A2, at: 0)
+        #expect(BESSemanticAttributes.expectedReadMask(for: d)?.required == UInt64(1) << 5)
+        #expect(BESSemanticAttributes.expectedWriteMask(for: d) == UInt64(1) << 2)
+        let imm = decode(0xD590_0C77, at: 0)
+        #expect(BESSemanticAttributes.expectedReadMask(for: imm)?.required == 0)
+        #expect(BESSemanticAttributes.expectedWriteMask(for: imm) == UInt64(1) << 23)
+        let enter = decode(0xD4E0_0020, at: 0)
+        #expect(BESSemanticAttributes.expectedReadMask(for: enter)?.allowed == 0)
+        #expect(BESSemanticAttributes.expectedWriteMask(for: enter) == 0)
+    }
+
+    @Test func verifyRejectsTIndexWithAWrongDestination() {
+        let d = mutated(decode(0xD580_00A2, at: 0), semanticWrites: .empty)
+        #expect(BESSemanticChecker.verify(d)?.field == "semanticWrites")
+    }
+
+    @Test func expectedMasksForTheNewSysAliasKinds() {
+        let optionalComma = decode(0xD508_8102, at: 0)
+        #expect(optionalComma.text == "tlbi vmalle1os, x2")
+        #expect(BESSemanticAttributes.expectedReadMask(for: optionalComma)?.required == UInt64(1) << 2)
+        let bare = decode(0xD508_811F, at: 0)
+        #expect(bare.text == "tlbi vmalle1os")
+        #expect(BESSemanticAttributes.expectedReadMask(for: bare)?.allowed == 0)
+        let reversed = decode(0xD528_C302, at: 0)
+        #expect(reversed.text == "gicr x2, cdia")
+        #expect(BESSemanticAttributes.expectedWriteMask(for: reversed) == UInt64(1) << 2)
+        let reversedZero = decode(0xD528_C31F, at: 0)
+        #expect(reversedZero.text == "gicr xzr, cdia")
+        #expect(BESSemanticAttributes.expectedWriteMask(for: reversedZero) == UInt64(1) << 31)
+    }
+
+    @Test func expectedMasksFallBackWhenTheOperandListIsEmpty() {
+        let returnForm = mutated(decode(0xD65F_0BE5, at: 0), operands: [])
+        #expect(BESSemanticAttributes.expectedReadMask(for: returnForm)?.required == UInt64(1) << 30)
+        let change = mutated(decode(0xD580_00A2, at: 0), operands: [])
+        #expect(BESSemanticAttributes.expectedWriteMask(for: change) == 0)
+        #expect(BESSemanticAttributes.expectedReadMask(for: change)?.required == 0)
     }
 }

@@ -4,8 +4,8 @@
 import Iris
 import Testing
 
-/// Validates PrefetchOperation — the 5-bit composite operand for
-/// `PRFM` / `PRFUM` encoding `(operation, target, policy)`.
+/// Validates PrefetchOperation — the 5-bit composite operand for `PRFM` /
+/// `PRFUM` encoding `(operation, target, policy)`.
 @Suite("PrefetchOperation / composite-byte decomposition")
 struct PrefetchOperationCompositeTests {
     @Test func rawValueIsMaskedToFiveBits() {

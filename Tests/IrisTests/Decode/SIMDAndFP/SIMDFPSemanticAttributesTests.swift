@@ -5,10 +5,8 @@ import Iris
 import IrisValidation
 import Testing
 
-/// Validates the SIMDFPSemanticAttributes utility — per-mnemonic flag /
-/// memoryAccess / destination-reads-itself helpers — and the
-/// SIMDFPSemanticChecker that enforces universal invariants on SIMD/FP
-/// records.
+/// Validates the per-mnemonic SIMD/FP attribute helpers and the checker
+/// enforcing the universal invariants on SIMD/FP records.
 @Suite("SIMD/FP / SIMDFPSemanticAttributes.expectedFlagEffect")
 struct SIMDFPSemanticAttributesFlagEffectTests {
     @Test func fcmpExpectsNzcv() {
@@ -28,7 +26,6 @@ struct SIMDFPSemanticAttributesFlagEffectTests {
     }
 
     @Test func fcselReadsNzcv() {
-        // FCSEL consumes NZCV (the condition) but writes no flag.
         #expect(SIMDFPSemanticAttributes.expectedFlagEffect(for: .fcsel) == .readsNZCV)
     }
 
@@ -110,16 +107,14 @@ struct SIMDFPSemanticAttributesDestReadTests {
     }
 
     @Test func fmaddDoesNotReadDestinationItself() {
-        // FMADD/FMSUB/FNMADD/FNMSUB have explicit Ra accumulator — Rd is
-        // a pure write.
         for m: Mnemonic in [.fmadd, .fmsub, .fnmadd, .fnmsub] {
             #expect(!SIMDFPSemanticAttributes.destinationReadsItself(for: m))
         }
     }
 }
 
-/// Validates SIMDFPSemanticChecker.verify(draft:) for both passing
-/// records and the universal-invariant mismatches it catches.
+/// Validates SIMDFPSemanticChecker.verify(draft:) for both passing records and
+/// the universal-invariant mismatches it catches.
 @Suite("SIMD/FP / SIMDFPSemanticChecker.verify")
 struct SIMDFPSemanticCheckerTests {
     private func draft(
@@ -191,7 +186,6 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func wrongFlagEffectForFCmpReportsIssue() {
-        // FCMP requires .nzcv but record has .none.
         let d = draft(mnemonic: .fcmp, flagEffect: .none)
         let issue = SIMDFPSemanticChecker.verify(d)
         #expect(issue?.field == "flagEffect")
@@ -205,7 +199,6 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func mslShiftInShiftedRegisterReportsIssue() {
-        // MSL is valid only in .shiftAmount, not .shiftedRegister.
         let d = draft(mnemonic: .fadd, operands: [
             .shiftedRegister(reg: .x(0), shift: .msl, amount: 8),
         ])
@@ -214,7 +207,6 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func mslShiftInShiftAmountIsAccepted() {
-        // MSL inside .shiftAmount is valid.
         let d = draft(mnemonic: .movi, operands: [
             .shiftAmount(kind: .msl, amount: 8),
         ])
@@ -222,8 +214,6 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func nonMslShiftedRegisterAccepted() {
-        // A non-MSL shift in .shiftedRegister is fine — the operand-context
-        // discipline rejects only `.msl` there, not LSL.
         let d = draft(mnemonic: .fadd, operands: [
             .shiftedRegister(reg: .x(0), shift: .lsl, amount: 2),
         ])
@@ -231,23 +221,17 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func verifyAgreesWithTheDecoderForLoadsStoresAndDataProcessing() {
-        // Decoded vehicles spanning every read/write derivation arm:
-        // multi-structure load/store (with and without writeback),
-        // single-structure element forms (lane-preserving destination),
-        // scalar FP compare, accumulating multiply, ORR in both its
-        // immediate (read-modify-write) and register (pure-write) forms,
-        // and the element-view FMOV destination.
         let words: [UInt32] = [
-            0x0C40_0000, // ld4 {v0..v3.8b}, [x0]
-            0x0C9F_0000, // st4 {v0..v3.8b}, [x0], #32 (writeback)
-            0x0CDF_0000, // ld4 {v0..v3.8b}, [x0], #32 (writeback)
-            0x0D40_0000, // ld1 {v0.b}[0], [x0] (element destination)
-            0x0D00_0000, // st1 {v0.b}[0], [x0]
-            0x1E21_2020, // fcmp s1, s2
-            0x0E22_9420, // mla v0.8b, v1.8b, v2.8b
-            0x0F00_9420, // orr v0.4h, #1, lsl #8 (vector immediate)
-            0x0EA2_1C20, // orr v0.8b, v1.8b, v2.8b (register form)
-            0x9EAF_0020, // fmov v0.d[1], x1
+            0x0C40_0000,
+            0x0C9F_0000,
+            0x0CDF_0000,
+            0x0D40_0000,
+            0x0D00_0000,
+            0x1E21_2020,
+            0x0E22_9420,
+            0x0F00_9420,
+            0x0EA2_1C20,
+            0x9EAF_0020,
         ]
         for word in words {
             let d = decodeSIMD(word)
@@ -270,19 +254,15 @@ struct SIMDFPSemanticCheckerTests {
     @Test func loadAndStoreMasksDeriveFromTheOperandList() {
         let v0 = UInt64(1) << 32
         let x0 = UInt64(1) << 0
-        // LD1 single element: reads base + the lane-preserved destination;
-        // writes the destination vector.
         let ld1e = decodeSIMD(0x0D40_0000)
         #expect(ld1e.mnemonic == .ld1)
         #expect(SIMDFPSemanticAttributes.expectedReadMask(for: ld1e) == (x0 | v0))
         #expect(SIMDFPSemanticAttributes.expectedWriteMask(for: ld1e) == v0)
-        // ST4 with post-index writeback: reads v0..v3 + base; writes base.
         let st4wb = decodeSIMD(0x0C9F_0000)
         #expect(st4wb.mnemonic == .st4)
         let v0123 = v0 | v0 << 1 | v0 << 2 | v0 << 3
         #expect(SIMDFPSemanticAttributes.expectedReadMask(for: st4wb) == (x0 | v0123))
         #expect(SIMDFPSemanticAttributes.expectedWriteMask(for: st4wb) == x0)
-        // LD4 with writeback: writes v0..v3 + base; reads only the base.
         let ld4wb = decodeSIMD(0x0CDF_0000)
         #expect(ld4wb.mnemonic == .ld4)
         #expect(SIMDFPSemanticAttributes.expectedReadMask(for: ld4wb) == x0)
@@ -291,11 +271,9 @@ struct SIMDFPSemanticCheckerTests {
 
     @Test func orrDestructivenessDependsOnOperandForm() {
         let v0 = UInt64(1) << 32
-        // Vector-immediate ORR is a read-modify-write of Vd.
         let imm = decodeSIMD(0x0F00_9420)
         #expect(imm.mnemonic == .orr)
         #expect(SIMDFPSemanticAttributes.expectedReadMask(for: imm) == v0)
-        // Register-form ORR writes Vd without reading it.
         let reg = decodeSIMD(0x0EA2_1C20)
         #expect(reg.mnemonic == .orr)
         #expect(SIMDFPSemanticAttributes.expectedReadMask(for: reg) == (v0 << 1 | v0 << 2))
@@ -303,8 +281,6 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func elementViewDestinationIsAlsoRead() {
-        // FMOV v0.d[1], x1 writes one lane and preserves the other, so
-        // the destination vector is read as well as written.
         let d = decodeSIMD(0x9EAF_0020)
         #expect(d.mnemonic == .fmov)
         let v0 = UInt64(1) << 32
@@ -314,15 +290,12 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func cryptoCategoryRecordsAreSkipped() {
-        // AES/SHA share the op0 partition but belong to the crypto checker.
         let aese = decodeSIMD(0x4E28_48E5)
         #expect(aese.category == .crypto)
         #expect(SIMDFPSemanticChecker.verify(aese) == nil)
     }
 
     @Test func orderedSIMDFormsCarryTheirOrderingExpectations() {
-        // LDAP1/STL1 and LDAPUR/STLUR rows of the ordering table, driven
-        // through verify on decoded records.
         for word: UInt32 in [0x0D41_8420, 0x0D01_8420, 0x1D40_0820, 0x1D00_0820] {
             let d = decodeSIMD(word)
             #expect(SIMDFPSemanticChecker.verify(d) == nil, "0x\(String(word, radix: 16))")
@@ -340,8 +313,6 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func maskDerivationScansPastTrailingNonMemoryOperands() {
-        // The memory operand need not be last; the scan walks backward
-        // past trailing registers.
         let mem = MemoryOperand(base: .register(.x(1)), index: .x(2))
         let d = Instruction(
             mnemonic: .st1, category: .simdAndFP,
@@ -351,8 +322,6 @@ struct SIMDFPSemanticCheckerTests {
                 .register(.x(9)),
             ],
         )
-        // Reads: stored register + base + index (the trailing x9 sits
-        // after the memory operand and is not part of the stored data).
         let v0 = UInt64(1) << 32
         #expect(SIMDFPSemanticAttributes.expectedReadMask(for: d)
             == (v0 | (UInt64(1) << 1) | (UInt64(1) << 2)))
@@ -360,9 +329,6 @@ struct SIMDFPSemanticCheckerTests {
     }
 
     @Test func registerBitContributionsCoverEveryOperandForm() {
-        // Hand-built records drive the operand→bit projection through
-        // every register-carrying operand form plus the zero-register and
-        // non-register exclusions.
         let viaReads = { (ops: [Operand]) -> UInt64? in
             SIMDFPSemanticAttributes.expectedReadMask(for: Instruction(
                 mnemonic: .fadd, category: .simdAndFP, operands: ops,
@@ -382,9 +348,7 @@ private func decodeSIMD(_ e: UInt32) -> Instruction {
     Iris.decode(e, at: 0)
 }
 
-/// Validates SIMDFPSemanticIssue / SIMDFPExpectedReads — the value
-/// types returned by the checker. Round-trip equality and initializer
-/// sanity.
+/// Validates the checker's returned value types.
 @Suite("SIMD/FP / SIMDFPSemanticIssue value type")
 struct SIMDFPSemanticIssueValueTests {
     @Test func issueInitializerCapturesFields() {

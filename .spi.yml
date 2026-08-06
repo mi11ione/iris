@@ -3,3 +3,7 @@ builder:
   configs:
     - documentation_targets: [Iris]
       platform: macos-spm
+      # The catalogue is excluded from the target's file set (see
+      # Package.swift), so DocC is handed its path here instead of finding
+      # it through the target's sources.
+      custom_documentation_parameters: [Sources/Iris/Iris.docc]

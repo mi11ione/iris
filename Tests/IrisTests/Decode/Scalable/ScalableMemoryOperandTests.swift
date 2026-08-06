@@ -4,11 +4,8 @@
 import Iris
 import Testing
 
-/// Validates ScalableMemoryOperand — SVE addressing in both of its shapes:
-/// contiguous (`[Xn, #imm, mul vl]`, `[Xn, Xm, lsl #k]`) and gather/scatter
-/// (`[Xn, Zm.<T>, sxtw #scale]`, `[Zn.<T>, #imm]`). The operand records
-/// structure only; computing the effective address is Piece 4's job, so every
-/// field a consumer needs to do that must survive decode.
+/// Validates `ScalableMemoryOperand` in both shapes, contiguous and
+/// gather/scatter.
 @Suite("ScalableMemoryOperand / contiguous and gather-scatter addressing")
 struct ScalableMemoryOperandTests {
     @Test func contiguousGprBaseUsesTheDefaults() {
@@ -23,8 +20,6 @@ struct ScalableMemoryOperandTests {
     }
 
     @Test func aScalarIndexRecordsTheRegisterOffsetForm() {
-        // `[Xn, Xm, lsl #k]` — the register-offset address carries `Xm` in
-        // `scalarIndex`, distinct from the gather `Zm` vector index.
         let mem = ScalableMemoryOperand(base: .gpr(.x(3)), scalarIndex: .x(5), scaleShift: 2)
         #expect(mem.scalarIndex == RegisterRef.x(5))
         #expect(mem.index == nil)
@@ -32,8 +27,6 @@ struct ScalableMemoryOperandTests {
     }
 
     @Test func aVectorBaseWithAScalarIndexIsTheQuadwordGatherForm() {
-        // `[Zn.D, Xm]` — LD1Q / ST1Q and the vector-base non-temporal forms pair
-        // a vector base with a scalar `Xm` index and no `Zm` vector index.
         let base = ScalableVectorRef(registerIndex: 2, element: .d)
         let mem = ScalableMemoryOperand(base: .vector(base), scalarIndex: .x(4))
         #expect(mem.base == .vector(base))
@@ -42,8 +35,6 @@ struct ScalableMemoryOperandTests {
     }
 
     @Test func anAddressCarriesAtMostOneOfScalarOrVectorIndex() {
-        // The two index channels are disjoint by construction — a contiguous
-        // register offset uses `scalarIndex`; a gather uses `index`.
         let contiguous = ScalableMemoryOperand(base: .gpr(.x(0)), scalarIndex: .x(1))
         #expect(contiguous.scalarIndex != nil)
         #expect(contiguous.index == nil)
@@ -61,15 +52,12 @@ struct ScalableMemoryOperandTests {
     }
 
     @Test func mulVLAddressingMarksItsVectorLengthScaling() {
-        // `[Xn, #imm, mul vl]` — the displacement is in vector-length units,
-        // not bytes, so the flag is what tells a consumer how to scale it.
         let mem = ScalableMemoryOperand(base: .gpr(.x(3)), displacement: -8, mulVL: true)
         #expect(mem.mulVL)
         #expect(mem.displacement == -8)
     }
 
     @Test func displacementCarriesTheSignedMulVLRange() {
-        // The mul-vl immediate range is -32...31; Int32 covers it with room.
         for displacement: Int32 in [-32, -1, 0, 1, 31] {
             let mem = ScalableMemoryOperand(base: .gpr(.x(0)), displacement: displacement, mulVL: true)
             #expect(mem.displacement == displacement)
@@ -87,7 +75,6 @@ struct ScalableMemoryOperandTests {
     }
 
     @Test func gatherWithGprBaseAndVectorIndexCarriesExtendAndScale() {
-        // `[X1, Z2.S, sxtw #2]` — a 32-bit-index gather.
         let index = ScalableVectorRef(registerIndex: 2, element: .s)
         let mem = ScalableMemoryOperand(
             base: .gpr(.x(1)), index: index, indexExtend: .sxtw, scaleShift: 2,
@@ -117,7 +104,6 @@ struct ScalableMemoryOperandTests {
     }
 
     @Test func vectorBaseWithImmediateIsRepresentable() {
-        // `[Z0.D, #16]` — the vector-plus-immediate gather form.
         let base = ScalableVectorRef(registerIndex: 0, element: .d)
         let mem = ScalableMemoryOperand(base: .vector(base), displacement: 16)
         #expect(mem.base == .vector(base))
@@ -132,8 +118,6 @@ struct ScalableMemoryOperandTests {
     }
 
     @Test func baseAndIndexResolveToTheirSemanticReads() {
-        // A gather reads the GPR base and the Z index: the base lands in the
-        // GPR half of the mask, the index on the shared SIMD/Z bit.
         let index = ScalableVectorRef(registerIndex: 9, element: .d)
         let mem = ScalableMemoryOperand(base: .gpr(.x(2)), index: index, indexExtend: .lsl, scaleShift: 3)
         var reads = RegisterSet.empty

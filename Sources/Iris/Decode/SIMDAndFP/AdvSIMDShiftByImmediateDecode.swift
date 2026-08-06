@@ -1,17 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD vector shift-by-immediate per
-// ARM ARM § C4.1.96.31. Encoding: `0 Q U 0 1111 0 immh immb opcode 1
-// Rn Rd` with immh != 0000. The immh field encodes the element size by
-// first-set-bit position (immh[3]=1 ⇒ D, [2]=1 ⇒ S, [1]=1 ⇒ H,
-// [0]=1 ⇒ B). The shift amount depends on opcode kind (left-shift or
-// right-shift):
-//   left:  shift = concat(immh, immb) - elementBits
-//   right: shift = (2 * elementBits) - concat(immh, immb)
-//
-// SXTL/UXTL aliases of SSHLL/USHLL emit when shift == 0 (i.e. immb=000
-// and immh has exactly one bit set).
 
 enum AdvSIMDShiftByImmediateDecode {
     @_optimize(speed)
@@ -24,14 +12,9 @@ enum AdvSIMDShiftByImmediateDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // bit23 is a fixed 0 for shift-by-immediate (immh is bits[22:19]);
-        // bit23=1 is reserved. immh == 0 with bit23 == 0 never arrives —
-        // the dispatcher routes bits[23:19] == 0 to modified-immediate.
         if (encoding >> 23) & 1 == 1 { return .undefined(at: address, encoding: encoding) }
-        // Element size from first-set-bit of immh.
         let (elementSize, arrSrcQ0, arrSrcQ1): (ScalarSize, VectorArrangement, VectorArrangement)
         if (immh & 0b1000) != 0 {
-            // D-element — Q must be 1 for SSHLL/USHLL family; for SSHL/SHL/etc. Q must be 1.
             elementSize = .d
             arrSrcQ0 = .d1; arrSrcQ1 = .d2
         } else if (immh & 0b0100) != 0 {
@@ -45,20 +28,15 @@ enum AdvSIMDShiftByImmediateDecode {
         let immhb = (UInt32(immh) << 3) | UInt32(immb)
         let srcArrangement: VectorArrangement = Q == 1 ? arrSrcQ1 : arrSrcQ0
 
-        // (U, opcode) determines mnemonic + shift-direction (left vs right).
         let info = mnemonicAndShift(U: U, opcode: opcode)
         guard let resolved = info else {
             return .undefined(at: address, encoding: encoding)
         }
-        // Per-kind element-size (immh) validity.
         switch resolved.kind {
         case .narrowing, .lengthening:
-            // immh[3]=1 (D element) is reserved for narrow / lengthen forms.
             if elementSize == .d { return .undefined(at: address, encoding: encoding) }
         case .sameShape:
-            // .1D (D element, Q=0) is reserved for every same-shape shift.
             if elementSize == .d, Q == 0 { return .undefined(at: address, encoding: encoding) }
-            // SCVTF/UCVTF/FCVTZS/FCVTZU need an H/S/D element; B is reserved.
             if elementSize == .b,
                resolved.mnemonic == .scvtf || resolved.mnemonic == .ucvtf
                || resolved.mnemonic == .fcvtzs || resolved.mnemonic == .fcvtzu
@@ -71,14 +49,6 @@ enum AdvSIMDShiftByImmediateDecode {
         case .right: UInt8((elementBits &* 2) &- immhb)
         }
 
-        // SSHLL/USHLL with shift=0 are NOT rendered as the SXTL/UXTL alias:
-        // llvm-mc disassembles them as `sshll/ushll …, #0`, so they flow
-        // through the standard lengthening 3-operand form below.
-
-        // Build the standard 3-operand form: [Vd, Vn, #shift]. For narrowing
-        // shifts immh encodes the DESTINATION element (Q selects the low/high
-        // half) and the source is the 128-bit 2x-widened arrangement;
-        // lengthening is the inverse.
         let dstArrangement: VectorArrangement
         let sourceArrangement: VectorArrangement
         switch resolved.kind {
@@ -93,10 +63,6 @@ enum AdvSIMDShiftByImmediateDecode {
             sourceArrangement = srcArrangement
         }
 
-        // Promote narrowing/lengthening mnemonics to their "2" suffix
-        // form when Q=1 (e.g. SHRN → SHRN2). The .sameShape mnemonics
-        // (SSHR/SSRA/etc.) don't have *2 variants — only shape-changing
-        // ones do.
         let mnemonic = q1SuffixedMnemonic(resolved.mnemonic, Q: Q)
         let destReadsItself = simdFPDestinationReadsItself(mnemonic)
         var reads = simdfpInsertingVector(Rn, into: .empty)
@@ -114,8 +80,7 @@ enum AdvSIMDShiftByImmediateDecode {
         )
     }
 
-    /// Map narrowing/lengthening mnemonics to their "2" suffix form
-    /// when Q=1. Non-shape-changing mnemonics pass through unchanged.
+    /// Map narrowing/lengthening mnemonics to their "2" suffix form when Q=1.
     @inline(__always)
     @_effects(readonly)
     private static func q1SuffixedMnemonic(_ m: Mnemonic, Q: UInt8) -> Mnemonic {
@@ -185,12 +150,10 @@ enum AdvSIMDShiftByImmediateDecode {
     private static func lengthenedArrangement(
         for elementSize: ScalarSize,
     ) -> VectorArrangement {
-        // SSHLL/USHLL source is B/H/S; .d/.q never reach here in real
-        // encodings. Default catches .s (reachable) + sentinels for .d/.q.
         switch elementSize {
         case .b: .h8
         case .h: .s4
-        default: .d2 // .s lengthens to .d2; .d/.q sentinel fall-through.
+        default: .d2
         }
     }
 }

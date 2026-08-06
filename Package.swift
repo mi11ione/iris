@@ -17,8 +17,17 @@ let package = Package(
         ),
     ],
     targets: [
+        // Iris.docc is excluded from the module's file set because SwiftPM's
+        // Swift Build path is not given the `.docc` ignore rule its native path
+        // has (swiftlang/swift-package-manager#10295, cherry-picked to 6.4.x in
+        // #10329), so the catalogue reads there as an unhandled file and warns.
+        // Declaring it a resource instead silences the warning by generating a
+        // Foundation-importing, fatalError-carrying bundle accessor into the
+        // library, which the zero-import contract forbids. The catalogue is
+        // still built into the documentation: .spi.yml hands DocC its path.
         .target(
             name: "Iris",
+            exclude: ["Iris.docc"],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ],

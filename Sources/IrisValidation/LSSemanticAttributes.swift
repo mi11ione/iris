@@ -1,14 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Per-mnemonic semantic attribute tables and verification
-// for the Loads & Stores family, mirroring DPRSemanticAttributes. Every
-// L/S record carries category == .loadsAndStores, branchClass == .none,
-// flagEffect == .none; the per-mnemonic tables further pin memoryAccess,
-// memoryOrdering, operand shape, and the semanticReads/writes masks.
-
-// Concrete semantic-field discrepancy between a decoded record and the
-// per-mnemonic expectation. Returned by ``LSSemanticChecker/verify(_:)``.
 
 import Iris
 
@@ -31,20 +22,12 @@ public struct LSSemanticIssue: Sendable, Equatable {
 }
 
 /// A whole operand shape packed into one word.
-///
-/// The shape table used to hand back a `[LSOperandKind]`. Even cached in a
-/// `static let`, every lookup on the verification path paid a `swift_once`
-/// guard for the global plus a retain and a release of the returned array,
-/// on a path that allocates nothing else. The shape is at most five
-/// operands drawn from four kinds, so it fits in thirteen bits: a trivial
-/// value that is compared, not referenced.
 @frozen
 public struct LSOperandShape: Sendable, Equatable {
     /// bits [2:0] operand count; bits [4+2k:3+2k] the kind of operand `k`.
     @usableFromInline let packed: UInt16
 
-    /// Widest shape the table describes (`CASP`: two register pairs plus
-    /// the base).
+    /// Widest shape the table describes (`CASP`.
     @usableFromInline static let maxCount = 5
 
     init(_ kinds: LSOperandKind...) {
@@ -66,14 +49,10 @@ public struct LSOperandShape: Sendable, Equatable {
         return LSOperandKind(code: UInt8((packed >> UInt16(3 + 2 * index)) & 0b11))
     }
 
-    /// The shape as a list — the published form, derived from the packed
-    /// value so the two can never describe different shapes.
+    /// The shape as a list.
     public var kinds: [LSOperandKind] {
         var out: [LSOperandKind] = []
         out.reserveCapacity(count)
-        // Every index here is in range by construction, so this reads the
-        // packed field directly rather than through the bounds-checking
-        // ``kind(at:)`` — which would leave a branch nothing can take.
         for i in 0 ..< count {
             out.append(LSOperandKind(code: UInt8((packed >> UInt16(3 + 2 * i)) & 0b11)))
         }
@@ -114,16 +93,11 @@ public enum LSOperandKind: Sendable, Equatable {
 }
 
 /// Per-record semantic-field verification against the spec table.
-/// Returns `nil` when the record matches every expected attribute;
-/// returns the first mismatch otherwise.
 public enum LSSemanticChecker {
     @_effects(readonly)
     @_optimize(speed)
     public static func verify(_ instruction: Instruction) -> LSSemanticIssue? {
         if instruction.mnemonic == .undefined { return nil }
-        // MTE L/S records flow through the L/S family decoder via the
-        // case 0b011001 bit-21 dispatch; their semantic attributes are
-        // verified by the crypto/Apple-extensions checker, not this one.
         if cryptoAppleExtensionsOwns(instruction.mnemonic) { return nil }
         if instruction.branchClass != .none {
             return LSSemanticIssue(
@@ -233,10 +207,6 @@ public enum LSSemanticChecker {
 
 /// Per-mnemonic semantic-attribute lookups.
 public enum LSSemanticAttributes {
-    // Operand shapes as packed words. These are trivial values, so a lookup
-    // is a load — no `swift_once` guard for a global array, and no retain
-    // and release of a returned reference on a path that otherwise
-    // allocates nothing.
     private static let shapeRegMem = LSOperandShape(.register, .memory)
     private static let shapeRegRegMem = LSOperandShape(.register, .register, .memory)
     private static let shapeRegRegRegMem = LSOperandShape(
@@ -246,14 +216,13 @@ public enum LSSemanticAttributes {
         .register, .register, .register, .register, .memory,
     )
     private static let shapePrfMem = LSOperandShape(.prefetchOperation, .memory)
-    // FEAT_MOPS: three working registers, no memory operand in the list.
+    private static let shapeRegReg = LSOperandShape(.register, .register)
     private static let shapeRegRegReg = LSOperandShape(.register, .register, .register)
-    /// FEAT_RPRES RPRFM: range-prefetch op (immediate) + range register + base.
+    /// FEAT_RPRES RPRFM: range-prefetch op (immediate) + range register +
+    /// base.
     private static let shapeImmRegMem = LSOperandShape(.immediate, .register, .memory)
 
-    /// Architecturally-correct `FlagEffect` for an L/S mnemonic. Every
-    /// L/S instruction is `.none` (no NZCV write); this method exists for
-    /// API consistency with ``DPRSemanticAttributes/expectedFlagEffect(for:)``.
+    /// Architecturally-correct `FlagEffect` for an L/S mnemonic.
     @_effects(readonly)
     public static func expectedFlagEffect(for _: Mnemonic) -> FlagEffect {
         .none
@@ -304,17 +273,15 @@ public enum LSSemanticAttributes {
             return .prefetch
         case .ldiapp:
             return .load
-        case .stilp, .gcsstr, .gcssttr:
+        case .stilp, .gcsstr, .gcssttr, .stlp:
             return .store
+        case .ldap, .ldapp:
+            return .load
         default:
-            // LSE RMW 2113..2220 + ST-aliases 2221..2268 + CAS 2269..2284
-            // all return .atomic; the raw-value range covers the entire
-            // LSE+CAS block allocated in Mnemonic+LoadsAndStores.swift.
-            // LSE128 (2318..2329) + MOPS (2330..2449) + LSUI/RCW atomics
-            // (2450..2529) are atomic too.
             let r = m.rawValue
             if (2113 ... 2284).contains(r) || (2318 ... 2449).contains(r)
                 || (2450 ... 2529).contains(r) || (2534 ... 2539).contains(r)
+                || (2540 ... 2551).contains(r)
             {
                 return .atomic
             }
@@ -325,9 +292,6 @@ public enum LSSemanticAttributes {
     @_effects(readonly)
     @_optimize(speed)
     public static func expectedMemoryOrdering(for m: Mnemonic) -> MemoryOrdering? {
-        // Gate on memory-access membership so out-of-family mnemonics fall
-        // through to `nil` rather than the implicit `[]` default — the
-        // checker can then skip the ordering check for non-L/S drafts.
         guard expectedMemoryAccess(for: m) != nil else { return nil }
         switch m {
         case .ldar, .ldarb, .ldarh,
@@ -349,17 +313,13 @@ public enum LSSemanticAttributes {
             return [.acquire, .release]
         case .sttxr, .ldtxr, .cast, .caspt:
             return []
+        case .ldap, .ldapp:
+            return [.acquire]
+        case .stlp:
+            return [.release]
         default:
-            // LSE atomics: the (A,R) suffix is encoded in the within-block
-            // mnemonic position. LSE RMW base forms (2113..2220) are 9 ops ×
-            // 3 size-groups × 4 orderings = 12 entries per op; the ordering
-            // index is ((offset % 12) % 4) → plain / A / L / AL. ST-alias
-            // forms (2221..2268) collapse only the A=0 orderings into a
-            // 6-entry-per-op block, so even within-block index is plain and
-            // odd is release. CAS forms (2269..2284) use 4-ordering blocks.
             let r = m.rawValue
             if (2113 ... 2220).contains(r) {
-                // ordIndex ∈ {0,1,2,3} all enumerated; 3 (AL) is `default`.
                 switch ((r - 2113) % 12) % 4 {
                 case 0: return []
                 case 1: return [.acquire]
@@ -371,7 +331,6 @@ public enum LSSemanticAttributes {
                 return (r - 2221) % 2 == 0 ? [] : [.release]
             }
             if (2269 ... 2284).contains(r) {
-                // ordIndex ∈ {0,1,2,3} all enumerated; 3 (AL) is `default`.
                 switch (r - 2269) % 4 {
                 case 0: return []
                 case 1: return [.acquire]
@@ -380,7 +339,6 @@ public enum LSSemanticAttributes {
                 }
             }
             if (2318 ... 2329).contains(r) {
-                // LSE128: 3 ops × 4 orderings [plain, A, L, AL].
                 switch (r - 2318) % 4 {
                 case 0: return []
                 case 1: return [.acquire]
@@ -389,7 +347,6 @@ public enum LSSemanticAttributes {
                 }
             }
             if (2450 ... 2529).contains(r) {
-                // LSUI / RCW atomics: 4-ordering blocks [plain, L, A, AL].
                 switch (r - 2450) % 4 {
                 case 0: return []
                 case 1: return [.release]
@@ -397,22 +354,17 @@ public enum LSSemanticAttributes {
                 default: return [.acquire, .release]
                 }
             }
-            if r == 2530 { return [.release] } // stilp
-            if r == 2531 { return [.acquire] } // ldiapp
-            if r == 2532 || r == 2533 { return [] } // gcsstr / gcssttr
+            if r == 2530 { return [.release] }
+            if r == 2531 { return [.acquire] }
+            if r == 2532 || r == 2533 { return [] }
             if (2534 ... 2539).contains(r) {
-                // LSUI ST-aliases: [plain, L] pairs.
                 return (r - 2534) % 2 == 0 ? [] : [.release]
             }
-            // LS64 (2314..2317) and MOPS (2330..2449) carry no ordering.
             return [] as MemoryOrdering
         }
     }
 
-    /// The per-mnemonic operand shape as a list. Derived from
-    /// ``packedOperandShape(for:)`` — one table, two views, so they cannot
-    /// describe different shapes. The verification path uses the packed
-    /// form; this is for callers that want to read the shape.
+    /// The per-mnemonic operand shape as a list.
     @_effects(readonly)
     public static func expectedOperandShape(for m: Mnemonic) -> [LSOperandKind]? {
         packedOperandShape(for: m)?.kinds
@@ -457,34 +409,30 @@ public enum LSSemanticAttributes {
             return shapeRegRegMem
         case .rprfm:
             return shapeImmRegMem
-        case .stilp, .ldiapp:
+        case .stilp, .ldiapp, .ldap, .ldapp, .stlp:
             return shapeRegRegMem
         case .gcsstr, .gcssttr:
             return shapeRegMem
         default:
-            // LSE RMW base and CAS non-pair: 3-operand. LSE ST-alias drops
-            // Rt → 2-operand. CASP carries two pairs → 5-operand.
             let r = m.rawValue
             if (2113 ... 2220).contains(r) {
                 return shapeRegRegMem
             }
-            // LSE128 (2318..2329): Xt, Xs, [Xn].
             if (2318 ... 2329).contains(r) {
                 return shapeRegRegMem
             }
-            // MOPS (2330..2449): three working registers.
             if (2330 ... 2449).contains(r) {
                 return shapeRegRegReg
             }
-            // LSUI atomics + RCW non-pair/cas/pair (2450..2521): 3-operand.
+            if (2540 ... 2551).contains(r) {
+                return shapeRegReg
+            }
             if (2450 ... 2521).contains(r) {
                 return shapeRegRegMem
             }
-            // RCW CASP (2522..2529): two pairs + base → 5-operand.
             if (2522 ... 2529).contains(r) {
                 return shapeRegRegRegRegMem
             }
-            // LSUI ST-aliases (2534..2539): Rt dropped → 2-operand.
             if (2534 ... 2539).contains(r) {
                 return shapeRegMem
             }
@@ -502,9 +450,6 @@ public enum LSSemanticAttributes {
     }
 
     /// Expected semantic-reads bitmask derived from the operand list.
-    /// Returns nil for mnemonics whose operand layout is too complex to
-    /// summarize. Skips ZR/WZR per the `insertingNonZero(reg:into:)`
-    /// convention (only SP-role is included for the encoding-31 slot).
     @_effects(readonly)
     @_optimize(speed)
     public static func expectedReadMask(for instruction: Instruction) -> UInt64? {
@@ -513,7 +458,6 @@ public enum LSSemanticAttributes {
         }
         let ops = instruction.operands
         let r = instruction.mnemonic.rawValue
-        // FEAT_RPRES RPRFM: reads the range register (op[1]) + base (op[2]).
         if r == 2313 {
             var mask: UInt64 = 0
             if ops.count >= 2, case let .register(rm) = ops[1], !rm.isZeroRegister {
@@ -524,27 +468,21 @@ public enum LSSemanticAttributes {
             }
             return mask
         }
-        // FEAT_LS64 st64bv/st64bv0: read Xt (op[1]) + base; op[0] (Xs) is the
-        // status output, not a read.
         if r == 2316 || r == 2317 {
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask: UInt64 = memoryBaseAndIndexMask(found.memory)
             mask |= registerMaskBits(ops, over: 1 ..< found.index)
             return mask
         }
-        // FEAT_LSE128: reads Xt + Xs + base.
         if (2318 ... 2329).contains(r) {
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask: UInt64 = memoryBaseAndIndexMask(found.memory)
             mask |= registerMaskBits(ops, over: 0 ..< found.index)
             return mask
         }
-        // FEAT_MOPS: read-modify-write reads all three working registers.
-        if (2330 ... 2449).contains(r) {
+        if (2330 ... 2449).contains(r) || (2540 ... 2551).contains(r) {
             return registerMaskBits(ops, over: 0 ..< ops.count)
         }
-        // FEAT_LSUI atomics (2450..2465) + ST-aliases (2534..2539): read Rs
-        // (op[0]) + base; the RMW base also writes Rt, the alias drops it.
         if (2450 ... 2465).contains(r) || (2534 ... 2539).contains(r) {
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask: UInt64 = memoryBaseAndIndexMask(found.memory)
@@ -553,9 +491,6 @@ public enum LSSemanticAttributes {
             }
             return mask
         }
-        // FEAT_THE RCW (2466..2529): read-check-write reads every register
-        // operand (the check value, the new value, and the pair partners) plus
-        // the base.
         if (2466 ... 2529).contains(r) {
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask: UInt64 = memoryBaseAndIndexMask(found.memory)
@@ -567,15 +502,11 @@ public enum LSSemanticAttributes {
             guard let found = lastMemoryOperand(ops) else { return nil }
             return memoryBaseAndIndexMask(found.memory)
         case .store:
-            // Plain stores read operand[0..memIdx-1] as data (Rt[, Rt2]) plus
-            // memory base/index. Exclusive stores use the .exclusiveStore arm
-            // which skips operand[0] (Rs).
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask: UInt64 = memoryBaseAndIndexMask(found.memory)
             mask |= registerMaskBits(ops, over: 0 ..< found.index)
             return mask
         case .exclusiveStore:
-            // Reads Rt[+Rt2] + base; operand[0] (Rs) is the written status.
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask: UInt64 = memoryBaseAndIndexMask(found.memory)
             mask |= registerMaskBits(ops, over: 1 ..< found.index)
@@ -589,19 +520,13 @@ public enum LSSemanticAttributes {
             let r = instruction.mnemonic.rawValue
             let isCAS = (2269 ... 2284).contains(r) || (2305 ... 2312).contains(r)
             if isCAS {
-                // CAS / CASP read every register operand (Rs + Rt and the
-                // pair partners for CASP).
                 mask |= registerMaskBits(ops, over: 0 ..< found.index)
             } else if found.index >= 1, case let .register(reg) = ops[0],
                       !reg.isZeroRegister
             {
-                // LSE RMW base / ST alias read operand[0] (Rs) only; Rt for
-                // RMW base is a write of the loaded original, not a read.
                 mask |= UInt64(1) << UInt64(reg.canonicalIndex)
             }
             return mask
-        // `.prefetch` is `default`; `expectedMemoryAccess` never yields
-        // `.none`, so the six real access kinds are all enumerated.
         default:
             guard let found = lastMemoryOperand(ops) else { return nil }
             return memoryBaseAndIndexMask(found.memory)
@@ -609,7 +534,6 @@ public enum LSSemanticAttributes {
     }
 
     /// Expected semantic-writes bitmask derived from the operand list.
-    /// Returns nil for mnemonics whose operand layout is too complex.
     @_effects(readonly)
     @_optimize(speed)
     public static func expectedWriteMask(for instruction: Instruction) -> UInt64? {
@@ -618,49 +542,39 @@ public enum LSSemanticAttributes {
         }
         let ops = instruction.operands
         let r = instruction.mnemonic.rawValue
-        // FEAT_LS64 st64bv/st64bv0: write the status register op[0] (Xs).
         if r == 2316 || r == 2317 {
             if case let .register(rs) = ops.first {
                 return rs.isZeroRegister ? 0 : (UInt64(1) << UInt64(rs.canonicalIndex))
             }
             return nil
         }
-        // FEAT_LSE128: writes Xt (op[0], the loaded original pair).
         if (2318 ... 2329).contains(r) {
             if case let .register(rt) = ops.first {
                 return rt.isZeroRegister ? 0 : (UInt64(1) << UInt64(rt.canonicalIndex))
             }
             return nil
         }
-        // FEAT_MOPS: CPY/CPYF (2330..2425) write all three working registers;
-        // SET/SETG (2426..2449) write Xd (op[0]) + Xn (op[1]); the data
-        // register Xs (op[2]) is read-only.
         if (2330 ... 2425).contains(r) {
             return registerMaskBits(ops, over: 0 ..< ops.count)
         }
-        if (2426 ... 2449).contains(r) {
+        if (2426 ... 2449).contains(r) || (2540 ... 2551).contains(r) {
             return registerMaskBits(ops, over: 0 ..< min(2, ops.count))
         }
-        // FEAT_LSUI atomics (2450..2465) + RCW non-pair/cas (2466..2497):
-        // RMW base, write Rt (op[1], the loaded original).
         if (2450 ... 2497).contains(r) {
             if ops.count >= 2, case let .register(rt) = ops[1] {
                 return rt.isZeroRegister ? 0 : (UInt64(1) << UInt64(rt.canonicalIndex))
             }
             return nil
         }
-        // RCW pairs (2498..2521): write Rt (op[0]).
         if (2498 ... 2521).contains(r) {
             if case let .register(rt) = ops.first {
                 return rt.isZeroRegister ? 0 : (UInt64(1) << UInt64(rt.canonicalIndex))
             }
             return nil
         }
-        // RCW CASP (2522..2529): write the Rs pair (op[0], op[1]).
         if (2522 ... 2529).contains(r) {
             return registerMaskBits(ops, over: 0 ..< min(2, ops.count))
         }
-        // LSUI ST-aliases (2534..2539): the loaded value is discarded → no write.
         if (2534 ... 2539).contains(r) {
             return 0
         }
@@ -668,7 +582,6 @@ public enum LSSemanticAttributes {
         case .load:
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask: UInt64 = registerMaskBits(ops, over: 0 ..< found.index)
-            // Writeback (pre/post-index) also writes the base register.
             if found.memory.writeback != .none {
                 if case let .register(baseReg) = found.memory.base, !baseReg.isZeroRegister {
                     mask |= UInt64(1) << UInt64(baseReg.canonicalIndex)
@@ -722,16 +635,11 @@ public enum LSSemanticAttributes {
             if isLSEAlias {
                 return 0
             }
-            // The four atomic sub-ranges (CAS non-pair, CASP, LSE alias, LSE
-            // RMW base) partition rawValue 2113...2284 exactly, and
-            // `expectedMemoryAccess` yields `.atomic` only for that range, so
-            // the remaining case is LSE RMW base — it writes Rt (operand[1]).
             if ops.count >= 2, case let .register(rtReg) = ops[1] {
                 if rtReg.isZeroRegister { return 0 }
                 return UInt64(1) << UInt64(rtReg.canonicalIndex)
             }
             return nil
-        // `.prefetch` is `default`; `expectedMemoryAccess` never yields `.none`.
         default:
             return 0
         }

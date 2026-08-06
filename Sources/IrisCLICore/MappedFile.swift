@@ -1,10 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Copied and trimmed from Aperture's IO/MappedFile.swift: the synthesized
-// heap-backed constructor and Darwin-only resilience flags are dropped
-// (the latter kept behind a platform check), everything else is the same
-// proven bounds-checked read substrate the parent pipeline uses.
 
 #if canImport(Darwin)
     import Darwin
@@ -13,17 +8,6 @@
 #endif
 
 /// A safe, zero-copy, bounds-checked view over a file's bytes.
-///
-/// `MappedFile` opens a file at construction and memory-maps it read-only,
-/// then exposes typed reads, buffer views, string reads, and sub-range
-/// windows over the resulting region. Every read is bounds-checked; reads
-/// at out-of-range offsets return `nil` instead of dereferencing memory.
-///
-/// The mapping is owned by the value's underlying class instance and is
-/// unmapped exactly once, when the last `MappedFile` referencing it is
-/// deallocated. Sub-range views constructed via ``subFile(at:length:)``
-/// share the underlying mapping; they are pure pointer arithmetic and
-/// keep the mapping alive transitively.
 @frozen
 public struct MappedFile: Sendable {
     @usableFromInline let mapping: Mapping
@@ -31,19 +15,7 @@ public struct MappedFile: Sendable {
     @usableFromInline let windowLength: Int
     @usableFromInline let originPath: String
 
-    /// Maps the file at `path` into memory and constructs a `MappedFile`
-    /// over its full contents.
-    ///
-    /// The file must be a regular file with size strictly greater than
-    /// zero, readable by the calling user. Symlinks are followed
-    /// transparently. The file descriptor is closed before this
-    /// initializer returns; the kernel keeps the mapping alive via the
-    /// underlying inode regardless of any later rename, unlink, or close.
-    ///
-    /// - Parameter path: filesystem path, absolute or relative.
-    /// - Returns: `nil` if the file does not exist, is not a regular file,
-    ///   is empty, is permission-restricted, or if `open`, `fstat`, or
-    ///   `mmap` fails for any reason.
+    /// Maps the file at `path` into memory over its full contents.
     public init?(path: String) {
         let fd = path.withCString { open($0, O_RDONLY | O_CLOEXEC | O_NONBLOCK) }
         guard fd >= 0 else { return nil }
@@ -94,8 +66,7 @@ public struct MappedFile: Sendable {
         self.originPath = originPath
     }
 
-    /// Number of bytes visible through this `MappedFile`. Equals the
-    /// file's size for a root mapping, the window length for sub-views.
+    /// Number of bytes visible through this `MappedFile`.
     @inlinable @inline(__always)
     public var size: Int {
         windowLength
@@ -107,18 +78,13 @@ public struct MappedFile: Sendable {
         originPath
     }
 
-    /// Base address of the visible window's first byte. Valid for the
-    /// lifetime of this value or any copy of it; use
-    /// `withExtendedLifetime(_:_:)` when escaping the pointer past a
-    /// local scope.
+    /// Base address of the visible window's first byte.
     @inlinable @inline(__always)
     public var unsafeBaseAddress: UnsafeRawPointer {
         mapping.baseAddress.advanced(by: windowOffset)
     }
 
-    /// Reads a value of type `T` at the given byte offset. Bounds-checked:
-    /// out-of-range offsets return `nil` without dereferencing memory; any
-    /// source alignment is permitted.
+    /// Reads a value of type `T` at the given byte offset.
     @inlinable
     public func read<T: BitwiseCopyable>(at offset: Int, as _: T.Type = T.self) -> T? {
         let s = MemoryLayout<T>.size
@@ -128,11 +94,8 @@ public struct MappedFile: Sendable {
         return p.loadUnaligned(fromByteOffset: 0, as: T.self)
     }
 
-    /// Invokes `body` with an `UnsafeRawBufferPointer` covering `length`
-    /// bytes starting at `offset`, and returns the body's result. The
-    /// buffer is a view into the underlying mapping (no copy), valid only
-    /// for the duration of the closure. Out-of-bounds ranges return `nil`
-    /// without invoking the body.
+    /// Invokes `body` with an `UnsafeRawBufferPointer` covering `length` bytes
+    /// starting at `offset`, and returns the body's result.
     @inlinable
     public func withBytes<R>(
         at offset: Int,
@@ -147,10 +110,8 @@ public struct MappedFile: Sendable {
         return body(buffer)
     }
 
-    /// Reads a null-terminated UTF-8 string starting at `offset`, scanning
-    /// at most `maxLength` bytes for a terminating NUL. Invalid sequences
-    /// are repaired with U+FFFD. Returns `nil` if `offset` is out of
-    /// range, `maxLength <= 0`, or no NUL is found within the scanned region.
+    /// Reads a null-terminated UTF-8 string starting at `offset`, scanning at
+    /// most `maxLength` bytes for a terminating NUL.
     @inlinable
     public func readCString(at offset: Int, maxLength: Int) -> String? {
         guard offset >= 0, maxLength > 0, offset < windowLength else { return nil }
@@ -163,10 +124,8 @@ public struct MappedFile: Sendable {
         return String(decoding: strBuf, as: UTF8.self)
     }
 
-    /// Reads a fixed-length UTF-8 string at `offset`, stopping at the
-    /// first NUL byte within the `length`-byte window if present — the
-    /// shape of Mach-O's NUL-padded 16-byte `segname`/`sectname` fields.
-    /// Returns `nil` if the window is out of bounds.
+    /// Reads a fixed-length UTF-8 string at `offset`, stopping at the first
+    /// NUL byte within the `length`-byte window if present.
     @inlinable
     public func readFixedString(at offset: Int, length: Int) -> String? {
         guard offset >= 0, length >= 0 else { return nil }
@@ -181,9 +140,7 @@ public struct MappedFile: Sendable {
     }
 
     /// Returns a sub-range view of this `MappedFile` as a new `MappedFile`
-    /// sharing the underlying mapping (no copy). Sub-views compose and may
-    /// outlive the parent value. Returns `nil` when the range exceeds
-    /// `self`'s ``size``.
+    /// sharing the underlying mapping (no copy).
     @inlinable
     public func subFile(at offset: Int, length: Int) -> MappedFile? {
         guard offset >= 0, length >= 0 else { return nil }
@@ -197,9 +154,9 @@ public struct MappedFile: Sendable {
         )
     }
 
-    /// Backing class for the mmap'd region, bound to the deallocation
-    /// event so `munmap` runs exactly once when the last referencing
-    /// `MappedFile` is dropped.
+    /// Backing class for the mmap'd region, bound to the deallocation event so
+    /// `munmap` runs exactly once when the last referencing `MappedFile` is
+    /// dropped.
     @usableFromInline
     final class Mapping: Sendable {
         @usableFromInline nonisolated(unsafe) let baseAddress: UnsafeRawPointer

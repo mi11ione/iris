@@ -1,12 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD scalar shift-by-immediate per
-// ARM ARM § C4.1.96.17. Encoding: `0 1 U 1 1111 0 immh immb opcode 1
-// Rn Rd` with immh != 0000. Scalar form of the vector shift-by-imm
-// class — operands are scalar registers at the element size encoded by
-// immh's first-set-bit. Only D-element forms are valid for most opcodes;
-// narrowing/widening variants accept smaller element sizes.
 
 enum AdvSIMDScalarShiftByImmediateDecode {
     @_optimize(speed)
@@ -19,9 +12,7 @@ enum AdvSIMDScalarShiftByImmediateDecode {
         let Rd = UInt8(encoding & 0x1F)
 
         if immh == 0 { return .undefined(at: address, encoding: encoding) }
-        // bit23 is a fixed 0 for shift-by-immediate; bit23=1 is reserved.
         if (encoding >> 23) & 1 == 1 { return .undefined(at: address, encoding: encoding) }
-        // Determine element size from first-set-bit of immh.
         let elementSize: ScalarSize = if (immh & 0b1000) != 0 { .d }
         else if (immh & 0b0100) != 0 { .s }
         else if (immh & 0b0010) != 0 { .h }
@@ -29,21 +20,13 @@ enum AdvSIMDScalarShiftByImmediateDecode {
         let elementBits = UInt32(elementSize.byteWidth) * 8
         let immhb = (UInt32(immh) << 3) | UInt32(immb)
 
-        // Determine mnemonic + shift direction. Most scalar shift ops are
-        // D-element only (so elementSize must be .d); the narrowing /
-        // saturating-narrow ops accept smaller element sizes.
         let info = mnemonicAndShift(U: U, opcode: opcode)
         guard let resolved = info else {
             return .undefined(at: address, encoding: encoding)
         }
-        // SCVTF / FCVTZS / FCVTZU shift family is scalar FP form: source
-        // & dest are FP scalars at the determined size (not B). For
-        // most other scalar shifts, D-element is required.
         if resolved.requiresDOnly, elementSize != .d {
             return .undefined(at: address, encoding: encoding)
         }
-        // SCVTF/UCVTF/FCVTZS/FCVTZU scalar shift-by-imm accept H/S/D
-        // element sizes (fullfp16 for H); .b (immh=0001) is reserved.
         if elementSize == .b,
            resolved.mnemonic == .scvtf || resolved.mnemonic == .ucvtf
            || resolved.mnemonic == .fcvtzs || resolved.mnemonic == .fcvtzu
@@ -55,9 +38,6 @@ enum AdvSIMDScalarShiftByImmediateDecode {
         case .right: UInt8((elementBits &* 2) &- immhb)
         }
 
-        // Narrowing scalar shifts (SQSHRN/UQSHRN/SQSHRUN and rounding forms)
-        // read a source element twice the dest width; `elementSize` is the
-        // dest. A .d dest (immh=1xxx) would need a .q source and is reserved.
         let isNarrowing = switch resolved.mnemonic {
         case .sqshrn, .sqrshrn, .uqshrn, .uqrshrn, .sqshrun, .sqrshrun: true
         default: false

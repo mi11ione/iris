@@ -4,19 +4,11 @@
 import Iris
 import Testing
 
-/// Validates `isSME2MultiVectorEncoding` and `isSVECounterPredicateEncoding` —
-/// the two predicates that define what subpiece 2s.7 owns, and the single
-/// source of truth shared by the decode gates, the validator's skip filter, and
-/// the harvester's scope. 2s.7 closes the scalable tier, so its claim is the
-/// exact complement of its siblings: in the SME region it owns everything
-/// `isSMECoreEncoding` does not, and in the SVE region it owns the
-/// predicate-as-counter cells all four SVE subpieces reject. A boundary
-/// mis-draw would either strand a real instruction outside validation or hand a
-/// word to a decoder that cannot represent it.
+/// Validates the two predicates defining what 2s.7 owns, shared by the decode
+/// gates, the validator's skip filter and the harvester's scope.
 @Suite("SME2 / multi-vector scope predicate")
 struct SME2ScopeTests {
     @Test func theSMERegionNonCoreWordsAreClaimed() {
-        // A representative of every SME-region family 2s.7 owns.
         let owned: [(UInt32, String)] = [
             (0xC1A1_1C00, "ZA-accumulate fadd"),
             (0xC120_B800, "destructive smax"),
@@ -51,14 +43,10 @@ struct SME2ScopeTests {
     }
 
     @Test func theSMECoreWordsAreClaimedByTheirOwnSubpiece() {
-        // Every SME-core family belongs to 2s.6, not 2s.7. Which subpiece
-        // formed a record is not on the record — both carry `.sme` — but each
-        // of these words must decode to a real instruction, which is what
-        // shows the boundary was not drawn through the middle of a family.
         for encoding: UInt32 in [
-            0x8080_0000, 0x81A0_0000, 0xA1E0_0010, // outer products
-            0xC000_0000, 0xC008_00FF, 0xC090_0000, // mova / zero / addha
-            0xE000_0000, 0xE100_0000, 0xE120_0000, // za load/store, ldr/str za
+            0x8080_0000, 0x81A0_0000, 0xA1E0_0010,
+            0xC000_0000, 0xC008_00FF, 0xC090_0000,
+            0xE000_0000, 0xE100_0000, 0xE120_0000,
         ] {
             let d = Iris.decode(encoding)
             #expect(d.category == .sme, "0x\(String(encoding, radix: 16))")
@@ -68,14 +56,14 @@ struct SME2ScopeTests {
 
     @Test func wordsFromOtherTiersAreDisclaimed() {
         for encoding: UInt32 in [
-            0x0000_0000, // AMX / UDF space
-            0x1400_0000, // branch
-            0x8B02_0020, // data-processing register
-            0xF900_0000, // load/store
-            0x4E20_1C00, // advanced SIMD
-            0x0420_0000, // SVE integer (2s.3)
-            0x6520_0000, // SVE floating-point (2s.4)
-            0x0518_A000, // SVE permute (2s.5)
+            0x0000_0000,
+            0x1400_0000,
+            0x8B02_0020,
+            0xF900_0000,
+            0x4E20_1C00,
+            0x0420_0000,
+            0x6520_0000,
+            0x0518_A000,
         ] {
             #expect(Iris.decode(encoding).category != .sme,
                     "0x\(String(encoding, radix: 16))")
@@ -89,15 +77,9 @@ private let smePayloads: [UInt32] = [
     0x8008, 0xC400, 0xD000, 0xD800, 0xE000, 0xF400, 0x7FFF, 0xFFFF, 0x1234, 0xABCD,
 ]
 
-/// Validates the tier-closure invariant by construction — every SME-region word
-/// is owned by exactly one of 2s.6 and 2s.7, and every op0=2 word the carve
-/// claims is one none of 2s.2–2s.5 claims. The predicates are independent code
-/// from the decoders they gate, so the exact-complement relationship is swept
-/// across the whole SME high-half space rather than sampled.
+/// Validates tier closure by construction.
 @Suite("SME2 / tier closure by construction")
 struct SME2TierClosureTests {
-    /// Every legal SME-region high half: bit31 set, bits[28:25] clear, with
-    /// bits[30:29], bit24 and bits[23:16] free.
     private static let smeHighHalves: [UInt32] = {
         var result: [UInt32] = []
         result.reserveCapacity(2048)
@@ -112,10 +94,6 @@ struct SME2TierClosureTests {
     }()
 
     @Test func everySMERegionWordStaysInTheSMECategory() {
-        // 2s.6 and 2s.7 split the SME region between them. Which of the two
-        // claims a given word is internal — they share the `.sme` category —
-        // but the split must be total: no word in the region may escape it or
-        // come back attributed elsewhere.
         for high in Self.smeHighHalves {
             for payload in smePayloads {
                 let e = (high << 16) | payload
@@ -128,9 +106,6 @@ struct SME2TierClosureTests {
     }
 
     @Test func everyCounterPredicateCarveWordStaysInTheScalableTier() {
-        // 2s.7's claim inside the `0x25` top byte is a carve out of the SVE
-        // tier, so its words keep the SVE category even though the SME2
-        // decoder is what forms them.
         for low: UInt32 in 0 ..< 4096 {
             let e = 0x2520_0000 | (low << 6)
             let d = Iris.decode(e, at: 0)

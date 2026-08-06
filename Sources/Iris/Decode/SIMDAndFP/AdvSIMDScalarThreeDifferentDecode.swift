@@ -1,10 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD scalar three-different per
-// ARM ARM § C4.1.96.15. Encoding:
-// `0 1 U 1 1110 size 1 Rm opcode 00 Rn Rd`. Only opcodes 1001 (SQDMLAL),
-// 1011 (SQDMLSL), 1101 (SQDMULL) are defined; all others reserved.
 
 enum AdvSIMDScalarThreeDifferentDecode {
     @_optimize(speed)
@@ -17,7 +12,6 @@ enum AdvSIMDScalarThreeDifferentDecode {
         let Rd = UInt8(encoding & 0x1F)
 
         if U != 0 { return .undefined(at: address, encoding: encoding) }
-        // Source size 01 = H → dst S; 10 = S → dst D.
         let (srcSize, dstSize): (ScalarSize, ScalarSize)
         switch size {
         case 0b01: srcSize = .h; dstSize = .s

@@ -3,13 +3,7 @@
 
 import Iris
 
-/// Resolves a branch/call target VM address to the name of what it
-/// reaches: an imported function through a `__stubs` entry, a symbol
-/// exactly at the target, or the closest preceding symbol as
-/// `name+0x<delta>` (only within one code section, so a cross-section
-/// delta never fabricates locality). Shared by the listing (which wraps
-/// the name as `symbol stub for: …` / `; <name>`) and `--json` (which
-/// emits the bare `targetSymbol`), so both render one resolution.
+/// Resolves a branch target address to what it reaches.
 @frozen
 public struct BranchSymbolizer: Sendable {
     /// Defined symbols, address-indexed.
@@ -41,9 +35,7 @@ public struct BranchSymbolizer: Sendable {
         }
     }
 
-    /// Resolve `target`, or `nil` when nothing names it. A stub forwarding
-    /// to an import wins; then a symbol exactly at the target; then the
-    /// closest preceding symbol in the same section as `name+0x<delta>`.
+    /// Resolve `target`, or `nil` when nothing names it.
     @inlinable
     public func resolve(target: UInt64) -> Resolution? {
         if let stubName = stubTargets[target] {

@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD vector permute (UZP1/UZP2/TRN1/TRN2/ZIP1/ZIP2)
-// per ARM ARM § C4.1.96.20. Encoding:
-// `0 Q 00 1110 size 0 Rm 0 opcode 1 0 Rn Rd`.
-// opcode (bits[14:12]):
-//   001 UZP1  010 TRN1  011 ZIP1  101 UZP2  110 TRN2  111 ZIP2
 
 enum AdvSIMDPermuteDecode {
     @_optimize(speed)
@@ -17,9 +11,6 @@ enum AdvSIMDPermuteDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // (size, Q) must encode a valid arrangement. size=11, Q=0 is
-        // reserved here (only 1D is allowed in permute; 1D doesn't make
-        // sense for permute either — per ARM ARM § C7.2.387 reserved).
         let arrangement = arrangementFromSizeQ(size: size, Q: Q)
         if arrangement == .d1 {
             return .undefined(at: address, encoding: encoding)

@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// MSR (register) / MRS.
-// Encoding: 1101 0101 00 L 1 op0[1:0] op1 CRn CRm op2 Rt
-// L = 0 → MSR (write Rt → sysreg). L = 1 → MRS (read sysreg → Rt).
-// op0 is the 2-bit field at bits 20:19; op0 ∈ {0, 2, 3} reach here (op0 == 1
-// is the SYS / SYSL class, dispatched separately).
 
 enum SystemMoveDecode {
     @inline(__always)
@@ -22,31 +16,38 @@ enum SystemMoveDecode {
         let sysreg = SystemRegisterEncoding(
             op0: op0, op1: op1, crn: CRn, crm: CRm, op2: op2,
         )
+        let isNZCV = SystemMoveDecode.isNZCV(sysreg)
         if L == 0 {
-            // MSR — read Rt, write sysreg (sysreg writes not in the GP set).
             return DecodedDraft(
                 address: address,
                 encoding: encoding,
                 mnemonic: .msr,
                 semanticReads: RegisterSet.empty.inserting(rtRef),
+                flagEffect: isNZCV ? .nzcv : .none,
                 category: .branchesExceptionSystem,
                 operandCount: sink.emit(.systemRegister(sysreg), .register(rtRef)),
             )
         }
-        // MRS — write Rt, read sysreg (sysreg reads not in the GP set).
         return DecodedDraft(
             address: address,
             encoding: encoding,
             mnemonic: .mrs,
             semanticWrites: RegisterSet.empty.inserting(rtRef),
+            flagEffect: isNZCV ? .readsNZCV : .none,
             category: .branchesExceptionSystem,
             operandCount: sink.emit(.register(rtRef), .systemRegister(sysreg)),
         )
     }
 
-    /// FEAT_D128 MRRS (L=1) / MSRR (L=0) — 128-bit system-register move to/
-    /// from a consecutive even/odd X-register pair (Xt, Xt+1). Rt must be
-    /// even (Rt<0> == 1 is UNDEFINED). op0 = 2 + o0 (o0 = bit 19).
+    /// Whether the encoding names PSTATE's `NZCV` — the one system register
+    /// whose transfer is a condition-flag transfer.
+    @inline(__always)
+    @_effects(readonly)
+    static func isNZCV(_ s: SystemRegisterEncoding) -> Bool {
+        s.op0 == 3 && s.op1 == 3 && s.crn == 4 && s.crm == 2 && s.op2 == 0
+    }
+
+    /// FEAT_D128 MRRS (L=1) / MSRR (L=0).
     @inline(__always)
     static func decodeD128(
         encoding: UInt32, address: UInt64, L: UInt8, _ sink: inout OperandSink,
@@ -67,7 +68,6 @@ enum SystemMoveDecode {
             op0: op0, op1: op1, crn: CRn, crm: CRm, op2: op2,
         )
         if L == 0 {
-            // MSRR — read the pair, write sysreg.
             return DecodedDraft(
                 address: address,
                 encoding: encoding,
@@ -77,7 +77,6 @@ enum SystemMoveDecode {
                 operandCount: sink.emit(.systemRegister(sysreg), .register(rt1), .register(rt2)),
             )
         }
-        // MRRS — write the pair, read sysreg.
         return DecodedDraft(
             address: address,
             encoding: encoding,

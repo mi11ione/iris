@@ -1,15 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// ExtendKind. Extension and size modifiers for
-// extended-register and indexed-memory operands.
 
-/// Extension kind for an extended-register or indexed-memory operand.
-///
-/// The four `UXT*` cases zero-extend the source register; the four `SXT*`
-/// cases sign-extend. ``lsl`` is a degenerate "no extend, just shift"
-/// used in some indexed addressing encodings. ``none`` represents the
-/// absence of any extend modifier.
+/// Extension kind for an extended-register or indexed-memory operand: the
+/// `UXT*` cases zero-extend and the `SXT*` cases sign-extend, ``lsl`` is the
+/// degenerate shift-only form some indexed encodings use, and ``none`` is the
+/// absence of a modifier.
 @frozen
 public enum ExtendKind: UInt8, Sendable, Hashable {
     /// No extend modifier.

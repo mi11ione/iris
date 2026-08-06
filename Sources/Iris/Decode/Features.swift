@@ -1,25 +1,12 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 
-/// Optional instruction-set extensions to decode. The empty set is plain
-/// ARM64.
+/// Optional instruction-set extensions to decode; the empty set is plain
+/// ARM64, and encodings of an absent extension decode as honest UNDEFINED.
 ///
-/// Decode is a pure function of (bytes, base address, features,
-/// data-in-code spans); `Features` is the third input. Encodings that
-/// belong to an extension absent from the set decode as honest UNDEFINED
-/// records — never a plausible-looking wrong answer.
-///
-/// Most of the instruction set needs no flag: NEON and floating point,
-/// crypto, MTE, the atomics tiers, Apple's AMX coprocessor, and the
-/// scalable tiers (SVE/SVE2 and SME/SME2) all decode unconditionally.
-/// A flag exists only where the same encoding space means different
-/// things on different targets, which today is the ARM64E load tier
-/// alone.
-///
-/// Raw-value bits are assigned in declaration order and are never reused
-/// or renumbered, so persisted `rawValue`s stay meaningful across
-/// releases. Bits 1 and 2 held the retired `sve` and `sme` flags and are
-/// permanently retired with them.
+/// Almost nothing needs a flag — one exists only where an encoding space
+/// means different things on different targets, today the ARM64E load tier
+/// alone. Raw-value bits are never reused; bits 1 and 2 are retired.
 @frozen
 public struct Features: OptionSet, Sendable, Hashable {
     /// Raw option bits. Bits are assigned in declaration order and never

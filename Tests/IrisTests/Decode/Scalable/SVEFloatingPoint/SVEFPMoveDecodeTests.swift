@@ -16,16 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the FP move immediates, group G26: FDUP (top byte 0x25) and FCPY
-/// (top byte 0x05). Both always disassemble as their `fmov` alias — the only
-/// disassembler-visible alias of the family — so the decoder emits `.fmov`
-/// directly with no `.fdup`/`.fcpy` token. The 8-bit immediate expands through
-/// the 2.6 `vfpExpandImm` and renders as a signed 8-decimal fixed literal
-/// (the highest rendering risk in the family). FDUP is a fresh write; FCPY
-/// is merging (destination read + partialWrite).
+/// Validates the FP move immediates FDUP and FCPY.
 @Suite("SVE floating-point / FDUP and FCPY move immediates")
 struct SVEFPMoveDecodeTests {
-    /// fdup z0.h, #… — the FDUP class base at imm8=0 (sz=.h).
     private static let fdupHalf: UInt32 = 0x2579_C000
 
     private static func fdup(_ imm8: UInt8, sz: UInt32) -> UInt32 {
@@ -33,9 +26,6 @@ struct SVEFPMoveDecodeTests {
     }
 
     @Test func fdupRendersTheEightDecimalExpandedImmediate() {
-        // VFPExpandImm golden values (verified by hand from the packing): imm8
-        // 0x00→2.0, 0x08→3.0, 0x70→1.0, and bit7 is the sign. The value is
-        // width-independent, so every size renders the same decimal.
         #expect(text(Self.fdup(0x00, sz: 0b01)) == "fmov z0.h, #2.00000000")
         #expect(text(Self.fdup(0x08, sz: 0b01)) == "fmov z0.h, #3.00000000")
         #expect(text(Self.fdup(0x70, sz: 0b01)) == "fmov z0.h, #1.00000000")
@@ -54,10 +44,6 @@ struct SVEFPMoveDecodeTests {
     }
 
     @Test func fdupImmediateSelectsADistinctConstantForEveryImm8() {
-        // The 256×3 backstop: VFP expand-immediate is injective over imm8, so
-        // each of the 256 values must render its own constant. A decoder that
-        // mis-sliced bits[12:5], or ignored part of the field, would collapse
-        // or repeat values here at one or more sizes.
         let sizes: [(UInt32, ScalarSize, String)] = [
             (0b01, .h, "h"), (0b10, .s, "s"), (0b11, .d, "d"),
         ]
@@ -68,7 +54,6 @@ struct SVEFPMoveDecodeTests {
                 let label = "imm8 0x\(String(imm8, radix: 16)) size \(suffix)"
                 let d = decode(Self.fdup(imm8, sz: sz))
                 #expect(d.mnemonic == .fmov, "\(label)")
-                // Destination plus one immediate — the shape FDUP always takes.
                 let operands = Array(d.operands)
                 #expect(operands.count == 2, "\(label)")
                 #expect(operands.first
@@ -83,11 +68,10 @@ struct SVEFPMoveDecodeTests {
         }
     }
 
-    /// fcpy z0.h, p1/m, #… — the FCPY class base at imm8=0 (sz=.h, Pg=1).
     private static let fcpyHalf: UInt32 = 0x0551_C000
 
     @Test func fcpyRendersAsMergingFmovAndReadsItsDestination() {
-        let encoding = Self.fcpyHalf | (UInt32(0x08) << 5) // imm8 0x08 → 3.0
+        let encoding = Self.fcpyHalf | (UInt32(0x08) << 5)
         let d = decode(encoding)
         #expect(d.mnemonic == .fmov)
         #expect(text(encoding) == "fmov z0.h, p1/m, #3.00000000")

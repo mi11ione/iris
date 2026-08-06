@@ -1,40 +1,16 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Tier-0 entry: single-word decode. Three lines in a Playground:
-//
-//     import Iris
-//     let instruction = decode(0xD503201F)
-//     print(instruction.text)            // "nop"
 
 /// Decode one 4-byte instruction word.
 ///
-/// Total: every word produces a well-formed ``Instruction`` — unknown or
-/// unallocated encodings (and encodings of extensions absent from
-/// `features`) produce an `Instruction` whose ``Instruction/isUndefined``
-/// is `true` with the raw word preserved, never a plausible-looking
-/// wrong answer. The same input always produces the same value.
-///
-/// `address` participates in PC-relative operand formation (branch
-/// labels, ADR/ADRP, literal loads) and is carried on the result;
-/// address arithmetic is modulo 2^64. Call as `decode(0xD503201F)` after
-/// `import Iris`, or `Iris.decode(0xD503201F)` when a local `decode`
-/// shadows the module's.
-///
-/// This is the word tier; for buffers, use
-/// ``InstructionStream/init(bytes:at:features:dataInCode:)-(UnsafeRawBufferPointer,_,_,_)``.
+/// Total: every word yields a well-formed ``Instruction``; unknown encodings
+/// set ``Instruction/isUndefined`` and preserve the raw word. `address` forms
+/// PC-relative operands, modulo 2^64. For buffers use ``InstructionStream``.
 public func decode(
     _ word: UInt32,
     at address: UInt64 = 0,
     features: Features = [],
 ) -> Instruction {
-    // The word tier owns a private sink: family decoders emit into it
-    // rather than onto the draft, and the operands it collects are exactly
-    // this word's, so the materializing initializer takes them whole.
-    //
-    // The sink starts empty and sizes its first block on the first operand
-    // emitted: an unallocated encoding emits none and so allocates nothing,
-    // which is the majority of the word space.
     var sink = OperandSink()
     let draft = MachineCodeDecoder.dispatch(
         encoding: word,

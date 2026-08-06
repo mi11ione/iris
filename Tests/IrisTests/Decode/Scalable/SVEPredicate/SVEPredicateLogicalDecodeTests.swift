@@ -12,16 +12,9 @@ private func predicates(_ set: ScalableRegisterSet) -> [UInt8] {
     (0 ..< 16).filter { set.containsPredicate(UInt8($0)) }.map(UInt8.init)
 }
 
-/// Validates the predicate-logical group — the sixteen slots selected by the
-/// `{bit23, bit22, bit9, bit4}` opcode, of which fifteen are allocated and one
-/// is an architectural hole. All are byte-element, all take a four-predicate
-/// operand shape, and only SEL takes its governing predicate bare (every other
-/// form zeroes). The flag-setting variants are distinguished by bit 22 alone,
-/// so a bit-22 mistake would silently drop an NZCV write.
+/// Validates the predicate-logical group.
 @Suite("SVE predicate & control / predicate logical")
 struct SVEPredicateLogicalDecodeTests {
-    /// Every allocated opcode, with the register fields fixed at
-    /// Pm=3, Pg=2, Pn=1, Pd=0 (all distinct, so no alias fires).
     private static let allocated: [(UInt32, Mnemonic, Bool)] = [
         (0x2503_4820, .and, false),
         (0x2503_4830, .bic, false),
@@ -76,8 +69,6 @@ struct SVEPredicateLogicalDecodeTests {
     }
 
     @Test func theSelectWithFlagsSlotIsAnArchitecturalHole() {
-        // Opcode 0111 — where a flag-setting SEL would sit — is unallocated.
-        // It is why there is no `movs …/m` counterpart to the `mov …/m` alias.
         let d = decode(0x2543_4A30)
         #expect(d.mnemonic == .undefined)
         #expect(d.category == .sve)
@@ -85,7 +76,7 @@ struct SVEPredicateLogicalDecodeTests {
     }
 
     @Test func orrOfOneRegisterWithItselfIsTheTwoOperandMove() {
-        let d = decode(0x2584_5081) // mov p1.b, p4.b
+        let d = decode(0x2584_5081)
         #expect(d.mnemonic == .mov)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -97,14 +88,14 @@ struct SVEPredicateLogicalDecodeTests {
     }
 
     @Test func theFlagSettingTwoOperandMoveComesFromOrrs() {
-        let d = decode(0x25C4_5081) // movs p1.b, p4.b
+        let d = decode(0x25C4_5081)
         #expect(d.mnemonic == .movs)
         #expect(d.flagEffect == .nzcv)
         #expect(d.operands.count == 2)
     }
 
     @Test func andWithEqualSourcesIsTheZeroingMove() {
-        let d = decode(0x2506_48C1) // mov p1.b, p2/z, p6.b
+        let d = decode(0x2506_48C1)
         #expect(d.mnemonic == .mov)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -117,17 +108,14 @@ struct SVEPredicateLogicalDecodeTests {
     }
 
     @Test func theFlagSettingZeroingMoveComesFromAnds() {
-        let d = decode(0x2546_48C1) // movs p1.b, p2/z, p6.b
+        let d = decode(0x2546_48C1)
         #expect(d.mnemonic == .movs)
         #expect(d.flagEffect == .nzcv)
         #expect(d.operands.count == 3)
     }
 
     @Test func selectIntoItsOwnSecondSourceIsTheMergingMove() {
-        // The merging move is a trap: the `/m` token says "merge", but the
-        // destination is fully written — it is only read because it doubles as
-        // the select's second source. So partialWrite must stay clear.
-        let d = decode(0x2505_4A75) // mov p5.b, p2/m, p3.b
+        let d = decode(0x2505_4A75)
         #expect(d.mnemonic == .mov)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -142,7 +130,7 @@ struct SVEPredicateLogicalDecodeTests {
     }
 
     @Test func exclusiveOrAgainstItsGoverningPredicateIsTheNot() {
-        let d = decode(0x2507_5E41) // not p1.b, p7/z, p2.b
+        let d = decode(0x2507_5E41)
         #expect(d.mnemonic == .not)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -155,20 +143,18 @@ struct SVEPredicateLogicalDecodeTests {
     }
 
     @Test func theFlagSettingNotComesFromEors() {
-        let d = decode(0x2547_5E41) // nots p1.b, p7/z, p2.b
+        let d = decode(0x2547_5E41)
         #expect(d.mnemonic == .nots)
         #expect(d.flagEffect == .nzcv)
         #expect(d.operands.count == 3)
     }
 
     @Test func anAliasNeedsItsExactRegisterEquality() {
-        // One register field off in each of the four alias conditions — every
-        // one must fall back to the base mnemonic with all four operands.
         let nearMisses: [(UInt32, Mnemonic)] = [
-            (0x2584_50A1, .orr), // Pn != Pm, so no two-operand move
-            (0x2506_48A1, .and), // Pm != Pn, so no zeroing move
-            (0x2505_4A76, .sel), // Pm != Pd, so no merging move
-            (0x2507_5A41, .eor), // Pm != Pg, so no not
+            (0x2584_50A1, .orr),
+            (0x2506_48A1, .and),
+            (0x2505_4A76, .sel),
+            (0x2507_5A41, .eor),
         ]
         for (encoding, mnemonic) in nearMisses {
             let d = decode(encoding)
@@ -178,10 +164,6 @@ struct SVEPredicateLogicalDecodeTests {
     }
 
     @Test func theNonAliasingOpcodesNeverAliasHoweverTheirRegistersLineUp() {
-        // BIC/ORN/NOR/NAND (and their flag-setting twins) have no alias at all:
-        // forcing every register field to the same value must still print the
-        // base form. The four register fields are Pm (19:16), Pg (13:10),
-        // Pn (8:5) and Pd (3:0); the opcode bits 23, 22, 9 and 4 stay put.
         let registerFields: UInt32 = 0x000F_3DEF
         for (base, mnemonic, _) in Self.allocated {
             guard mnemonic == .bic || mnemonic == .bics || mnemonic == .orn || mnemonic == .orns

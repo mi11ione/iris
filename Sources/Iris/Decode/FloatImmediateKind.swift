@@ -1,13 +1,8 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FloatImmediateKind. Encodes the width of a
-// floating-point immediate carried by `Operand.floatImmediate(bits:kind:)`.
 
-/// Floating-point immediate width.
-///
-/// `FMOV` and `FCMP` accept FP immediates in three widths corresponding
-/// to the source / destination register class.
+/// Floating-point immediate width: `FMOV` and `FCMP` accept FP immediates in
+/// three widths, matching the register class.
 @frozen
 public enum FloatImmediateKind: UInt8, Sendable, Hashable {
     /// Half-precision (IEEE 754 binary16) — `Hn` register class.

@@ -1,20 +1,14 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// The llvm-mc oracle: locate the binary (IRIS_LLVM_MC, Homebrew
-// prefixes, PATH, apt layouts), validate that a family's -mattr is fully
-// recognized (a silently-ignored feature blinds the oracle — the
-// parent project's harvest-era lesson), and batch-disassemble word lists
-// with per-line correlation of `invalid instruction encoding` rejects.
 
 import Foundation
 import Iris
 import IrisValidation
 
 enum LLVMMC {
-    /// Locate llvm-mc. Order: `IRIS_LLVM_MC` env, Homebrew prefixes
-    /// (Apple Silicon, Intel), PATH entries, apt llvm layouts (versioned
-    /// names newest-first). Returns nil when nothing executable is found.
+    /// Locate llvm-mc. Order: `IRIS_LLVM_MC` env, Homebrew prefixes (Apple
+    /// Silicon, Intel), PATH entries, apt llvm layouts (versioned names
+    /// newest-first). Returns nil when nothing executable is found.
     static func locate() -> String? {
         let fm = FileManager.default
         var candidates: [String] = []
@@ -28,7 +22,6 @@ enum LLVMMC {
                 candidates.append("\(dir)/llvm-mc")
             }
         }
-        // apt layouts: /usr/lib/llvm-<N>/bin/llvm-mc and /usr/bin/llvm-mc-<N>.
         var versioned: [(Int, String)] = []
         if let entries = try? fm.contentsOfDirectory(atPath: "/usr/lib") {
             for entry in entries where entry.hasPrefix("llvm-") {
@@ -51,8 +44,8 @@ enum LLVMMC {
         return nil
     }
 
-    /// First line of `llvm-mc --version` carrying the version, e.g.
-    /// "Homebrew LLVM version 22.1.4".
+    /// First line of `llvm-mc --version` carrying the version, e.g. "Homebrew
+    /// LLVM version 22.1.8".
     static func version(_ llvmMC: String) -> String {
         guard let result = runSubprocess(llvmMC, ["--version"], timeoutSeconds: 30) else {
             return "unknown"
@@ -64,10 +57,7 @@ enum LLVMMC {
         return "unknown"
     }
 
-    /// Feature names in `mattr` this llvm-mc does not recognize. llvm-mc
-    /// only WARNS on an unknown feature and silently proceeds without it,
-    /// which turns the oracle feature-blind — callers must treat a
-    /// non-empty result as a setup failure, not a warning.
+    /// Feature names in `mattr` this llvm-mc does not recognize.
     static func unrecognizedFeatures(_ llvmMC: String, mattr: String) -> [String] {
         let probe = Data("0x1f 0x20 0x03 0xd5\n".utf8)
         guard let result = runSubprocess(
@@ -87,19 +77,9 @@ enum LLVMMC {
         return missing
     }
 
-    /// Disassemble `encodings` (host-order ARM64 words) via one llvm-mc
-    /// subprocess at `-mattr=mattr`. Returns normalized text per
-    /// encoding, in input order; "" for a rejected (invalid) encoding.
-    /// Returns nil on ORACLE FAILURE — launch failure or timeout,
-    /// reported loudly on stderr here — which the caller must surface
-    /// as a setup/oracle error and never score as divergences (a
-    /// partial capture would render trailing words as false rejects).
-    ///
-    /// Correlation: a word llvm-mc rejects emits a stderr
-    /// `invalid instruction encoding` warning and NO stdout line, so the
-    /// output cursor must skip it. The distinct `potentially undefined
-    /// instruction encoding` warning IS decoded (a stdout line exists)
-    /// and must not shift the cursor.
+    /// Disassemble `encodings` via one llvm-mc subprocess at `-mattr=mattr`,
+    /// returning normalized text per encoding in input order, `""` for a
+    /// rejected one.
     static func disassemble(_ encodings: [UInt32], llvmMC: String, mattr: String) -> [String]? {
         if encodings.isEmpty { return [] }
         let hexDigits: [UInt8] = Array("0123456789abcdef".utf8)
@@ -152,8 +132,8 @@ enum LLVMMC {
         return out
     }
 
-    /// 1-based input line numbers rejected with `invalid instruction
-    /// encoding` (no stdout line emitted for these).
+    /// 1-based input line numbers rejected with `invalid instruction encoding`
+    /// (no stdout line emitted for these).
     private static func invalidInputLines(_ stderr: String) -> Set<Int> {
         var result: Set<Int> = []
         for raw in stderr.split(separator: "\n") {

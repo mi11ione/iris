@@ -1,10 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Scalar SIMD LD/STR (unsigned-offset, V=1).
-// Encoding: `size 11 1 1 0 1 V 01 opc 0 imm12 Rn Rt` with V=1. (size,
-// opc) selects the destination element width B/H/S/D/Q. imm12 is the
-// scaled unsigned 12-bit offset (× elementBytes).
 
 enum ScalarSIMDLoadStoreUnsignedOffsetDecode {
     @_optimize(speed)
@@ -15,7 +10,6 @@ enum ScalarSIMDLoadStoreUnsignedOffsetDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rt = UInt8(encoding & 0x1F)
 
-        // (size, opc) → (elementSize, mnemonic-is-load).
         guard let (elementSize, isLoad) = mapSizeOpc(size: size, opc: opc) else {
             return .undefined(at: address, encoding: encoding)
         }
@@ -51,12 +45,11 @@ enum ScalarSIMDLoadStoreUnsignedOffsetDecode {
     @inline(__always)
     @_effects(readonly)
     private static func mapSizeOpc(size: UInt8, opc: UInt8) -> (ScalarSize, Bool)? {
-        // (size, opc) → (element, isLoad). Q-form lives at size=00 opc=10/11.
         switch (size, opc) {
         case (0b00, 0b00): (.b, false)
         case (0b00, 0b01): (.b, true)
-        case (0b00, 0b10): (.q, false) // STR Q
-        case (0b00, 0b11): (.q, true) // LDR Q
+        case (0b00, 0b10): (.q, false)
+        case (0b00, 0b11): (.q, true)
         case (0b01, 0b00): (.h, false)
         case (0b01, 0b01): (.h, true)
         case (0b10, 0b00): (.s, false)

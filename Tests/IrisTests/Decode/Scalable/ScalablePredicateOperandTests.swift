@@ -4,11 +4,8 @@
 import Iris
 import Testing
 
-/// Validates ScalablePredicateRef — the `Pn` / `Pn.<T>` / `Pn/z` / `Pn/m` /
-/// `PNn` operand. The qualifier and role are opcode properties the decoder
-/// attaches to the operand (LLVM keeps them in the instruction format, never
-/// on the physical register), and they are what drive the `/M`-destination-read
-/// and partial-write classifications downstream.
+/// Validates `ScalablePredicateRef`. The qualifier and role are opcode
+/// properties the decoder attaches to the operand — LLVM keeps them in the.
 @Suite("ScalablePredicateRef / predicate operand dressing")
 struct ScalablePredicateRefTests {
     @Test func bareGoverningPredicateUsesTheDefaults() {
@@ -22,7 +19,6 @@ struct ScalablePredicateRefTests {
     }
 
     @Test func registerIndexIsMaskedToFourBits() {
-        // The predicate file has 16 registers; a wider index masks in.
         #expect(ScalablePredicateRef(registerIndex: 16).registerIndex == 0)
         #expect(ScalablePredicateRef(registerIndex: 0xFF).registerIndex == 15)
     }
@@ -41,16 +37,12 @@ struct ScalablePredicateRefTests {
     }
 
     @Test func mergingGoverningPredicateCarriesItsQualifier() {
-        // /M makes the destination read-modify-write — the qualifier is the
-        // decode-time signal for that classification.
         let ref = ScalablePredicateRef(registerIndex: 4, element: .d, qualifier: .merging)
         #expect(ref.qualifier == .merging)
         #expect(ref.role == .governing)
     }
 
     @Test func resultPredicateIsDistinctFromAGoverningOne() {
-        // A compare reads Pg (governing) and writes Pd (result); both are
-        // predicate operands on the same instruction.
         let governing = ScalablePredicateRef(registerIndex: 1, element: .s,
                                              qualifier: .zeroing, role: .governing)
         let result = ScalablePredicateRef(registerIndex: 2, element: .s, role: .result)
@@ -67,7 +59,6 @@ struct ScalablePredicateRefTests {
     }
 
     @Test func counterAndMaskViewsOfOneRegisterAreDistinctOperandsOnTheSameRegister() {
-        // PN8 and P8 are the same physical predicate; only the view differs.
         let counter = ScalablePredicateRef(registerIndex: 8, isCounter: true)
         let mask = ScalablePredicateRef(registerIndex: 8, isCounter: false)
         #expect(counter != mask)
@@ -75,7 +66,6 @@ struct ScalablePredicateRefTests {
     }
 
     @Test func elementIndexCarriesTheImmediateOnIndexedForms() {
-        // PEXT pn8[1] / PSEL Pn.<T>[Wv, imm] carry an immediate index.
         let ref = ScalablePredicateRef(registerIndex: 8, isCounter: true, elementIndex: 1)
         #expect(ref.elementIndex == 1)
     }
@@ -104,11 +94,7 @@ struct ScalablePredicateRefTests {
     }
 }
 
-/// Validates PredicateQualifier — the `/Z` vs `/M` distinction on a governing
-/// predicate. This is the decode-time fact that decides whether the
-/// destination is a pure write (zeroing: inactive lanes become zero) or a
-/// read-modify-write (merging: inactive lanes keep their prior value, so the
-/// destination is architecturally also a read).
+/// Validates `PredicateQualifier`, the `/Z` versus `/M` distinction.
 @Suite("PredicateQualifier / zeroing vs merging")
 struct PredicateQualifierTests {
     @Test func everyCaseHasStableRawValue() {
@@ -133,11 +119,8 @@ struct PredicateQualifierTests {
     }
 }
 
-/// Validates SVEPredicatePattern — the 5-bit constraint operand on PTRUE and
-/// the element-count instructions (`pow2`, `vl1`..`vl256`, `mul3`, `mul4`,
-/// `all`), plus the `mul #k` multiplier that rides alongside on the
-/// element-count forms. This is the carrier; rendering the raw field to
-/// its keyword is the canonicalizer's concern.
+/// Validates `SVEPredicatePattern`, the 5-bit constraint operand on PTRUE and
+/// the element-count instructions, plus the `mul #k` multiplier riding.
 @Suite("SVEPredicatePattern / raw pattern field and multiplier")
 struct SVEPredicatePatternTests {
     @Test func rawFieldIsMaskedToFiveBits() {

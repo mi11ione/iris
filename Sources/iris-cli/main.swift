@@ -1,8 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Thin entry point by design: argv and the two output streams go to
-// IrisCLICore's run entry; everything testable lives there.
 
 import Foundation
 import IrisCLICore

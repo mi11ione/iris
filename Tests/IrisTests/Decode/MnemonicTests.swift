@@ -4,9 +4,8 @@
 import Iris
 import Testing
 
-/// Validates Mnemonic — UInt16 raw-value wrapper, the three decoder
-/// sentinels, and the public per-family raw-value range allocation
-/// table.
+/// Validates `Mnemonic`: the raw-value wrapper, the three sentinels, and the
+/// per-family range allocation table.
 @Suite("Mnemonic / decoder sentinels and raw-value round-trip")
 struct MnemonicSentinelTests {
     @Test func undefinedSentinelHasRawZero() {
@@ -41,8 +40,8 @@ struct MnemonicSentinelTests {
     }
 }
 
-/// Validates Mnemonic.allocations — the per-family raw-value range
-/// table the slab allocation publishes.
+/// Validates Mnemonic.allocations — the per-family raw-value range table the
+/// slab allocation publishes.
 @Suite("Mnemonic / per-family range allocations")
 struct MnemonicAllocationTests {
     @Test func sentinelRangeContainsAllThreeSentinels() {
@@ -76,7 +75,6 @@ struct MnemonicAllocationTests {
     }
 
     @Test func everyAllocationLabelIsItsFamilyName() {
-        // Labels are family names — exactly as published, in order.
         let labels = [
             "Sentinels & UDF",
             "Data Processing — Immediate",
@@ -92,9 +90,6 @@ struct MnemonicAllocationTests {
     }
 
     @Test func allocationRangesArePinnedToExactBoundaries() {
-        // Pin the exact range bounds (literal expectations — not recomputed
-        // from the source — so any reshuffle is caught at the range
-        // boundary, not at the first mnemonic declaration in the slab).
         let expected: [(label: String, lower: UInt16, upper: UInt16)] = [
             ("Sentinels & UDF", 0, 255),
             ("Data Processing — Immediate", 256, 1023),

@@ -16,16 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the FP reductions: G7 the fast recursive reductions
-/// (`sve_fp_fast_red` — scalar destination of the element width), G8 the
-/// strictly-ordered FADDA (`sve_fp_2op_p_vd` — scalar accumulator that appears
-/// twice in the operand list), and G24 the SVE2p1 quadword reductions
-/// (`sve2p1_fp_reduction_q` — a NEON-vector destination v.8h/4s/2d). The
-/// destination is a SIMD write at the shared Z/V canonical bit; the governing
-/// predicate is bare; all are full writes.
+/// Validates the FP reductions.
 @Suite("SVE floating-point / reductions")
 struct SVEFPReductionDecodeTests {
-    /// faddv h0, p1, z2.h — G7 base (opc=000, sz=.h).
     private static let fastBase: UInt32 = 0x6540_2440
 
     @Test func everyFastReductionDecodesToAScalarOfElementWidth() {
@@ -55,14 +48,12 @@ struct SVEFPReductionDecodeTests {
         #expect(decode(base).mnemonic == .undefined, "sz=00 hole")
     }
 
-    /// fadda h0, p1, h0, z2.h — G8 base.
     private static let faddaBase: UInt32 = 0x6558_2440
 
     @Test func faddaCarriesTheScalarAccumulatorTwice() {
         let d = decode(Self.faddaBase)
         #expect(d.mnemonic == .fadda)
         #expect(text(Self.faddaBase) == "fadda h0, p1, h0, z2.h")
-        // The V accumulator is both read and written; the Zm source is read.
         #expect(canonicalIndices(d.semanticReads) == [32, 34], "fadda reads Vdn and Zm")
         #expect(canonicalIndices(d.semanticWrites) == [32])
         #expect(d.scalableEffect == .readsStreamingMode, "a full V-register write")
@@ -76,7 +67,6 @@ struct SVEFPReductionDecodeTests {
         #expect(decode(Self.faddaBase | (1 << 16)).mnemonic == .undefined, "bits[18:16] must be zero")
     }
 
-    /// faddqv v0.8h, p1, z2.h — G24 base.
     private static let quadBase: UInt32 = 0x6450_A440
 
     @Test func everyQuadwordReductionDecodesToANeonArrangement() {

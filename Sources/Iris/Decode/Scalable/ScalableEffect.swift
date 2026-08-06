@@ -1,22 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// per-instruction scalable/streaming effect flags — the FlagEffect
-// analog for the SVE/SME properties that are NOT register reads/writes.
-// Kept separate from ScalableRegisterSet (whose union/intersection must not
-// see these bits) so the register sets stay pure. Default-empty on every
-// existing record; populated by the region decoders as they decode instructions.
 
-/// Per-instruction scalable-execution effect flags.
-///
-/// `ScalableEffect` carries the SVE/SME properties a decoder classifies that
-/// are not expressible as register reads/writes: whether the instruction's
-/// register writes are partial (may-write vs full def), its relationship to
-/// streaming mode (`PSTATE.SM`) and `ZA`-enable, and the fault class of a
-/// scalable load. These are the per-instruction facts a streaming-mode or
-/// dataflow analysis needs and cannot recover from the register sets alone.
-/// Base-ISA records carry ``none``; the scalable region decoders set the
-/// flags per instruction.
+/// Per-instruction scalable-execution effect flags: the SVE/SME properties not
+/// expressible as register reads and writes — partial writes, the relationship
+/// to streaming mode and `ZA`-enable, and a scalable load's fault class.
+/// Base-ISA records carry ``none``.
 @frozen
 public struct ScalableEffect: OptionSet, Sendable, Hashable {
     public let rawValue: UInt8
@@ -66,8 +54,4 @@ public struct ScalableEffect: OptionSet, Sendable, Hashable {
     /// hint that the data has low temporal locality. No FFR interaction.
     ///
     public static let nonTemporal = ScalableEffect(rawValue: 1 << 6)
-
-    // Bit 7 is reserved for a further per-instruction streaming legality
-    // distinction (requires-SM=0/1, requires-ZA-enabled) that SME-core/SME2 may
-    // add once real decodes exist.
 }

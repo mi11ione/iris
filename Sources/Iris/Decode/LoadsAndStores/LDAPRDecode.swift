@@ -1,18 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Load-acquire RCpc register (FEAT_LRCPC). LDAPR family.
-// Encoding shell bits[29:24] = 111000, bit[23] = 1, bit[22] = 0,
-// bit[21] = 1, bits[20:16] = 11111, bits[15:12] = 1100, bits[11:10] = 00.
-// Verified canonical: `ldapr x0, [x0]` = 0xF8BFC000.
-//
-// size[31:30] selects: 00=LDAPRB (Wt), 01=LDAPRH (Wt), 10=LDAPR (Wt),
-// 11=LDAPR (Xt).
-//
-// Operand shape: `Rt, [Rn|SP]` — no offset, no writeback. MemoryAccess
-// = .load. MemoryOrdering = .acquire (RCpc semantics are weaker than
-// strong-acquire, but the classification collapses them; consumers use
-// the mnemonic to distinguish).
 
 enum LDAPRDecode {
     @_optimize(speed)
@@ -33,7 +20,6 @@ enum LDAPRDecode {
         case 0b10:
             mnemonic = .ldapr
             rtWidth = .w32
-        // size ∈ {00,01,10,11} all enumerated; 0b11 (LDAPR Xt) is `default`.
         default:
             mnemonic = .ldapr
             rtWidth = .x64

@@ -16,16 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the complex FP and indexed multiply forms: G17 FCADD (predicated
-/// destructive, rotation #90/#270), FCMLA vector (predicated accumulator,
-/// rotation #0/#90/#180/#270) and FCMLA indexed (unpredicated accumulator,
-/// per-size index/Zm packing), and G18 the indexed FMLA/FMLS/FMUL family. The
-/// predicated complex forms are merging; the indexed accumulators read their
-/// destination but rewrite every lane (partialWrite clear), while indexed FMUL
-/// does not read its destination at all.
+/// Validates the complex FP and indexed multiply forms.
 @Suite("SVE floating-point / complex and indexed multiply")
 struct SVEFPIndexedComplexDecodeTests {
-    /// fcadd z0.h, p1/m, z0.h, z1.h, #90 — G17 FCADD base.
     private static let fcaddBase: UInt32 = 0x6440_8420
 
     @Test func fcaddSelectsBetweenNinetyAndTwoSeventy() {
@@ -39,7 +32,6 @@ struct SVEFPIndexedComplexDecodeTests {
         #expect(decode(Self.fcaddBase & ~(UInt32(0b11) << 22)).mnemonic == .undefined, "sz=00 hole")
     }
 
-    /// fcmla z0.h, p1/m, z1.h, z2.h, #0 — G17 FCMLA vector base.
     private static let fcmlaVectorBase: UInt32 = 0x6442_0420
 
     @Test func fcmlaVectorRendersEachRotation() {
@@ -57,7 +49,6 @@ struct SVEFPIndexedComplexDecodeTests {
         #expect(decode(Self.fcmlaVectorBase & ~(UInt32(0b11) << 22)).mnemonic == .undefined, "sz=00 hole")
     }
 
-    /// fcmla z0.h, z1.h, z2.h[0], #0 — G17 FCMLA indexed H base.
     private static let fcmlaIndexedBase: UInt32 = 0x64A2_1020
 
     @Test func fcmlaIndexedIsAFullWriteAccumulatorWithPerSizePacking() {
@@ -68,13 +59,11 @@ struct SVEFPIndexedComplexDecodeTests {
         #expect(text(Self.fcmlaIndexedBase | (1 << 19)) == "fcmla z0.h, z1.h, z2.h[1], #0")
         #expect(d.scalableEffect == .readsStreamingMode, "indexed accumulator is a full write")
         #expect(canonicalIndices(d.semanticReads) == [32, 33, 34])
-        // S form: bit22 selects a 4-bit Zm and a 1-bit index.
         let sForm = Self.fcmlaIndexedBase | (1 << 22)
         #expect(text(sForm) == "fcmla z0.s, z1.s, z2.s[0], #0")
         #expect(text(sForm | (1 << 20)) == "fcmla z0.s, z1.s, z2.s[1], #0")
     }
 
-    /// fmla z0.h, z1.h, z2.h[0] — G18 indexed FMA base (H form).
     private static let indexedFmaBase: UInt32 = 0x6422_0020
 
     @Test func indexedFmaSelectsMnemonicOnBf16AndSubtract() {
@@ -92,12 +81,10 @@ struct SVEFPIndexedComplexDecodeTests {
             #expect(d.scalableEffect == .readsStreamingMode)
             #expect(canonicalIndices(d.semanticReads) == [32, 33, 34], "\(name) reads the accumulator")
         }
-        // bf16 lives only in the bit23=0 space.
         #expect(decode(Self.indexedFmaBase | (1 << 11) | (1 << 23)).mnemonic == .undefined)
     }
 
     @Test func indexedFmaPacksTheLaneIndexPerSize() {
-        // H: index bits[22,20:19]; S: bits[20:19]; D: bit20.
         #expect(text(Self.indexedFmaBase | (0b11 << 19)) == "fmla z0.h, z1.h, z2.h[3]")
         #expect(text(Self.indexedFmaBase | (1 << 22)) == "fmla z0.h, z1.h, z2.h[4]")
         let sForm = Self.indexedFmaBase | (1 << 23)
@@ -108,7 +95,6 @@ struct SVEFPIndexedComplexDecodeTests {
         #expect(text(dForm | (1 << 20)) == "fmla z0.d, z1.d, z2.d[1]")
     }
 
-    /// fmul z0.h, z1.h, z2.h[0] — G18 indexed FMUL base.
     private static let indexedFmulBase: UInt32 = 0x6422_2020
 
     @Test func indexedFmulDoesNotReadItsDestination() {

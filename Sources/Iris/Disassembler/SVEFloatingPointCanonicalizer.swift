@@ -1,24 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Canonical llvm-mc-parity text for SVE-FP (SVE / SVE2 floating-
-// point) records. Mirrors the SVE-predicate/SVE-integer canonicalizer conventions: lowercase,
-// `, `-joined operands. A scalable-tier hole never reaches here — the text
-// router renders it as `.long` before dispatching, and llvm-mc likewise emits
-// nothing for rejected words. The one FP-specific rule is the immediate style split
-// `fmov` renders the VFPExpandImm value as a signed 8-decimal
-// fixed literal (`#2.12500000`, `#-13.00000000` — verified against the full
-// imm8 space), while the arith-immediate family renders its exact constants
-// short (`#0.5` / `#1.0` / `#2.0` / `#0.0`) and the compare-with-zero forms
-// render the literal `#0.0`.
 
 /// Formats SVE-FP records exactly as llvm-mc renders them.
 enum SVEFloatingPointCanonicalizer {
-    /// The byte path — rendered straight into a UTF-8 buffer.
+    /// The byte path.
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
-        // This family's own table, not the global one: a mnemonic from
-        // outside the group renders the `?<raw>` sentinel rather than the
-        // spelling another family owns.
         if let spelling = name(instruction.mnemonic) {
             out.put(spelling)
         } else {
@@ -33,8 +19,6 @@ enum SVEFloatingPointCanonicalizer {
             put(ops[i], instruction.mnemonic, into: &out)
         }
     }
-
-    // MARK: per-operand rendering
 
     private static func put(_ op: Operand, _ mnemonic: Mnemonic, into out: inout TextBytes) {
         switch op {
@@ -51,8 +35,6 @@ enum SVEFloatingPointCanonicalizer {
                 out.put(UInt8(ascii: "]"))
             }
         case let .scalablePredicate(p):
-            // A governing predicate renders bare (`p0/m`, or `p0` for the
-            // reductions); only a result predicate carries an element suffix.
             out.put(UInt8(ascii: "p"))
             out.putDecimal(UInt64(p.registerIndex))
             if p.role == .result, let el = p.element {
@@ -65,7 +47,6 @@ enum SVEFloatingPointCanonicalizer {
             case .none: break
             }
         case let .scalableVectorGroup(g):
-            // llvm-mc pads the braces (`{ z4.s, z5.s }`).
             out.put("{ ")
             for j in 0 ..< g.count {
                 if j > 0 { out.put(", ") }
@@ -104,9 +85,7 @@ enum SVEFloatingPointCanonicalizer {
         }
     }
 
-    /// The FP-immediate style split: `#0.0` for zero bits, the 8-decimal
-    /// expanded form for `fmov`, and the short exact constants for the
-    /// arith-immediate family.
+    /// The FP-immediate style split.
     @inline(__always)
     private static func putFloat(
         bits: UInt64, kind: FloatImmediateKind, mnemonic: Mnemonic, into out: inout TextBytes,
@@ -164,8 +143,6 @@ enum SVEFloatingPointCanonicalizer {
         case .h2: out.put("2h")
         }
     }
-
-    // MARK: mnemonic text
 
     @_effects(readonly)
     static func name(_ m: Mnemonic) -> StaticString? {

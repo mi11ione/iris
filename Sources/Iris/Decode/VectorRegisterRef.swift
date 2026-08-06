@@ -1,21 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// VectorRegisterRef + VectorView +
-// VectorArrangement + ScalarSize. The full SIMD operand grammar:
-// register-and-arrangement (Vn.8B), register-and-scalar-view (Bn/Hn/Sn/Dn/Qn),
-// register-and-element-subscript (Vn.S[2]).
 
-/// Reference to a SIMD/FP register together with the view shape used by
-/// the consuming instruction.
-///
-/// Carried by ``Operand/vectorRegister(_:)``. The view distinguishes the
-/// three SIMD operand styles: ``VectorView/full(arrangement:)`` is
-/// `Vn.<arrangement>` for vector ops, ``VectorView/scalar(size:)`` is
-/// the `Bn`/`Hn`/`Sn`/`Dn`/`Qn` scalar-FP and SIMD-as-scalar form, and
-/// ``VectorView/element(arrangement:index:)`` is the
-/// `Vn.<arrangement>[i]` element-indexed form used by DUP, INS, UMOV,
-/// SMOV, and MUL by element.
+/// Reference to a SIMD/FP register with the view the consuming instruction
+/// uses: ``VectorView/full(arrangement:)`` is `Vn.<arrangement>`,
+/// ``VectorView/scalar(size:)`` the `Bn`…`Qn` form, and
+/// ``VectorView/element(arrangement:index:)`` the indexed `Vn.<arr>[i]`.
 @frozen
 public struct VectorRegisterRef: Sendable, Hashable {
     /// SIMD register index (0..31).

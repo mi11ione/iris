@@ -1,52 +1,13 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// The closure-scoped session tier: pin the stream's record and operand
-// arrays once, then look up and iterate BorrowedInstruction views with
-// zero per-element reference counting. Exactly the shape the
-// borrowing-view experiment measured
-// (Benchmarks/Sources/iris-bench/ViewExperiment.swift); the
-// first-class ~Escapable view is the post-1.0 successor once lifetime
-// dependencies land non-experimental.
 
 public extension InstructionStream {
-    /// Scoped, retain-free access to the packed storage: pins the
-    /// stream's record and operand buffers for the duration of `body`
-    /// and passes it a ``Session`` whose lookups and iteration produce
-    /// ``BorrowedInstruction`` views with no per-element reference
-    /// counting and no allocation.
+    /// Retain-free scoped access: pins the buffers for the duration of `body`,
+    /// yielding ``BorrowedInstruction`` views. Use it for hot loops that touch
+    /// operands; use ``Instruction`` everywhere else.
     ///
-    /// **When to use which tier.** The ergonomic ``Instruction`` path
-    /// (collection iteration, ``instruction(at:)``) is the default:
-    /// forming each view retains the operand buffer, and whether the
-    /// optimizer elides that retain/release pair depends on the
-    /// surrounding code — the same lookup loop can pay several times
-    /// the session's cost in one context and near-parity in another,
-    /// and the caller cannot control which. Inside a session the cost
-    /// is stable regardless of that context: lookups run at a small
-    /// constant factor above raw ``records`` index arithmetic, and a
-    /// full-operand walk runs at parity with a raw record walk. Use a
-    /// session for hot loops that touch operands; use ``Instruction``
-    /// views everywhere else. Measured figures with hardware context
-    /// live in the repository's benchmark record
-    /// (`Benchmarks/README.md`); the stability and the ratios
-    /// are the contract, not any absolute number.
-    ///
-    /// **Escape safety.** The session and every value derived from it —
-    /// each ``BorrowedInstruction``, its `operands` slice, and the
-    /// session's pinned ``Session/records``/``Session/operands`` buffers
-    /// — are valid only until `body` returns. `body` must not store
-    /// them, return them as (or inside) its result, or capture them in
-    /// an escaping closure or task: the pointers dangle once the scope
-    /// exits. Copy data out instead — ``BorrowedInstruction/record`` is
-    /// an independent value, and `Array(view.operands)` materializes
-    /// operands. The session is not `Sendable`, so the compiler rejects
-    /// sending it across concurrency domains.
-    ///
-    /// Session results are identical to view results: for every index
-    /// and address, the session yields the same record and the same
-    /// operand sequence as the ``Instruction`` path over the same
-    /// stream (pinned by golden equality tests across both paths).
+    /// Everything derived from the session dangles once `body` returns — copy
+    /// out instead. Results are identical to the ``Instruction`` path.
     @inlinable
     func withSession<R>(_ body: (Session) -> R) -> R {
         records.withUnsafeBufferPointer { pinnedRecords in
@@ -61,20 +22,8 @@ public extension InstructionStream {
         }
     }
 
-    /// Pinned-buffer access scope over one ``InstructionStream``,
-    /// created by ``InstructionStream/withSession(_:)`` — the only
-    /// producer, so a session always wraps genuinely pinned storage.
-    ///
-    /// A session is a `RandomAccessCollection` of ``BorrowedInstruction``
-    /// elements, one per record (the truncated-tail record is an
-    /// ordinary element with an empty operand slice), and mirrors the
-    /// stream's address lookups: ``instruction(at:)``,
-    /// ``instruction(containing:)``, and the labeled
-    /// ``subscript(address:)``, all constant-time modular arithmetic
-    /// with the same nil conditions as their ``InstructionStream``
-    /// counterparts. Element formation performs no reference counting —
-    /// the performance and escape-safety contract is documented on
-    /// ``InstructionStream/withSession(_:)``.
+    /// Pinned-buffer access scope over one ``InstructionStream``, created only
+    /// by ``InstructionStream/withSession(_:)``.
     @frozen
     struct Session: RandomAccessCollection {
         public typealias Element = BorrowedInstruction
@@ -201,14 +150,11 @@ public extension InstructionStream {
             instruction(at: address)
         }
 
-        /// The borrowed operand slice for a record — the retain-free
-        /// mirror of ``InstructionStream/operands(for:)`` with the same
-        /// contract: truncated-tail records form empty explicitly (their
-        /// `operandCount` carries the residual byte count, never an
-        /// operand range), and hostile hand-built indices clamp to
-        /// empty. `lo <= hi` always holds (`hi` is `lo` plus an 8-bit
-        /// count, no overflow), so one upper-bound comparison is the
-        /// complete clamp.
+        /// The borrowed operand slice for a record — the retain-free mirror of
+        /// ``InstructionStream/operands(for:)``, with the same contract:
+        /// truncated-tail records and hostile hand-built indices form empty.
+        /// `lo <= hi` always holds, so one upper-bound comparison is the whole
+        /// clamp.
         @inlinable
         @inline(__always)
         public func operands(for record: InstructionRecord) -> UnsafeBufferPointer<Operand> {

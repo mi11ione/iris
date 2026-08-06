@@ -4,13 +4,10 @@
 import Iris
 import Testing
 
-/// Pins every L/S Mnemonic raw-value constant inside the reserved
-/// 2048..4095 slab. Verifies uniqueness and range-membership; a
-/// refactor that renumbers a constant is caught here.
+/// Pins every L/S mnemonic constant inside the reserved 2048...4095 slab,
+/// verifying uniqueness and range membership.
 @Suite("L/S Mnemonic constants 2048..2296")
 struct LSMnemonicConstantsTests {
-    /// Every L/S mnemonic at its assigned raw value. Each row is
-    /// `(constant, expected, name)`.
     static let allLSMnemonics: [(Mnemonic, UInt16, String)] = [
         (.ldr, 2048, "ldr"), (.str, 2049, "str"), (.ldrb, 2050, "ldrb"),
         (.strb, 2051, "strb"), (.ldrh, 2052, "ldrh"), (.strh, 2053, "strh"),
@@ -130,8 +127,6 @@ struct LSMnemonicConstantsTests {
     }
 
     @Test func tableCountMatchesTheAllocation() {
-        // 249 distinct constants — the full L/S mnemonic surface, raw
-        // values 2048..2296 contiguous.
         #expect(Self.allLSMnemonics.count == 249)
     }
 }

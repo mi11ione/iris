@@ -4,30 +4,19 @@
 import Iris
 import Testing
 
-/// Validates `isSVEPermuteMemoryCryptoEncoding` — the single encoding predicate
-/// that defines which SVE words the permute/memory/crypto decoder owns. It is
-/// consulted by the family decoder's gate, the validator's skip filter and the
-/// corpus harvester's scope filter, so a wrong answer either silently drops a
-/// real instruction from validation or hands a foreign encoding to the wrong
-/// decoder. 2s.5 owns the entire memory region (bit31=1) outright plus three
-/// complement carve-outs at the shared compute top bytes 0x05 (permute), 0x44
-/// (quadword permute), and 0x45 (crypto / LUT), so each owned region is claimed
-/// and each sibling that shares the encoding space (integer, predicate,
-/// floating-point) is disclaimed.
+/// Validates `isSVEPermuteMemoryCryptoEncoding`, the predicate defining which
+/// SVE words the permute/memory/crypto decoder owns and the one consulted by.
 @Suite("SVE permute/memory/crypto / encoding-scope predicate")
 struct SVEPermuteMemoryScopeTests {
     @Test func onlyTheScalableTierIsConsidered() {
-        // op0 (bits 28:25) must be 0b0010. Everything else is another family's
-        // encoding space, whatever its low bits look like. (bit31=1 alone is
-        // not enough — an op0≠2 word with bit31 set belongs elsewhere.)
         for encoding: UInt32 in [
-            0x0000_0000, // op0=0 reserved / SME
-            0x1400_0000, // branch
-            0x8B02_0020, // data-processing register
-            0xF900_0000, // load/store
-            0x4E20_1C00, // advanced SIMD
-            0x8000_0000, // op0=0 bit31=1 — SME, not SVE memory
-            0xD000_0000, // op0=0 tier, bit31=1
+            0x0000_0000,
+            0x1400_0000,
+            0x8B02_0020,
+            0xF900_0000,
+            0x4E20_1C00,
+            0x8000_0000,
+            0xD000_0000,
         ] {
             #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
@@ -35,9 +24,6 @@ struct SVEPermuteMemoryScopeTests {
     }
 
     @Test func theWholeMemoryRegionIsClaimed() {
-        // Every bit31=1 op0=2 word is 2s.5's — no sibling claims the memory
-        // region, so the predicate returns true for all eight memory top bytes
-        // regardless of the low bits.
         for topByte: UInt32 in [0x84, 0x85, 0xA4, 0xA5, 0xC4, 0xC5, 0xE4, 0xE5] {
             for low: UInt32 in [0x000000, 0x004000, 0x123456, 0xFFFFFF] {
                 let encoding = (topByte << 24) | low
@@ -71,8 +57,6 @@ struct SVEPermuteMemoryScopeTests {
     }
 
     @Test func theArchitecturalHolesStayInScopeAndDecodeToUndefined() {
-        // A hole inside an owned region is this decoder's to reject — it must not
-        // be pushed out of scope, or nothing would ever validate it.
         let holes: [(UInt32, String)] = [
             (0x0504_0000, "permute reserved class (0x05)"),
             (0x4400_F000, "quadword reserved opcode (0x44)"),
@@ -91,24 +75,11 @@ struct SVEPermuteMemoryScopeTests {
     }
 }
 
-/// Validates that the family gate, the scope predicate, and the permute/memory/
-/// crypto decoder agree over the entire dispatch-relevant encoding space. The
-/// scope predicate and the decoder's sub-dispatch are two independent
-/// transcriptions of the same encoding tree, so they can disagree — and a
-/// family gate that routed an owned word to the wrong decoder (or a foreign
-/// word here) would mis-decode silently. The sweep exhausts every
-/// dispatch-relevant bit combination (bits[23:10] — the sz / nregs / class /
-/// opcode / Rm selectors) across all eleven owned top bytes, with four payload
-/// patterns so a routing decision that wrongly depended on the register or
-/// fixed-zero payload bits (bit9 for PMOV, bit4 for prefetch, bit0 for PMULL)
-/// could not hide.
+/// Validates that the family gate, the scope predicate and the decoder agree
+/// over the whole dispatch-relevant space.
 @Suite("SVE permute/memory/crypto / decoder agrees with its scope predicate")
 struct SVEPermuteMemoryScopeAgreementTests {
-    /// bits[23:10] select every dispatch path; the payloads drive the register
-    /// fields plus the fixed-zero bits the class decoders reject on.
     private static let payloads: [UInt32] = [0x000, 0x3FF, 0x2AA, 0x155]
-    /// The three compute carve-out top bytes (words here may belong to a
-    /// sibling) and the eight memory top bytes (every word is 2s.5's).
     private static let computeTopBytes: [UInt32] = [0x05, 0x44, 0x45]
     private static let memoryTopBytes: [UInt32] = [0x84, 0x85, 0xA4, 0xA5, 0xC4, 0xC5, 0xE4, 0xE5]
 
@@ -132,9 +103,6 @@ struct SVEPermuteMemoryScopeAgreementTests {
     }
 
     @Test func everyOwnedWordRendersTextExactlyWhenItDecodes() {
-        // A decoded record must render nonempty single-line text with no
-        // unresolved placeholder; an UNDEFINED must render the empty string (the
-        // reference assembler's silence for a rejected word).
         for topByte in Self.memoryTopBytes + Self.computeTopBytes {
             Self.sweep(topByte: topByte) { encoding in
                 let draft = Iris.decode(encoding, at: 0)

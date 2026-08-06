@@ -1,32 +1,16 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Crypto/Apple-extensions canonicalizer: formats Instructions produced
-// by the crypto / PAC / MTE / AMX decoders into llvm-mc-compatible
-// disassembly text. Mirrors the per-family canonicalizer pattern of the
-// other families: lowercase output, single space after the mnemonic,
-// comma-space between operands. Records whose mnemonic falls outside
-// the family's mnemonic range [12288, 16383] render as "?<rawValue>" —
-// matching SIMDFPCanonicalizer's fallback for records it doesn't
-// recognize.
 
-/// Canonicalizer for crypto/Apple-extensions records (crypto extensions,
-/// PAC standalone, MTE, AMX). The other per-family canonicalizers
-/// delegate here when they see a mnemonic in this family's range.
+/// Canonicalizer for crypto/Apple-extensions records (crypto extensions, PAC
+/// standalone, MTE, AMX).
 enum CryptoAppleExtensionsCanonicalizer {
-    /// True iff the mnemonic is in this family's reserved range. Callers
-    /// in other canonicalizers (SIMDFP / DPR / DPI / LS) use this as the
-    /// guard before delegating here.
+    /// Whether the mnemonic is in this family's reserved range.
     @inlinable
     static func owns(_ mnemonic: Mnemonic) -> Bool {
         mnemonic.rawValue >= 12288 && mnemonic.rawValue <= 16383
     }
 
-    /// The byte path — rendered straight into a UTF-8 buffer.
-    ///
-    /// A mnemonic outside the family's range renders `"?<rawValue>"`, the
-    /// deterministic non-crashing sentinel the other canonicalizers use for
-    /// a record they cannot render.
+    /// The byte path.
     @_optimize(speed)
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
         if instruction.mnemonic == .undefined { return }
@@ -35,15 +19,10 @@ enum CryptoAppleExtensionsCanonicalizer {
             out.putDecimal(UInt64(instruction.mnemonic.rawValue))
             return
         }
-        // amxUnknownOp renders as its raw-word `.long` operand string alone
-        // — its census name ("amx-unknown") is not assembly.
         if instruction.mnemonic == .amxUnknownOp {
             putOperands(instruction, into: &out)
             return
         }
-        // AMX set/clr render no operand text, so the separating space must
-        // not be emitted for them; the mark is rolled back when the operand
-        // list contributes nothing.
         putMnemonic(instruction.mnemonic, into: &out)
         let mark = out.count
         out.put(UInt8(ascii: " "))
@@ -51,16 +30,7 @@ enum CryptoAppleExtensionsCanonicalizer {
         if out.count == mark &+ 1 { out.count = mark }
     }
 
-    // MARK: - Operand list formatting
-
     private static func putOperands(_ instruction: Instruction, into out: inout TextBytes) {
-        // Per-mnemonic operand rendering:
-        //   IRG with Rm=XZR aliases to the 2-operand form `irg Xd, Xn`.
-        //   STG / STZG / ST2G / STZ2G in signed-offset with displacement
-        //   0 alias to `mn Xt, [Xn]` (omitting `, #0`).
-        //   AMX opcodes 17 (set/clr): operand text is empty.
-        //   AMX other opcodes: render the X-register operand from the
-        //   5-bit operand subfield.
         switch instruction.mnemonic {
         case .irg:
             putIRG(instruction.operands, into: &out)
@@ -69,10 +39,6 @@ enum CryptoAppleExtensionsCanonicalizer {
         case .amxSet, .amxClr:
             break
         case .amxUnknownOp:
-            // Render as `.long 0xXXXXXXXX` matching the convention llvm-mc
-            // uses for unknown 4-byte words. (For amxUnknownOp the operand
-            // list contains a single `.amxUnknown(rawFields:)` carrying the
-            // full 32-bit encoding.)
             if case let .amxUnknown(rawFields) = instruction.operands.first {
                 putLongHex(rawFields, into: &out)
             } else {
@@ -118,8 +84,6 @@ enum CryptoAppleExtensionsCanonicalizer {
             putXRegisterName(field.operandField, into: &out)
         case let .amxUnknown(rawFields):
             putLongHex(rawFields, into: &out)
-        // This family's decoders never emit these — defensive sentinels
-        // so the @frozen Operand switch stays exhaustive.
         case .floatImmediate, .label, .shiftedRegister, .extendedRegister,
              .systemRegister, .conditionCode, .pstateField, .barrierOption,
              .prefetchOperation, .systemOp, .shiftAmount, .pageLabel,
@@ -131,8 +95,7 @@ enum CryptoAppleExtensionsCanonicalizer {
         }
     }
 
-    /// IRG operand rendering — collapse the 3-operand `Xd, Xn, XZR`
-    /// form to the 2-operand alias `Xd, Xn` that llvm-mc emits.
+    /// IRG operand rendering.
     private static func putIRG(_ operands: Instruction.Operands, into out: inout TextBytes) {
         guard operands.count == 3 else {
             putDefaultOperandList(operands, into: &out)
@@ -147,10 +110,7 @@ enum CryptoAppleExtensionsCanonicalizer {
         putDefaultOperandList(operands, into: &out)
     }
 
-    /// STG / STZG / ST2G / STZ2G rendering — signed-offset with
-    /// displacement 0 aliases to `mn Xt, [Xn]` (omitting `, #0`); pre /
-    /// post-index always render the imm. The MemoryOperand carries the
-    /// writeback kind.
+    /// STG / STZG / ST2G / STZ2G rendering.
     private static func putMTEStore(_ operands: Instruction.Operands, into out: inout TextBytes) {
         guard operands.count == 2,
               case let .memory(mem) = operands[1]
@@ -163,8 +123,7 @@ enum CryptoAppleExtensionsCanonicalizer {
         putMemoryOperand(mem, into: &out)
     }
 
-    /// Format a MemoryOperand. LDG / LDGM / STGM / STZGM use this via the
-    /// default operand list; the MTE-store helper shares it.
+    /// Format a MemoryOperand.
     private static func putMemoryOperand(_ mem: MemoryOperand, into out: inout TextBytes) {
         out.put(UInt8(ascii: "["))
         switch mem.base {
@@ -174,7 +133,6 @@ enum CryptoAppleExtensionsCanonicalizer {
         let imm = mem.displacement
         switch mem.writeback {
         case .none:
-            // Signed-offset; collapse `, #0` to bare `[Xn]`.
             if imm != 0 {
                 out.put(", #")
                 out.putDecimal(imm)
@@ -189,8 +147,6 @@ enum CryptoAppleExtensionsCanonicalizer {
             out.putDecimal(imm)
         }
     }
-
-    // MARK: - Register name rendering
 
     private static func putVectorRegister(_ vr: VectorRegisterRef, into out: inout TextBytes) {
         let n = UInt64(vr.registerIndex)
@@ -258,11 +214,6 @@ enum CryptoAppleExtensionsCanonicalizer {
 
     @inline(__always)
     private static func putScalarSizeName(_ s: ScalarSize, into out: inout TextBytes) {
-        // Called only from `.element(arrangement, _)` via
-        // `arrangement.elementSize`, which never produces `.q` (Q is the
-        // 128-bit scalar — no vector arrangement has an element of that
-        // size). The `.q` case is folded into the default arm so the
-        // switch stays exhaustive without an unreachable arm.
         switch s {
         case .b: out.put("b")
         case .h: out.put("h")
@@ -284,13 +235,10 @@ enum CryptoAppleExtensionsCanonicalizer {
     }
 
     /// Render a 32-bit encoding as `.long 0xXXXXXXXX` matching llvm-mc's
-    /// fallback for unknown words. Used for `amxUnknownOp` and as the
-    /// fallback rendering for `.amxUnknown(rawFields:)`.
+    /// fallback for unknown words.
     @inline(__always)
     private static func putLongHex(_ value: UInt32, into out: inout TextBytes) {
         out.put(".long 0x")
         out.putHex(UInt64(value))
     }
-
-    // MARK: - Mnemonic names
 }

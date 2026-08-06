@@ -1,20 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// iris-parity — the in-repo trust instrument. Not a
-// shipped product: it re-earns the library's correctness claims against
-// external ground truth (llvm-mc) and the library's own totality and
-// determinism contracts, on every PR and every night.
-//
-//   tsv         diff Iris against committed/external TSV corpora
-//   live        seeded random sweep vs live llvm-mc at maximal mattr
-//   exhaustive  full 2^32 totality + two-pass determinism digest
-//   semantic    per-family expected-attribute checker sweep
 
 import Foundation
 
 /// The tool's release version, matching the package tag.
-let parityVersion = "0.7.0"
+let parityVersion = "1.0.0"
 
 let usage = """
 usage: iris-parity <subcommand> [options]
@@ -88,11 +78,6 @@ guard let subcommand = arguments.first else {
 
 let rest = Array(arguments.dropFirst())
 
-// The library floors at the SwiftPM tools-6.0 defaults (no `platforms:`
-// stanza — a deliberate library decision this tool must not disturb), so Swift
-// concurrency carries an availability condition here. The detached task
-// runs on the cooperative pool; the main thread blocks on the semaphore
-// outside it.
 if #available(macOS 10.15, *) {
     let semaphore = DispatchSemaphore(value: 0)
     nonisolated(unsafe) var exitCode: Int32 = 2

@@ -5,15 +5,9 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates the byte-swapped (`cigam`) walk paths: a big-endian-header
-/// Mach-O — a shape no ARM64 toolchain emits but the format permits —
-/// walks identically to its little-endian twin, every multi-byte header
-/// field passing through the swap layer. Instruction words stay
-/// little-endian per the architecture regardless of header order.
+/// Validates the byte-swapped (`cigam`) walk.
 @Suite("Byte-swapped Mach-O walk")
 struct ByteSwappedWalkTests {
-    /// One binary, both header byte orders: segment + section + symtab
-    /// + function starts + data-in-code.
     func fullBinary(bigEndian: Bool) -> [UInt8] {
         var a = MachOAssembler(bigEndian: bigEndian)
         let sizeofcmds: UInt32 = 72 + 80 + 24 + 16 + 16
@@ -36,7 +30,7 @@ struct ByteSwappedWalkTests {
         }
         a.nlist64(strx: 1, type: 0x0F, value: 0x1000)
         a.fixedString("\0_main\0", length: 7)
-        a.bytes.append(contentsOf: [0x00, 0x00]) // function starts: terminator
+        a.bytes.append(contentsOf: [0x00, 0x00])
         a.dataInCodeEntry(offset: 516, length: 4, kind: 1)
         return a.bytes
     }
@@ -71,8 +65,6 @@ struct ByteSwappedWalkTests {
     }
 
     @Test func byteSwappedFatHeadersSelectSlices() throws {
-        // Real fat headers are big-endian; the fixture run already covers
-        // them. Pin the swap explicitly with a hand-built container too.
         var a = MachOAssembler(bigEndian: true)
         let slice = fullBinary(bigEndian: false)
         a.u32(0xCAFE_BABE)

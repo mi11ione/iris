@@ -1,32 +1,17 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Canonical llvm-mc-parity text for SME-core records. Mirrors
-// the SVE canonicalizer conventions: lowercase, `, `-joined operands. A
-// scalable-tier hole never reaches here — the text router renders it as
-// `.long` before dispatching. The SME-specific rules (every one probe-pinned against
-// llvm-mc 22.1.4) are: MOVA renders `mov` (the always-preferred alias); a ZA
-// tile slice `za<t>{h|v}.<T>[Wv, off]` is braced only inside an LD1/ST1 (the
-// forms with a memory operand); LD1 governing predicates render `/z`, ST1 bare;
-// the register-offset shift is the access-element log2 size (none for `.b`);
-// LDR/STR ZA print the vector-select offset always but drop a zero memory
-// offset; and ZERO renders the imm8 mask as the shortest uniform tile list,
-// with llvm's comma-no-space quirk on the multi-`.s` alias lists.
 
 /// Formats SME-core records exactly as llvm-mc renders them.
 enum SMECanonicalizer {
-    /// The byte path — rendered straight into a UTF-8 buffer.
+    /// The byte path.
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
         let ops = instruction.operands
         if instruction.mnemonic == .zero {
             putZero(ops, into: &out)
             return
         }
-        // This family's own table: a mnemonic from outside the group
-        // renders nothing rather than the spelling another family owns.
         if let spelling = name(instruction.mnemonic) { out.put(spelling) }
         if ops.isEmpty { return }
-        // A tile slice inside a memory-bearing instruction renders braced.
         var braceSlice = false
         for op in ops where {
             if case .scalableMemory = op { true } else { false }
@@ -40,8 +25,6 @@ enum SMECanonicalizer {
             put(ops[i], braceSlice: braceSlice, into: &out)
         }
     }
-
-    // MARK: per-operand rendering
 
     private static func put(_ op: Operand, braceSlice: Bool, into out: inout TextBytes) {
         switch op {
@@ -84,8 +67,6 @@ enum SMECanonicalizer {
         }
     }
 
-    // MARK: ZERO
-
     private static func putZero(_ operands: Instruction.Operands, into out: inout TextBytes) {
         if operands.isEmpty {
             out.put("zero {}")
@@ -100,8 +81,6 @@ enum SMECanonicalizer {
             guard case let .zaTile(_, element) = op else { continue }
             if element != .some(.s) { allS = false }
         }
-        // The equal-nibble `.s` alias lists render comma-no-space (an llvm
-        // InstAlias-string artifact); generic `.d` lists use comma-space.
         out.put("zero {")
         var first = true
         for op in operands {
@@ -112,8 +91,6 @@ enum SMECanonicalizer {
         }
         out.put(UInt8(ascii: "}"))
     }
-
-    // MARK: text helpers
 
     private static func putZATile(index: UInt8, element: ScalarSize?, into out: inout TextBytes) {
         guard let element else {
@@ -197,9 +174,7 @@ enum SMECanonicalizer {
         }
     }
 
-    /// The rendered spelling of an SME-core mnemonic. `zero` renders through
-    /// ``formatZero(_:)`` from ``format(_:)`` before reaching here, but is
-    /// still mapped so this stays a total naming table for ``Mnemonic/name``.
+    /// The rendered spelling of an SME-core mnemonic.
     @_effects(readonly)
     static func name(_ m: Mnemonic) -> StaticString? {
         switch m {

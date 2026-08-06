@@ -1,64 +1,38 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SVE / SVE2 integer decoder. Entry + top sub-dispatch
-// split on the top byte (one of 0x04/0x05/0x24/0x25/0x44/
-// 0x45) and then on bits[23:10] (which provably determine the decode group,
-// ) into the 21 per-group decoders that live in sibling files.
-// Called only from `SVEDecoder.decode` when `isSVEIntegerEncoding` holds, so
-// `decode` is total over SVE-integer's domain: every path returns a real record or
-// a well-formed UNDEFINED (`.undefined`, `.sve`) for the genuine in-scope
-// holes (reserved opc, illegal size, reserved bitmask immediate).
-//
-// Shared field extraction and draft-building helpers used by every group
-// decoder live here.
 
 /// The SVE / SVE2 integer decoder for SVE-integer.
 enum SVEIntegerDecode {
-    /// Decode an in-scope SVE integer word. Precondition (by construction,
-    /// not asserted): `isSVEIntegerEncoding(encoding)`.
+    /// Decode an in-scope SVE integer word.
     @_optimize(speed)
     static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         switch (e >> 24) & 0xFF {
-        case 0x24: decodeCompare(e, a, &sink) // G7 vector/wide + ucmp-immediate
-        case 0x04: decodeCompute(e, a, &sink) // G1-G6 predicated + G6/G17 unpredicated
-        case 0x05: decodeMove(e, a, &sink) // G8 move/copy + G9 logical-immediate
-        case 0x25: decodeImmediate(e, a, &sink) // G7 scmp-imm + G10 wide-imm + G8 dup-imm
-        case 0x44: decodeSVE2Low(e, a, &sink) // G11/G12/G13/G18/G19/G20
-        // 0x45 — the sixth and last top byte `isSVEIntegerEncoding` admits, so
-        // the dispatch needs no unreachable UNDEFINED arm.
-        default: decodeSVE2High(e, a, &sink) // G12/G14/G15/G16/G18
+        case 0x24: decodeCompare(e, a, &sink)
+        case 0x04: decodeCompute(e, a, &sink)
+        case 0x05: decodeMove(e, a, &sink)
+        case 0x25: decodeImmediate(e, a, &sink)
+        case 0x44: decodeSVE2Low(e, a, &sink)
+        default: decodeSVE2High(e, a, &sink)
         }
     }
-
-    // MARK: 0x04 compute sub-dispatch (predicated bit21=0 / unpredicated bit21=1)
-
-    //
-    // Group routing verified against the tblgen encodings. Predicated
-    // (bit21=0), by bits[15:13]: 000 arith/log (G1); 001 reductions (G5); 010/011
-    // MLA/MLS (G4); 100 shifts (G2); 101 unary (G3); 110/111 MAD/MSB (G4).
-    // Unpredicated (bit21=1), by bits[15:12]: 0000/0001 arith (G6); 0011 logical +
-    // ternary/XAR (G6/G17); 0110/0111 mul (G6); 1000 shift-wide, 1001 shift-imm,
-    // 1010 ADR (G6).
 
     @inline(__always)
     static func decodeCompute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if (e >> 21) & 1 == 0 {
             switch (e >> 13) & 0b111 {
-            case 0b000: return decodePredicatedArithLog(e, a, &sink) // G1
-            case 0b001: return decodeReduction(e, a, &sink) // G5
-            case 0b010, 0b011: return decodeMultiplyAddMLA(e, a, &sink) // G4 MLA/MLS
-            case 0b100: return decodePredicatedShift(e, a, &sink) // G2
-            case 0b101: return decodePredicatedUnary(e, a, &sink) // G3
-            default: return decodeMultiplyAddMAD(e, a, &sink) // 110/111 → G4 MAD/MSB
+            case 0b000: return decodePredicatedArithLog(e, a, &sink)
+            case 0b001: return decodeReduction(e, a, &sink)
+            case 0b010, 0b011: return decodeMultiplyAddMLA(e, a, &sink)
+            case 0b100: return decodePredicatedShift(e, a, &sink)
+            case 0b101: return decodePredicatedUnary(e, a, &sink)
+            default: return decodeMultiplyAddMAD(e, a, &sink)
             }
         }
-        return decodeUnpredicated(e, a, &sink) // G6 + G17
+        return decodeUnpredicated(e, a, &sink)
     }
 
-    // MARK: shared field extraction
-
-    /// Element size from a 2-bit `sz` value (already shifted to the low 2 bits).
+    /// Element size from a 2-bit `sz` value (already shifted to the low 2
+    /// bits).
     @inline(__always)
     static func elementSize(_ sz: UInt32) -> ScalarSize {
         switch sz & 0b11 {
@@ -69,9 +43,7 @@ enum SVEIntegerDecode {
         }
     }
 
-    /// The element size one step below `size` — the source width of a widening
-    /// form (and the destination width of a narrowing one). Nil for `.b`, which
-    /// has nothing below it.
+    /// The element size one step below `size`.
     @inline(__always)
     static func narrower(_ size: ScalarSize) -> ScalarSize? {
         switch size {
@@ -91,12 +63,7 @@ enum SVEIntegerDecode {
         return (v ^ signBit) &- signBit
     }
 
-    /// Append the operand(s) for a shifted imm8 (`#imm8{, lsl #8}`). llvm-mc folds
-    /// the LSL #8 into the printed value (`#imm8 << 8`) for every nonzero imm8,
-    /// but renders `#0, lsl #8` for imm8=0 (folding would lose the shift) — so
-    /// that one case appends two operands instead of one. Appends into the
-    /// caller's array rather than returning a fresh one: this is on the decode
-    /// hot path, and building `[a, b] + helper()` would allocate three times.
+    /// Append the operand(s) for a shifted imm8 (`#imm8{, lsl #8}`).
     @inline(__always)
     static func appendShiftedImmediate(
         raw: UInt32, shift: UInt32, signed: Bool, to sink: inout OperandSink,
@@ -114,16 +81,7 @@ enum SVEIntegerDecode {
             : .unsignedImmediate(value: UInt64(raw) << shift, width: width))
     }
 
-    /// Decode the SVE **shift-immediate** `tsz` scheme. The concatenation
-    /// `tszHigh : low` (with `low` being `lowBits` wide) forms a value whose
-    /// HIGHEST set bit selects the element size — bit 3 → .b, 4 → .h, 5 → .s,
-    /// 6 → .d — and the remaining low bits carry the shift amount. Returns
-    /// `(element, esize, tsz)` or nil when the field is reserved (all-zero, or a
-    /// size the caller has excluded).
-    ///
-    /// This is **not** the element-*index* scheme: the DUP-indexed broadcast uses
-    /// the LOWEST set bit and has a `.q` arm, and is decoded separately in
-    /// ``decodeDupIndexed(_:_:)``. The two are not interchangeable.
+    /// Decode the SVE shift-immediate `tsz` scheme.
     @inline(__always)
     static func decodeTsz(tszHigh: UInt32, low: UInt32, lowBits: UInt32) -> (element: ScalarSize, esize: Int, tsz: UInt32)? {
         let tsz = (tszHigh << lowBits) | low
@@ -157,8 +115,6 @@ enum SVEIntegerDecode {
         elementSize(e >> 22)
     }
 
-    // MARK: shared operand + mask builders
-
     @inline(__always)
     static func vec(_ index: UInt8, _ element: ScalarSize) -> Operand {
         .scalableVector(ScalableVectorRef(registerIndex: index, element: element))
@@ -175,7 +131,8 @@ enum SVEIntegerDecode {
     }
 
     /// A well-formed in-scope UNDEFINED SVE record (`category = .sve`, raw
-    /// encoding preserved), matching llvm-mc's empty output for rejected words.
+    /// encoding preserved), matching llvm-mc's empty output for rejected
+    /// words.
     @inline(__always)
     static func undefined(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
         DecodedDraft(address: a, encoding: e, mnemonic: .undefined, category: .sve)

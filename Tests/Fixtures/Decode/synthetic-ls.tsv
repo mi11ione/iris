@@ -1,4 +1,4 @@
-# encoding_hex_be	expected_text  (-mattr=+v9.6a,+sme,+sme2,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+sve,+lse,+lor,+rcpc,+rcpc-immo,+rcpc3,+mops,+ls64,+lse128)
+# encoding_hex_be	expected_text  (-mattr=+all,+v9.6a)
 18000000	ldr w0, #0
 18000010	ldr w16, #0
 1800001f	ldr wzr, #0
@@ -6635,3 +6635,2371 @@ fd000000	str d0, [x0]
 2d400400	ldp s0, s1, [x0]
 4c407000	ld1 { v0.16b }, [x0]
 d9200400	stg x0, [x0], #0
+3c3702af	ldbfadd h23, h15, [x21]
+3c2003ff	ldbfadd h0, h31, [sp]
+3c3f0000	ldbfadd h31, h0, [x0]
+3c2500ff	ldbfadd h5, h31, [x7]
+3c3712af	
+3c2013ff	
+3c3f1000	
+3c2510ff	
+3c3722af	
+3c2023ff	
+3c3f2000	
+3c2520ff	
+3c3732af	
+3c2033ff	
+3c3f3000	
+3c2530ff	
+3c3742af	ldbfmax h23, h15, [x21]
+3c2043ff	ldbfmax h0, h31, [sp]
+3c3f4000	ldbfmax h31, h0, [x0]
+3c2540ff	ldbfmax h5, h31, [x7]
+3c3752af	ldbfmin h23, h15, [x21]
+3c2053ff	ldbfmin h0, h31, [sp]
+3c3f5000	ldbfmin h31, h0, [x0]
+3c2550ff	ldbfmin h5, h31, [x7]
+3c3762af	ldbfmaxnm h23, h15, [x21]
+3c2063ff	ldbfmaxnm h0, h31, [sp]
+3c3f6000	ldbfmaxnm h31, h0, [x0]
+3c2560ff	ldbfmaxnm h5, h31, [x7]
+3c3772af	ldbfminnm h23, h15, [x21]
+3c2073ff	ldbfminnm h0, h31, [sp]
+3c3f7000	ldbfminnm h31, h0, [x0]
+3c2570ff	ldbfminnm h5, h31, [x7]
+3c3782af	
+3c2083ff	stbfadd h0, [sp]
+3c3f8000	
+3c2580ff	stbfadd h5, [x7]
+3c3792af	
+3c2093ff	
+3c3f9000	
+3c2590ff	
+3c37a2af	
+3c20a3ff	
+3c3fa000	
+3c25a0ff	
+3c37b2af	
+3c20b3ff	
+3c3fb000	
+3c25b0ff	
+3c37c2af	
+3c20c3ff	stbfmax h0, [sp]
+3c3fc000	
+3c25c0ff	stbfmax h5, [x7]
+3c37d2af	
+3c20d3ff	stbfmin h0, [sp]
+3c3fd000	
+3c25d0ff	stbfmin h5, [x7]
+3c37e2af	
+3c20e3ff	stbfmaxnm h0, [sp]
+3c3fe000	
+3c25e0ff	stbfmaxnm h5, [x7]
+3c37f2af	
+3c20f3ff	stbfminnm h0, [sp]
+3c3ff000	
+3c25f0ff	stbfminnm h5, [x7]
+3c7702af	ldbfaddl h23, h15, [x21]
+3c6003ff	ldbfaddl h0, h31, [sp]
+3c7f0000	ldbfaddl h31, h0, [x0]
+3c6500ff	ldbfaddl h5, h31, [x7]
+3c7712af	
+3c6013ff	
+3c7f1000	
+3c6510ff	
+3c7722af	
+3c6023ff	
+3c7f2000	
+3c6520ff	
+3c7732af	
+3c6033ff	
+3c7f3000	
+3c6530ff	
+3c7742af	ldbfmaxl h23, h15, [x21]
+3c6043ff	ldbfmaxl h0, h31, [sp]
+3c7f4000	ldbfmaxl h31, h0, [x0]
+3c6540ff	ldbfmaxl h5, h31, [x7]
+3c7752af	ldbfminl h23, h15, [x21]
+3c6053ff	ldbfminl h0, h31, [sp]
+3c7f5000	ldbfminl h31, h0, [x0]
+3c6550ff	ldbfminl h5, h31, [x7]
+3c7762af	ldbfmaxnml h23, h15, [x21]
+3c6063ff	ldbfmaxnml h0, h31, [sp]
+3c7f6000	ldbfmaxnml h31, h0, [x0]
+3c6560ff	ldbfmaxnml h5, h31, [x7]
+3c7772af	ldbfminnml h23, h15, [x21]
+3c6073ff	ldbfminnml h0, h31, [sp]
+3c7f7000	ldbfminnml h31, h0, [x0]
+3c6570ff	ldbfminnml h5, h31, [x7]
+3c7782af	
+3c6083ff	stbfaddl h0, [sp]
+3c7f8000	
+3c6580ff	stbfaddl h5, [x7]
+3c7792af	
+3c6093ff	
+3c7f9000	
+3c6590ff	
+3c77a2af	
+3c60a3ff	
+3c7fa000	
+3c65a0ff	
+3c77b2af	
+3c60b3ff	
+3c7fb000	
+3c65b0ff	
+3c77c2af	
+3c60c3ff	stbfmaxl h0, [sp]
+3c7fc000	
+3c65c0ff	stbfmaxl h5, [x7]
+3c77d2af	
+3c60d3ff	stbfminl h0, [sp]
+3c7fd000	
+3c65d0ff	stbfminl h5, [x7]
+3c77e2af	
+3c60e3ff	stbfmaxnml h0, [sp]
+3c7fe000	
+3c65e0ff	stbfmaxnml h5, [x7]
+3c77f2af	
+3c60f3ff	stbfminnml h0, [sp]
+3c7ff000	
+3c65f0ff	stbfminnml h5, [x7]
+3cb702af	ldbfadda h23, h15, [x21]
+3ca003ff	ldbfadda h0, h31, [sp]
+3cbf0000	ldbfadda h31, h0, [x0]
+3ca500ff	ldbfadda h5, h31, [x7]
+3cb712af	
+3ca013ff	
+3cbf1000	
+3ca510ff	
+3cb722af	
+3ca023ff	
+3cbf2000	
+3ca520ff	
+3cb732af	
+3ca033ff	
+3cbf3000	
+3ca530ff	
+3cb742af	ldbfmaxa h23, h15, [x21]
+3ca043ff	ldbfmaxa h0, h31, [sp]
+3cbf4000	ldbfmaxa h31, h0, [x0]
+3ca540ff	ldbfmaxa h5, h31, [x7]
+3cb752af	ldbfmina h23, h15, [x21]
+3ca053ff	ldbfmina h0, h31, [sp]
+3cbf5000	ldbfmina h31, h0, [x0]
+3ca550ff	ldbfmina h5, h31, [x7]
+3cb762af	ldbfmaxnma h23, h15, [x21]
+3ca063ff	ldbfmaxnma h0, h31, [sp]
+3cbf6000	ldbfmaxnma h31, h0, [x0]
+3ca560ff	ldbfmaxnma h5, h31, [x7]
+3cb772af	ldbfminnma h23, h15, [x21]
+3ca073ff	ldbfminnma h0, h31, [sp]
+3cbf7000	ldbfminnma h31, h0, [x0]
+3ca570ff	ldbfminnma h5, h31, [x7]
+3cb782af	
+3ca083ff	
+3cbf8000	
+3ca580ff	
+3cb792af	
+3ca093ff	
+3cbf9000	
+3ca590ff	
+3cb7a2af	
+3ca0a3ff	
+3cbfa000	
+3ca5a0ff	
+3cb7b2af	
+3ca0b3ff	
+3cbfb000	
+3ca5b0ff	
+3cb7c2af	
+3ca0c3ff	
+3cbfc000	
+3ca5c0ff	
+3cb7d2af	
+3ca0d3ff	
+3cbfd000	
+3ca5d0ff	
+3cb7e2af	
+3ca0e3ff	
+3cbfe000	
+3ca5e0ff	
+3cb7f2af	
+3ca0f3ff	
+3cbff000	
+3ca5f0ff	
+3cf702af	ldbfaddal h23, h15, [x21]
+3ce003ff	ldbfaddal h0, h31, [sp]
+3cff0000	ldbfaddal h31, h0, [x0]
+3ce500ff	ldbfaddal h5, h31, [x7]
+3cf712af	
+3ce013ff	
+3cff1000	
+3ce510ff	
+3cf722af	
+3ce023ff	
+3cff2000	
+3ce520ff	
+3cf732af	
+3ce033ff	
+3cff3000	
+3ce530ff	
+3cf742af	ldbfmaxal h23, h15, [x21]
+3ce043ff	ldbfmaxal h0, h31, [sp]
+3cff4000	ldbfmaxal h31, h0, [x0]
+3ce540ff	ldbfmaxal h5, h31, [x7]
+3cf752af	ldbfminal h23, h15, [x21]
+3ce053ff	ldbfminal h0, h31, [sp]
+3cff5000	ldbfminal h31, h0, [x0]
+3ce550ff	ldbfminal h5, h31, [x7]
+3cf762af	ldbfmaxnmal h23, h15, [x21]
+3ce063ff	ldbfmaxnmal h0, h31, [sp]
+3cff6000	ldbfmaxnmal h31, h0, [x0]
+3ce560ff	ldbfmaxnmal h5, h31, [x7]
+3cf772af	ldbfminnmal h23, h15, [x21]
+3ce073ff	ldbfminnmal h0, h31, [sp]
+3cff7000	ldbfminnmal h31, h0, [x0]
+3ce570ff	ldbfminnmal h5, h31, [x7]
+3cf782af	
+3ce083ff	
+3cff8000	
+3ce580ff	
+3cf792af	
+3ce093ff	
+3cff9000	
+3ce590ff	
+3cf7a2af	
+3ce0a3ff	
+3cffa000	
+3ce5a0ff	
+3cf7b2af	
+3ce0b3ff	
+3cffb000	
+3ce5b0ff	
+3cf7c2af	
+3ce0c3ff	
+3cffc000	
+3ce5c0ff	
+3cf7d2af	
+3ce0d3ff	
+3cffd000	
+3ce5d0ff	
+3cf7e2af	
+3ce0e3ff	
+3cffe000	
+3ce5e0ff	
+3cf7f2af	
+3ce0f3ff	
+3cfff000	
+3ce5f0ff	
+7c3702af	ldfadd h23, h15, [x21]
+7c2003ff	ldfadd h0, h31, [sp]
+7c3f0000	ldfadd h31, h0, [x0]
+7c2500ff	ldfadd h5, h31, [x7]
+7c3712af	
+7c2013ff	
+7c3f1000	
+7c2510ff	
+7c3722af	
+7c2023ff	
+7c3f2000	
+7c2520ff	
+7c3732af	
+7c2033ff	
+7c3f3000	
+7c2530ff	
+7c3742af	ldfmax h23, h15, [x21]
+7c2043ff	ldfmax h0, h31, [sp]
+7c3f4000	ldfmax h31, h0, [x0]
+7c2540ff	ldfmax h5, h31, [x7]
+7c3752af	ldfmin h23, h15, [x21]
+7c2053ff	ldfmin h0, h31, [sp]
+7c3f5000	ldfmin h31, h0, [x0]
+7c2550ff	ldfmin h5, h31, [x7]
+7c3762af	ldfmaxnm h23, h15, [x21]
+7c2063ff	ldfmaxnm h0, h31, [sp]
+7c3f6000	ldfmaxnm h31, h0, [x0]
+7c2560ff	ldfmaxnm h5, h31, [x7]
+7c3772af	ldfminnm h23, h15, [x21]
+7c2073ff	ldfminnm h0, h31, [sp]
+7c3f7000	ldfminnm h31, h0, [x0]
+7c2570ff	ldfminnm h5, h31, [x7]
+7c3782af	
+7c2083ff	stfadd h0, [sp]
+7c3f8000	
+7c2580ff	stfadd h5, [x7]
+7c3792af	
+7c2093ff	
+7c3f9000	
+7c2590ff	
+7c37a2af	
+7c20a3ff	
+7c3fa000	
+7c25a0ff	
+7c37b2af	
+7c20b3ff	
+7c3fb000	
+7c25b0ff	
+7c37c2af	
+7c20c3ff	stfmax h0, [sp]
+7c3fc000	
+7c25c0ff	stfmax h5, [x7]
+7c37d2af	
+7c20d3ff	stfmin h0, [sp]
+7c3fd000	
+7c25d0ff	stfmin h5, [x7]
+7c37e2af	
+7c20e3ff	stfmaxnm h0, [sp]
+7c3fe000	
+7c25e0ff	stfmaxnm h5, [x7]
+7c37f2af	
+7c20f3ff	stfminnm h0, [sp]
+7c3ff000	
+7c25f0ff	stfminnm h5, [x7]
+7c7702af	ldfaddl h23, h15, [x21]
+7c6003ff	ldfaddl h0, h31, [sp]
+7c7f0000	ldfaddl h31, h0, [x0]
+7c6500ff	ldfaddl h5, h31, [x7]
+7c7712af	
+7c6013ff	
+7c7f1000	
+7c6510ff	
+7c7722af	
+7c6023ff	
+7c7f2000	
+7c6520ff	
+7c7732af	
+7c6033ff	
+7c7f3000	
+7c6530ff	
+7c7742af	ldfmaxl h23, h15, [x21]
+7c6043ff	ldfmaxl h0, h31, [sp]
+7c7f4000	ldfmaxl h31, h0, [x0]
+7c6540ff	ldfmaxl h5, h31, [x7]
+7c7752af	ldfminl h23, h15, [x21]
+7c6053ff	ldfminl h0, h31, [sp]
+7c7f5000	ldfminl h31, h0, [x0]
+7c6550ff	ldfminl h5, h31, [x7]
+7c7762af	ldfmaxnml h23, h15, [x21]
+7c6063ff	ldfmaxnml h0, h31, [sp]
+7c7f6000	ldfmaxnml h31, h0, [x0]
+7c6560ff	ldfmaxnml h5, h31, [x7]
+7c7772af	ldfminnml h23, h15, [x21]
+7c6073ff	ldfminnml h0, h31, [sp]
+7c7f7000	ldfminnml h31, h0, [x0]
+7c6570ff	ldfminnml h5, h31, [x7]
+7c7782af	
+7c6083ff	stfaddl h0, [sp]
+7c7f8000	
+7c6580ff	stfaddl h5, [x7]
+7c7792af	
+7c6093ff	
+7c7f9000	
+7c6590ff	
+7c77a2af	
+7c60a3ff	
+7c7fa000	
+7c65a0ff	
+7c77b2af	
+7c60b3ff	
+7c7fb000	
+7c65b0ff	
+7c77c2af	
+7c60c3ff	stfmaxl h0, [sp]
+7c7fc000	
+7c65c0ff	stfmaxl h5, [x7]
+7c77d2af	
+7c60d3ff	stfminl h0, [sp]
+7c7fd000	
+7c65d0ff	stfminl h5, [x7]
+7c77e2af	
+7c60e3ff	stfmaxnml h0, [sp]
+7c7fe000	
+7c65e0ff	stfmaxnml h5, [x7]
+7c77f2af	
+7c60f3ff	stfminnml h0, [sp]
+7c7ff000	
+7c65f0ff	stfminnml h5, [x7]
+7cb702af	ldfadda h23, h15, [x21]
+7ca003ff	ldfadda h0, h31, [sp]
+7cbf0000	ldfadda h31, h0, [x0]
+7ca500ff	ldfadda h5, h31, [x7]
+7cb712af	
+7ca013ff	
+7cbf1000	
+7ca510ff	
+7cb722af	
+7ca023ff	
+7cbf2000	
+7ca520ff	
+7cb732af	
+7ca033ff	
+7cbf3000	
+7ca530ff	
+7cb742af	ldfmaxa h23, h15, [x21]
+7ca043ff	ldfmaxa h0, h31, [sp]
+7cbf4000	ldfmaxa h31, h0, [x0]
+7ca540ff	ldfmaxa h5, h31, [x7]
+7cb752af	ldfmina h23, h15, [x21]
+7ca053ff	ldfmina h0, h31, [sp]
+7cbf5000	ldfmina h31, h0, [x0]
+7ca550ff	ldfmina h5, h31, [x7]
+7cb762af	ldfmaxnma h23, h15, [x21]
+7ca063ff	ldfmaxnma h0, h31, [sp]
+7cbf6000	ldfmaxnma h31, h0, [x0]
+7ca560ff	ldfmaxnma h5, h31, [x7]
+7cb772af	ldfminnma h23, h15, [x21]
+7ca073ff	ldfminnma h0, h31, [sp]
+7cbf7000	ldfminnma h31, h0, [x0]
+7ca570ff	ldfminnma h5, h31, [x7]
+7cb782af	
+7ca083ff	
+7cbf8000	
+7ca580ff	
+7cb792af	
+7ca093ff	
+7cbf9000	
+7ca590ff	
+7cb7a2af	
+7ca0a3ff	
+7cbfa000	
+7ca5a0ff	
+7cb7b2af	
+7ca0b3ff	
+7cbfb000	
+7ca5b0ff	
+7cb7c2af	
+7ca0c3ff	
+7cbfc000	
+7ca5c0ff	
+7cb7d2af	
+7ca0d3ff	
+7cbfd000	
+7ca5d0ff	
+7cb7e2af	
+7ca0e3ff	
+7cbfe000	
+7ca5e0ff	
+7cb7f2af	
+7ca0f3ff	
+7cbff000	
+7ca5f0ff	
+7cf702af	ldfaddal h23, h15, [x21]
+7ce003ff	ldfaddal h0, h31, [sp]
+7cff0000	ldfaddal h31, h0, [x0]
+7ce500ff	ldfaddal h5, h31, [x7]
+7cf712af	
+7ce013ff	
+7cff1000	
+7ce510ff	
+7cf722af	
+7ce023ff	
+7cff2000	
+7ce520ff	
+7cf732af	
+7ce033ff	
+7cff3000	
+7ce530ff	
+7cf742af	ldfmaxal h23, h15, [x21]
+7ce043ff	ldfmaxal h0, h31, [sp]
+7cff4000	ldfmaxal h31, h0, [x0]
+7ce540ff	ldfmaxal h5, h31, [x7]
+7cf752af	ldfminal h23, h15, [x21]
+7ce053ff	ldfminal h0, h31, [sp]
+7cff5000	ldfminal h31, h0, [x0]
+7ce550ff	ldfminal h5, h31, [x7]
+7cf762af	ldfmaxnmal h23, h15, [x21]
+7ce063ff	ldfmaxnmal h0, h31, [sp]
+7cff6000	ldfmaxnmal h31, h0, [x0]
+7ce560ff	ldfmaxnmal h5, h31, [x7]
+7cf772af	ldfminnmal h23, h15, [x21]
+7ce073ff	ldfminnmal h0, h31, [sp]
+7cff7000	ldfminnmal h31, h0, [x0]
+7ce570ff	ldfminnmal h5, h31, [x7]
+7cf782af	
+7ce083ff	
+7cff8000	
+7ce580ff	
+7cf792af	
+7ce093ff	
+7cff9000	
+7ce590ff	
+7cf7a2af	
+7ce0a3ff	
+7cffa000	
+7ce5a0ff	
+7cf7b2af	
+7ce0b3ff	
+7cffb000	
+7ce5b0ff	
+7cf7c2af	
+7ce0c3ff	
+7cffc000	
+7ce5c0ff	
+7cf7d2af	
+7ce0d3ff	
+7cffd000	
+7ce5d0ff	
+7cf7e2af	
+7ce0e3ff	
+7cffe000	
+7ce5e0ff	
+7cf7f2af	
+7ce0f3ff	
+7cfff000	
+7ce5f0ff	
+bc3702af	ldfadd s23, s15, [x21]
+bc2003ff	ldfadd s0, s31, [sp]
+bc3f0000	ldfadd s31, s0, [x0]
+bc2500ff	ldfadd s5, s31, [x7]
+bc3712af	
+bc2013ff	
+bc3f1000	
+bc2510ff	
+bc3722af	
+bc2023ff	
+bc3f2000	
+bc2520ff	
+bc3732af	
+bc2033ff	
+bc3f3000	
+bc2530ff	
+bc3742af	ldfmax s23, s15, [x21]
+bc2043ff	ldfmax s0, s31, [sp]
+bc3f4000	ldfmax s31, s0, [x0]
+bc2540ff	ldfmax s5, s31, [x7]
+bc3752af	ldfmin s23, s15, [x21]
+bc2053ff	ldfmin s0, s31, [sp]
+bc3f5000	ldfmin s31, s0, [x0]
+bc2550ff	ldfmin s5, s31, [x7]
+bc3762af	ldfmaxnm s23, s15, [x21]
+bc2063ff	ldfmaxnm s0, s31, [sp]
+bc3f6000	ldfmaxnm s31, s0, [x0]
+bc2560ff	ldfmaxnm s5, s31, [x7]
+bc3772af	ldfminnm s23, s15, [x21]
+bc2073ff	ldfminnm s0, s31, [sp]
+bc3f7000	ldfminnm s31, s0, [x0]
+bc2570ff	ldfminnm s5, s31, [x7]
+bc3782af	
+bc2083ff	stfadd s0, [sp]
+bc3f8000	
+bc2580ff	stfadd s5, [x7]
+bc3792af	
+bc2093ff	
+bc3f9000	
+bc2590ff	
+bc37a2af	
+bc20a3ff	
+bc3fa000	
+bc25a0ff	
+bc37b2af	
+bc20b3ff	
+bc3fb000	
+bc25b0ff	
+bc37c2af	
+bc20c3ff	stfmax s0, [sp]
+bc3fc000	
+bc25c0ff	stfmax s5, [x7]
+bc37d2af	
+bc20d3ff	stfmin s0, [sp]
+bc3fd000	
+bc25d0ff	stfmin s5, [x7]
+bc37e2af	
+bc20e3ff	stfmaxnm s0, [sp]
+bc3fe000	
+bc25e0ff	stfmaxnm s5, [x7]
+bc37f2af	
+bc20f3ff	stfminnm s0, [sp]
+bc3ff000	
+bc25f0ff	stfminnm s5, [x7]
+bc7702af	ldfaddl s23, s15, [x21]
+bc6003ff	ldfaddl s0, s31, [sp]
+bc7f0000	ldfaddl s31, s0, [x0]
+bc6500ff	ldfaddl s5, s31, [x7]
+bc7712af	
+bc6013ff	
+bc7f1000	
+bc6510ff	
+bc7722af	
+bc6023ff	
+bc7f2000	
+bc6520ff	
+bc7732af	
+bc6033ff	
+bc7f3000	
+bc6530ff	
+bc7742af	ldfmaxl s23, s15, [x21]
+bc6043ff	ldfmaxl s0, s31, [sp]
+bc7f4000	ldfmaxl s31, s0, [x0]
+bc6540ff	ldfmaxl s5, s31, [x7]
+bc7752af	ldfminl s23, s15, [x21]
+bc6053ff	ldfminl s0, s31, [sp]
+bc7f5000	ldfminl s31, s0, [x0]
+bc6550ff	ldfminl s5, s31, [x7]
+bc7762af	ldfmaxnml s23, s15, [x21]
+bc6063ff	ldfmaxnml s0, s31, [sp]
+bc7f6000	ldfmaxnml s31, s0, [x0]
+bc6560ff	ldfmaxnml s5, s31, [x7]
+bc7772af	ldfminnml s23, s15, [x21]
+bc6073ff	ldfminnml s0, s31, [sp]
+bc7f7000	ldfminnml s31, s0, [x0]
+bc6570ff	ldfminnml s5, s31, [x7]
+bc7782af	
+bc6083ff	stfaddl s0, [sp]
+bc7f8000	
+bc6580ff	stfaddl s5, [x7]
+bc7792af	
+bc6093ff	
+bc7f9000	
+bc6590ff	
+bc77a2af	
+bc60a3ff	
+bc7fa000	
+bc65a0ff	
+bc77b2af	
+bc60b3ff	
+bc7fb000	
+bc65b0ff	
+bc77c2af	
+bc60c3ff	stfmaxl s0, [sp]
+bc7fc000	
+bc65c0ff	stfmaxl s5, [x7]
+bc77d2af	
+bc60d3ff	stfminl s0, [sp]
+bc7fd000	
+bc65d0ff	stfminl s5, [x7]
+bc77e2af	
+bc60e3ff	stfmaxnml s0, [sp]
+bc7fe000	
+bc65e0ff	stfmaxnml s5, [x7]
+bc77f2af	
+bc60f3ff	stfminnml s0, [sp]
+bc7ff000	
+bc65f0ff	stfminnml s5, [x7]
+bcb702af	ldfadda s23, s15, [x21]
+bca003ff	ldfadda s0, s31, [sp]
+bcbf0000	ldfadda s31, s0, [x0]
+bca500ff	ldfadda s5, s31, [x7]
+bcb712af	
+bca013ff	
+bcbf1000	
+bca510ff	
+bcb722af	
+bca023ff	
+bcbf2000	
+bca520ff	
+bcb732af	
+bca033ff	
+bcbf3000	
+bca530ff	
+bcb742af	ldfmaxa s23, s15, [x21]
+bca043ff	ldfmaxa s0, s31, [sp]
+bcbf4000	ldfmaxa s31, s0, [x0]
+bca540ff	ldfmaxa s5, s31, [x7]
+bcb752af	ldfmina s23, s15, [x21]
+bca053ff	ldfmina s0, s31, [sp]
+bcbf5000	ldfmina s31, s0, [x0]
+bca550ff	ldfmina s5, s31, [x7]
+bcb762af	ldfmaxnma s23, s15, [x21]
+bca063ff	ldfmaxnma s0, s31, [sp]
+bcbf6000	ldfmaxnma s31, s0, [x0]
+bca560ff	ldfmaxnma s5, s31, [x7]
+bcb772af	ldfminnma s23, s15, [x21]
+bca073ff	ldfminnma s0, s31, [sp]
+bcbf7000	ldfminnma s31, s0, [x0]
+bca570ff	ldfminnma s5, s31, [x7]
+bcb782af	
+bca083ff	
+bcbf8000	
+bca580ff	
+bcb792af	
+bca093ff	
+bcbf9000	
+bca590ff	
+bcb7a2af	
+bca0a3ff	
+bcbfa000	
+bca5a0ff	
+bcb7b2af	
+bca0b3ff	
+bcbfb000	
+bca5b0ff	
+bcb7c2af	
+bca0c3ff	
+bcbfc000	
+bca5c0ff	
+bcb7d2af	
+bca0d3ff	
+bcbfd000	
+bca5d0ff	
+bcb7e2af	
+bca0e3ff	
+bcbfe000	
+bca5e0ff	
+bcb7f2af	
+bca0f3ff	
+bcbff000	
+bca5f0ff	
+bcf702af	ldfaddal s23, s15, [x21]
+bce003ff	ldfaddal s0, s31, [sp]
+bcff0000	ldfaddal s31, s0, [x0]
+bce500ff	ldfaddal s5, s31, [x7]
+bcf712af	
+bce013ff	
+bcff1000	
+bce510ff	
+bcf722af	
+bce023ff	
+bcff2000	
+bce520ff	
+bcf732af	
+bce033ff	
+bcff3000	
+bce530ff	
+bcf742af	ldfmaxal s23, s15, [x21]
+bce043ff	ldfmaxal s0, s31, [sp]
+bcff4000	ldfmaxal s31, s0, [x0]
+bce540ff	ldfmaxal s5, s31, [x7]
+bcf752af	ldfminal s23, s15, [x21]
+bce053ff	ldfminal s0, s31, [sp]
+bcff5000	ldfminal s31, s0, [x0]
+bce550ff	ldfminal s5, s31, [x7]
+bcf762af	ldfmaxnmal s23, s15, [x21]
+bce063ff	ldfmaxnmal s0, s31, [sp]
+bcff6000	ldfmaxnmal s31, s0, [x0]
+bce560ff	ldfmaxnmal s5, s31, [x7]
+bcf772af	ldfminnmal s23, s15, [x21]
+bce073ff	ldfminnmal s0, s31, [sp]
+bcff7000	ldfminnmal s31, s0, [x0]
+bce570ff	ldfminnmal s5, s31, [x7]
+bcf782af	
+bce083ff	
+bcff8000	
+bce580ff	
+bcf792af	
+bce093ff	
+bcff9000	
+bce590ff	
+bcf7a2af	
+bce0a3ff	
+bcffa000	
+bce5a0ff	
+bcf7b2af	
+bce0b3ff	
+bcffb000	
+bce5b0ff	
+bcf7c2af	
+bce0c3ff	
+bcffc000	
+bce5c0ff	
+bcf7d2af	
+bce0d3ff	
+bcffd000	
+bce5d0ff	
+bcf7e2af	
+bce0e3ff	
+bcffe000	
+bce5e0ff	
+bcf7f2af	
+bce0f3ff	
+bcfff000	
+bce5f0ff	
+fc3702af	ldfadd d23, d15, [x21]
+fc2003ff	ldfadd d0, d31, [sp]
+fc3f0000	ldfadd d31, d0, [x0]
+fc2500ff	ldfadd d5, d31, [x7]
+fc3712af	
+fc2013ff	
+fc3f1000	
+fc2510ff	
+fc3722af	
+fc2023ff	
+fc3f2000	
+fc2520ff	
+fc3732af	
+fc2033ff	
+fc3f3000	
+fc2530ff	
+fc3742af	ldfmax d23, d15, [x21]
+fc2043ff	ldfmax d0, d31, [sp]
+fc3f4000	ldfmax d31, d0, [x0]
+fc2540ff	ldfmax d5, d31, [x7]
+fc3752af	ldfmin d23, d15, [x21]
+fc2053ff	ldfmin d0, d31, [sp]
+fc3f5000	ldfmin d31, d0, [x0]
+fc2550ff	ldfmin d5, d31, [x7]
+fc3762af	ldfmaxnm d23, d15, [x21]
+fc2063ff	ldfmaxnm d0, d31, [sp]
+fc3f6000	ldfmaxnm d31, d0, [x0]
+fc2560ff	ldfmaxnm d5, d31, [x7]
+fc3772af	ldfminnm d23, d15, [x21]
+fc2073ff	ldfminnm d0, d31, [sp]
+fc3f7000	ldfminnm d31, d0, [x0]
+fc2570ff	ldfminnm d5, d31, [x7]
+fc3782af	
+fc2083ff	stfadd d0, [sp]
+fc3f8000	
+fc2580ff	stfadd d5, [x7]
+fc3792af	
+fc2093ff	
+fc3f9000	
+fc2590ff	
+fc37a2af	
+fc20a3ff	
+fc3fa000	
+fc25a0ff	
+fc37b2af	
+fc20b3ff	
+fc3fb000	
+fc25b0ff	
+fc37c2af	
+fc20c3ff	stfmax d0, [sp]
+fc3fc000	
+fc25c0ff	stfmax d5, [x7]
+fc37d2af	
+fc20d3ff	stfmin d0, [sp]
+fc3fd000	
+fc25d0ff	stfmin d5, [x7]
+fc37e2af	
+fc20e3ff	stfmaxnm d0, [sp]
+fc3fe000	
+fc25e0ff	stfmaxnm d5, [x7]
+fc37f2af	
+fc20f3ff	stfminnm d0, [sp]
+fc3ff000	
+fc25f0ff	stfminnm d5, [x7]
+fc7702af	ldfaddl d23, d15, [x21]
+fc6003ff	ldfaddl d0, d31, [sp]
+fc7f0000	ldfaddl d31, d0, [x0]
+fc6500ff	ldfaddl d5, d31, [x7]
+fc7712af	
+fc6013ff	
+fc7f1000	
+fc6510ff	
+fc7722af	
+fc6023ff	
+fc7f2000	
+fc6520ff	
+fc7732af	
+fc6033ff	
+fc7f3000	
+fc6530ff	
+fc7742af	ldfmaxl d23, d15, [x21]
+fc6043ff	ldfmaxl d0, d31, [sp]
+fc7f4000	ldfmaxl d31, d0, [x0]
+fc6540ff	ldfmaxl d5, d31, [x7]
+fc7752af	ldfminl d23, d15, [x21]
+fc6053ff	ldfminl d0, d31, [sp]
+fc7f5000	ldfminl d31, d0, [x0]
+fc6550ff	ldfminl d5, d31, [x7]
+fc7762af	ldfmaxnml d23, d15, [x21]
+fc6063ff	ldfmaxnml d0, d31, [sp]
+fc7f6000	ldfmaxnml d31, d0, [x0]
+fc6560ff	ldfmaxnml d5, d31, [x7]
+fc7772af	ldfminnml d23, d15, [x21]
+fc6073ff	ldfminnml d0, d31, [sp]
+fc7f7000	ldfminnml d31, d0, [x0]
+fc6570ff	ldfminnml d5, d31, [x7]
+fc7782af	
+fc6083ff	stfaddl d0, [sp]
+fc7f8000	
+fc6580ff	stfaddl d5, [x7]
+fc7792af	
+fc6093ff	
+fc7f9000	
+fc6590ff	
+fc77a2af	
+fc60a3ff	
+fc7fa000	
+fc65a0ff	
+fc77b2af	
+fc60b3ff	
+fc7fb000	
+fc65b0ff	
+fc77c2af	
+fc60c3ff	stfmaxl d0, [sp]
+fc7fc000	
+fc65c0ff	stfmaxl d5, [x7]
+fc77d2af	
+fc60d3ff	stfminl d0, [sp]
+fc7fd000	
+fc65d0ff	stfminl d5, [x7]
+fc77e2af	
+fc60e3ff	stfmaxnml d0, [sp]
+fc7fe000	
+fc65e0ff	stfmaxnml d5, [x7]
+fc77f2af	
+fc60f3ff	stfminnml d0, [sp]
+fc7ff000	
+fc65f0ff	stfminnml d5, [x7]
+fcb702af	ldfadda d23, d15, [x21]
+fca003ff	ldfadda d0, d31, [sp]
+fcbf0000	ldfadda d31, d0, [x0]
+fca500ff	ldfadda d5, d31, [x7]
+fcb712af	
+fca013ff	
+fcbf1000	
+fca510ff	
+fcb722af	
+fca023ff	
+fcbf2000	
+fca520ff	
+fcb732af	
+fca033ff	
+fcbf3000	
+fca530ff	
+fcb742af	ldfmaxa d23, d15, [x21]
+fca043ff	ldfmaxa d0, d31, [sp]
+fcbf4000	ldfmaxa d31, d0, [x0]
+fca540ff	ldfmaxa d5, d31, [x7]
+fcb752af	ldfmina d23, d15, [x21]
+fca053ff	ldfmina d0, d31, [sp]
+fcbf5000	ldfmina d31, d0, [x0]
+fca550ff	ldfmina d5, d31, [x7]
+fcb762af	ldfmaxnma d23, d15, [x21]
+fca063ff	ldfmaxnma d0, d31, [sp]
+fcbf6000	ldfmaxnma d31, d0, [x0]
+fca560ff	ldfmaxnma d5, d31, [x7]
+fcb772af	ldfminnma d23, d15, [x21]
+fca073ff	ldfminnma d0, d31, [sp]
+fcbf7000	ldfminnma d31, d0, [x0]
+fca570ff	ldfminnma d5, d31, [x7]
+fcb782af	
+fca083ff	
+fcbf8000	
+fca580ff	
+fcb792af	
+fca093ff	
+fcbf9000	
+fca590ff	
+fcb7a2af	
+fca0a3ff	
+fcbfa000	
+fca5a0ff	
+fcb7b2af	
+fca0b3ff	
+fcbfb000	
+fca5b0ff	
+fcb7c2af	
+fca0c3ff	
+fcbfc000	
+fca5c0ff	
+fcb7d2af	
+fca0d3ff	
+fcbfd000	
+fca5d0ff	
+fcb7e2af	
+fca0e3ff	
+fcbfe000	
+fca5e0ff	
+fcb7f2af	
+fca0f3ff	
+fcbff000	
+fca5f0ff	
+fcf702af	ldfaddal d23, d15, [x21]
+fce003ff	ldfaddal d0, d31, [sp]
+fcff0000	ldfaddal d31, d0, [x0]
+fce500ff	ldfaddal d5, d31, [x7]
+fcf712af	
+fce013ff	
+fcff1000	
+fce510ff	
+fcf722af	
+fce023ff	
+fcff2000	
+fce520ff	
+fcf732af	
+fce033ff	
+fcff3000	
+fce530ff	
+fcf742af	ldfmaxal d23, d15, [x21]
+fce043ff	ldfmaxal d0, d31, [sp]
+fcff4000	ldfmaxal d31, d0, [x0]
+fce540ff	ldfmaxal d5, d31, [x7]
+fcf752af	ldfminal d23, d15, [x21]
+fce053ff	ldfminal d0, d31, [sp]
+fcff5000	ldfminal d31, d0, [x0]
+fce550ff	ldfminal d5, d31, [x7]
+fcf762af	ldfmaxnmal d23, d15, [x21]
+fce063ff	ldfmaxnmal d0, d31, [sp]
+fcff6000	ldfmaxnmal d31, d0, [x0]
+fce560ff	ldfmaxnmal d5, d31, [x7]
+fcf772af	ldfminnmal d23, d15, [x21]
+fce073ff	ldfminnmal d0, d31, [sp]
+fcff7000	ldfminnmal d31, d0, [x0]
+fce570ff	ldfminnmal d5, d31, [x7]
+fcf782af	
+fce083ff	
+fcff8000	
+fce580ff	
+fcf792af	
+fce093ff	
+fcff9000	
+fce590ff	
+fcf7a2af	
+fce0a3ff	
+fcffa000	
+fce5a0ff	
+fcf7b2af	
+fce0b3ff	
+fcffb000	
+fce5b0ff	
+fcf7c2af	
+fce0c3ff	
+fcffc000	
+fce5c0ff	
+fcf7d2af	
+fce0d3ff	
+fcffd000	
+fce5d0ff	
+fcf7e2af	
+fce0e3ff	
+fcffe000	
+fce5e0ff	
+fcf7f2af	
+fce0f3ff	
+fcfff000	
+fce5f0ff	
+d9005800	stlp x0, x0, [x0]
+d9005802	stlp x2, x0, [x0]
+d900581f	stlp xzr, x0, [x0]
+d9005820	stlp x0, x0, [x1]
+d9005822	stlp x2, x0, [x1]
+d900583f	stlp xzr, x0, [x1]
+d9005be0	stlp x0, x0, [sp]
+d9005be2	stlp x2, x0, [sp]
+d9005bff	stlp xzr, x0, [sp]
+d9015800	stlp x0, x1, [x0]
+d9015802	stlp x2, x1, [x0]
+d901581f	stlp xzr, x1, [x0]
+d9015820	stlp x0, x1, [x1]
+d9015822	stlp x2, x1, [x1]
+d901583f	stlp xzr, x1, [x1]
+d9015be0	stlp x0, x1, [sp]
+d9015be2	stlp x2, x1, [sp]
+d9015bff	stlp xzr, x1, [sp]
+d91e5800	stlp x0, x30, [x0]
+d91e5802	stlp x2, x30, [x0]
+d91e581f	stlp xzr, x30, [x0]
+d91e5820	stlp x0, x30, [x1]
+d91e5822	stlp x2, x30, [x1]
+d91e583f	stlp xzr, x30, [x1]
+d91e5be0	stlp x0, x30, [sp]
+d91e5be2	stlp x2, x30, [sp]
+d91e5bff	stlp xzr, x30, [sp]
+d91f5800	stlp x0, xzr, [x0]
+d91f5802	stlp x2, xzr, [x0]
+d91f581f	stlp xzr, xzr, [x0]
+d91f5820	stlp x0, xzr, [x1]
+d91f5822	stlp x2, xzr, [x1]
+d91f583f	stlp xzr, xzr, [x1]
+d91f5be0	stlp x0, xzr, [sp]
+d91f5be2	stlp x2, xzr, [sp]
+d91f5bff	stlp xzr, xzr, [sp]
+d9007800	
+d9007802	
+d900781f	
+d9007820	
+d9007822	
+d900783f	
+d9007be0	
+d9007be2	
+d9007bff	
+d9017800	
+d9017802	
+d901781f	
+d9017820	
+d9017822	
+d901783f	
+d9017be0	
+d9017be2	
+d9017bff	
+d91e7800	
+d91e7802	
+d91e781f	
+d91e7820	
+d91e7822	
+d91e783f	
+d91e7be0	
+d91e7be2	
+d91e7bff	
+d91f7800	
+d91f7802	
+d91f781f	
+d91f7820	
+d91f7822	
+d91f783f	
+d91f7be0	
+d91f7be2	
+d91f7bff	
+d9004800	
+d9004802	
+d900481f	
+d9004820	
+d9004822	
+d900483f	
+d9004be0	
+d9004be2	
+d9004bff	
+d9014800	
+d9014802	
+d901481f	
+d9014820	
+d9014822	
+d901483f	
+d9014be0	
+d9014be2	
+d9014bff	
+d91e4800	
+d91e4802	
+d91e481f	
+d91e4820	
+d91e4822	
+d91e483f	
+d91e4be0	
+d91e4be2	
+d91e4bff	
+d91f4800	
+d91f4802	
+d91f481f	
+d91f4820	
+d91f4822	
+d91f483f	
+d91f4be0	
+d91f4be2	
+d91f4bff	
+d9006800	
+d9006802	
+d900681f	
+d9006820	
+d9006822	
+d900683f	
+d9006be0	
+d9006be2	
+d9006bff	
+d9016800	
+d9016802	
+d901681f	
+d9016820	
+d9016822	
+d901683f	
+d9016be0	
+d9016be2	
+d9016bff	
+d91e6800	
+d91e6802	
+d91e681f	
+d91e6820	
+d91e6822	
+d91e683f	
+d91e6be0	
+d91e6be2	
+d91e6bff	
+d91f6800	
+d91f6802	
+d91f681f	
+d91f6820	
+d91f6822	
+d91f683f	
+d91f6be0	
+d91f6be2	
+d91f6bff	
+d9405800	ldap x0, x0, [x0]
+d9405802	ldap x2, x0, [x0]
+d940581f	ldap xzr, x0, [x0]
+d9405820	ldap x0, x0, [x1]
+d9405822	ldap x2, x0, [x1]
+d940583f	ldap xzr, x0, [x1]
+d9405be0	ldap x0, x0, [sp]
+d9405be2	ldap x2, x0, [sp]
+d9405bff	ldap xzr, x0, [sp]
+d9415800	ldap x0, x1, [x0]
+d9415802	ldap x2, x1, [x0]
+d941581f	ldap xzr, x1, [x0]
+d9415820	ldap x0, x1, [x1]
+d9415822	ldap x2, x1, [x1]
+d941583f	ldap xzr, x1, [x1]
+d9415be0	ldap x0, x1, [sp]
+d9415be2	ldap x2, x1, [sp]
+d9415bff	ldap xzr, x1, [sp]
+d95e5800	ldap x0, x30, [x0]
+d95e5802	ldap x2, x30, [x0]
+d95e581f	ldap xzr, x30, [x0]
+d95e5820	ldap x0, x30, [x1]
+d95e5822	ldap x2, x30, [x1]
+d95e583f	ldap xzr, x30, [x1]
+d95e5be0	ldap x0, x30, [sp]
+d95e5be2	ldap x2, x30, [sp]
+d95e5bff	ldap xzr, x30, [sp]
+d95f5800	ldap x0, xzr, [x0]
+d95f5802	ldap x2, xzr, [x0]
+d95f581f	ldap xzr, xzr, [x0]
+d95f5820	ldap x0, xzr, [x1]
+d95f5822	ldap x2, xzr, [x1]
+d95f583f	ldap xzr, xzr, [x1]
+d95f5be0	ldap x0, xzr, [sp]
+d95f5be2	ldap x2, xzr, [sp]
+d95f5bff	ldap xzr, xzr, [sp]
+d9407800	ldapp x0, x0, [x0]
+d9407802	ldapp x2, x0, [x0]
+d940781f	ldapp xzr, x0, [x0]
+d9407820	ldapp x0, x0, [x1]
+d9407822	ldapp x2, x0, [x1]
+d940783f	ldapp xzr, x0, [x1]
+d9407be0	ldapp x0, x0, [sp]
+d9407be2	ldapp x2, x0, [sp]
+d9407bff	ldapp xzr, x0, [sp]
+d9417800	ldapp x0, x1, [x0]
+d9417802	ldapp x2, x1, [x0]
+d941781f	ldapp xzr, x1, [x0]
+d9417820	ldapp x0, x1, [x1]
+d9417822	ldapp x2, x1, [x1]
+d941783f	ldapp xzr, x1, [x1]
+d9417be0	ldapp x0, x1, [sp]
+d9417be2	ldapp x2, x1, [sp]
+d9417bff	ldapp xzr, x1, [sp]
+d95e7800	ldapp x0, x30, [x0]
+d95e7802	ldapp x2, x30, [x0]
+d95e781f	ldapp xzr, x30, [x0]
+d95e7820	ldapp x0, x30, [x1]
+d95e7822	ldapp x2, x30, [x1]
+d95e783f	ldapp xzr, x30, [x1]
+d95e7be0	ldapp x0, x30, [sp]
+d95e7be2	ldapp x2, x30, [sp]
+d95e7bff	ldapp xzr, x30, [sp]
+d95f7800	ldapp x0, xzr, [x0]
+d95f7802	ldapp x2, xzr, [x0]
+d95f781f	ldapp xzr, xzr, [x0]
+d95f7820	ldapp x0, xzr, [x1]
+d95f7822	ldapp x2, xzr, [x1]
+d95f783f	ldapp xzr, xzr, [x1]
+d95f7be0	ldapp x0, xzr, [sp]
+d95f7be2	ldapp x2, xzr, [sp]
+d95f7bff	ldapp xzr, xzr, [sp]
+d9404800	
+d9404802	
+d940481f	
+d9404820	
+d9404822	
+d940483f	
+d9404be0	
+d9404be2	
+d9404bff	
+d9414800	
+d9414802	
+d941481f	
+d9414820	
+d9414822	
+d941483f	
+d9414be0	
+d9414be2	
+d9414bff	
+d95e4800	
+d95e4802	
+d95e481f	
+d95e4820	
+d95e4822	
+d95e483f	
+d95e4be0	
+d95e4be2	
+d95e4bff	
+d95f4800	
+d95f4802	
+d95f481f	
+d95f4820	
+d95f4822	
+d95f483f	
+d95f4be0	
+d95f4be2	
+d95f4bff	
+d9406800	
+d9406802	
+d940681f	
+d9406820	
+d9406822	
+d940683f	
+d9406be0	
+d9406be2	
+d9406bff	
+d9416800	
+d9416802	
+d941681f	
+d9416820	
+d9416822	
+d941683f	
+d9416be0	
+d9416be2	
+d9416bff	
+d95e6800	
+d95e6802	
+d95e681f	
+d95e6820	
+d95e6822	
+d95e683f	
+d95e6be0	
+d95e6be2	
+d95e6bff	
+d95f6800	
+d95f6802	
+d95f681f	
+d95f6820	
+d95f6822	
+d95f683f	
+d95f6be0	
+d95f6be2	
+d95f6bff	
+d9805800	
+d9805802	
+d980581f	
+d9805820	
+d9805822	
+d980583f	
+d9805be0	
+d9805be2	
+d9805bff	
+d9815800	
+d9815802	
+d981581f	
+d9815820	
+d9815822	
+d981583f	
+d9815be0	
+d9815be2	
+d9815bff	
+d99e5800	
+d99e5802	
+d99e581f	
+d99e5820	
+d99e5822	
+d99e583f	
+d99e5be0	
+d99e5be2	
+d99e5bff	
+d99f5800	
+d99f5802	
+d99f581f	
+d99f5820	
+d99f5822	
+d99f583f	
+d99f5be0	
+d99f5be2	
+d99f5bff	
+d9807800	
+d9807802	
+d980781f	
+d9807820	
+d9807822	
+d980783f	
+d9807be0	
+d9807be2	
+d9807bff	
+d9817800	
+d9817802	
+d981781f	
+d9817820	
+d9817822	
+d981783f	
+d9817be0	
+d9817be2	
+d9817bff	
+d99e7800	
+d99e7802	
+d99e781f	
+d99e7820	
+d99e7822	
+d99e783f	
+d99e7be0	
+d99e7be2	
+d99e7bff	
+d99f7800	
+d99f7802	
+d99f781f	
+d99f7820	
+d99f7822	
+d99f783f	
+d99f7be0	
+d99f7be2	
+d99f7bff	
+d9804800	
+d9804802	
+d980481f	
+d9804820	
+d9804822	
+d980483f	
+d9804be0	
+d9804be2	
+d9804bff	
+d9814800	
+d9814802	
+d981481f	
+d9814820	
+d9814822	
+d981483f	
+d9814be0	
+d9814be2	
+d9814bff	
+d99e4800	
+d99e4802	
+d99e481f	
+d99e4820	
+d99e4822	
+d99e483f	
+d99e4be0	
+d99e4be2	
+d99e4bff	
+d99f4800	
+d99f4802	
+d99f481f	
+d99f4820	
+d99f4822	
+d99f483f	
+d99f4be0	
+d99f4be2	
+d99f4bff	
+d9806800	
+d9806802	
+d980681f	
+d9806820	
+d9806822	
+d980683f	
+d9806be0	
+d9806be2	
+d9806bff	
+d9816800	
+d9816802	
+d981681f	
+d9816820	
+d9816822	
+d981683f	
+d9816be0	
+d9816be2	
+d9816bff	
+d99e6800	
+d99e6802	
+d99e681f	
+d99e6820	
+d99e6822	
+d99e683f	
+d99e6be0	
+d99e6be2	
+d99e6bff	
+d99f6800	
+d99f6802	
+d99f681f	
+d99f6820	
+d99f6822	
+d99f683f	
+d99f6be0	
+d99f6be2	
+d99f6bff	
+d9c05800	
+d9c05802	
+d9c0581f	
+d9c05820	
+d9c05822	
+d9c0583f	
+d9c05be0	
+d9c05be2	
+d9c05bff	
+d9c15800	
+d9c15802	
+d9c1581f	
+d9c15820	
+d9c15822	
+d9c1583f	
+d9c15be0	
+d9c15be2	
+d9c15bff	
+d9de5800	
+d9de5802	
+d9de581f	
+d9de5820	
+d9de5822	
+d9de583f	
+d9de5be0	
+d9de5be2	
+d9de5bff	
+d9df5800	
+d9df5802	
+d9df581f	
+d9df5820	
+d9df5822	
+d9df583f	
+d9df5be0	
+d9df5be2	
+d9df5bff	
+d9c07800	
+d9c07802	
+d9c0781f	
+d9c07820	
+d9c07822	
+d9c0783f	
+d9c07be0	
+d9c07be2	
+d9c07bff	
+d9c17800	
+d9c17802	
+d9c1781f	
+d9c17820	
+d9c17822	
+d9c1783f	
+d9c17be0	
+d9c17be2	
+d9c17bff	
+d9de7800	
+d9de7802	
+d9de781f	
+d9de7820	
+d9de7822	
+d9de783f	
+d9de7be0	
+d9de7be2	
+d9de7bff	
+d9df7800	
+d9df7802	
+d9df781f	
+d9df7820	
+d9df7822	
+d9df783f	
+d9df7be0	
+d9df7be2	
+d9df7bff	
+d9c04800	
+d9c04802	
+d9c0481f	
+d9c04820	
+d9c04822	
+d9c0483f	
+d9c04be0	
+d9c04be2	
+d9c04bff	
+d9c14800	
+d9c14802	
+d9c1481f	
+d9c14820	
+d9c14822	
+d9c1483f	
+d9c14be0	
+d9c14be2	
+d9c14bff	
+d9de4800	
+d9de4802	
+d9de481f	
+d9de4820	
+d9de4822	
+d9de483f	
+d9de4be0	
+d9de4be2	
+d9de4bff	
+d9df4800	
+d9df4802	
+d9df481f	
+d9df4820	
+d9df4822	
+d9df483f	
+d9df4be0	
+d9df4be2	
+d9df4bff	
+d9c06800	
+d9c06802	
+d9c0681f	
+d9c06820	
+d9c06822	
+d9c0683f	
+d9c06be0	
+d9c06be2	
+d9c06bff	
+d9c16800	
+d9c16802	
+d9c1681f	
+d9c16820	
+d9c16822	
+d9c1683f	
+d9c16be0	
+d9c16be2	
+d9c16bff	
+d9de6800	
+d9de6802	
+d9de681f	
+d9de6820	
+d9de6822	
+d9de683f	
+d9de6be0	
+d9de6be2	
+d9de6bff	
+d9df6800	
+d9df6802	
+d9df681f	
+d9df6820	
+d9df6822	
+d9df683f	
+d9df6be0	
+d9df6be2	
+d9df6bff	
+1ddf0022	setgop [x2]!, x1!
+1ddf0041	setgop [x1]!, x2!
+1ddf001f	
+1ddf03e0	setgop [x0]!, xzr!
+1ddf00a5	
+1ddf03dd	setgop [x29]!, x30!
+1ddf0422	setgp [x2]!, x1!, xzr
+1ddf0441	setgp [x1]!, x2!, xzr
+1ddf041f	
+1ddf07e0	
+1ddf04a5	
+1ddf07dd	setgp [x29]!, x30!, xzr
+1ddf0822	ldapur q2, [x1, #-16]
+1ddf0841	ldapur q1, [x2, #-16]
+1ddf081f	ldapur q31, [x0, #-16]
+1ddf0be0	ldapur q0, [sp, #-16]
+1ddf08a5	ldapur q5, [x5, #-16]
+1ddf0bdd	ldapur q29, [x30, #-16]
+1ddf0c22	
+1ddf0c41	
+1ddf0c1f	
+1ddf0fe0	
+1ddf0ca5	
+1ddf0fdd	
+1dde0022	
+1dde0041	
+1dde001f	
+1dde03e0	
+1dde00a5	
+1dde03dd	
+1dde0422	setgp [x2]!, x1!, x30
+1dde0441	setgp [x1]!, x2!, x30
+1dde041f	
+1dde07e0	setgp [x0]!, xzr!, x30
+1dde04a5	
+1dde07dd	
+1dde0822	ldapur q2, [x1, #-32]
+1dde0841	ldapur q1, [x2, #-32]
+1dde081f	ldapur q31, [x0, #-32]
+1dde0be0	ldapur q0, [sp, #-32]
+1dde08a5	ldapur q5, [x5, #-32]
+1dde0bdd	ldapur q29, [x30, #-32]
+1dde0c22	
+1dde0c41	
+1dde0c1f	
+1dde0fe0	
+1dde0ca5	
+1dde0fdd	
+1ddf1022	setgopt [x2]!, x1!
+1ddf1041	setgopt [x1]!, x2!
+1ddf101f	
+1ddf13e0	setgopt [x0]!, xzr!
+1ddf10a5	
+1ddf13dd	setgopt [x29]!, x30!
+1ddf1422	setgpt [x2]!, x1!, xzr
+1ddf1441	setgpt [x1]!, x2!, xzr
+1ddf141f	
+1ddf17e0	
+1ddf14a5	
+1ddf17dd	setgpt [x29]!, x30!, xzr
+1ddf1822	ldapur q2, [x1, #-15]
+1ddf1841	ldapur q1, [x2, #-15]
+1ddf181f	ldapur q31, [x0, #-15]
+1ddf1be0	ldapur q0, [sp, #-15]
+1ddf18a5	ldapur q5, [x5, #-15]
+1ddf1bdd	ldapur q29, [x30, #-15]
+1ddf1c22	
+1ddf1c41	
+1ddf1c1f	
+1ddf1fe0	
+1ddf1ca5	
+1ddf1fdd	
+1dde1022	
+1dde1041	
+1dde101f	
+1dde13e0	
+1dde10a5	
+1dde13dd	
+1dde1422	setgpt [x2]!, x1!, x30
+1dde1441	setgpt [x1]!, x2!, x30
+1dde141f	
+1dde17e0	setgpt [x0]!, xzr!, x30
+1dde14a5	
+1dde17dd	
+1dde1822	ldapur q2, [x1, #-31]
+1dde1841	ldapur q1, [x2, #-31]
+1dde181f	ldapur q31, [x0, #-31]
+1dde1be0	ldapur q0, [sp, #-31]
+1dde18a5	ldapur q5, [x5, #-31]
+1dde1bdd	ldapur q29, [x30, #-31]
+1dde1c22	
+1dde1c41	
+1dde1c1f	
+1dde1fe0	
+1dde1ca5	
+1dde1fdd	
+1ddf2022	setgopn [x2]!, x1!
+1ddf2041	setgopn [x1]!, x2!
+1ddf201f	
+1ddf23e0	setgopn [x0]!, xzr!
+1ddf20a5	
+1ddf23dd	setgopn [x29]!, x30!
+1ddf2422	setgpn [x2]!, x1!, xzr
+1ddf2441	setgpn [x1]!, x2!, xzr
+1ddf241f	
+1ddf27e0	
+1ddf24a5	
+1ddf27dd	setgpn [x29]!, x30!, xzr
+1ddf2822	ldapur q2, [x1, #-14]
+1ddf2841	ldapur q1, [x2, #-14]
+1ddf281f	ldapur q31, [x0, #-14]
+1ddf2be0	ldapur q0, [sp, #-14]
+1ddf28a5	ldapur q5, [x5, #-14]
+1ddf2bdd	ldapur q29, [x30, #-14]
+1ddf2c22	
+1ddf2c41	
+1ddf2c1f	
+1ddf2fe0	
+1ddf2ca5	
+1ddf2fdd	
+1dde2022	
+1dde2041	
+1dde201f	
+1dde23e0	
+1dde20a5	
+1dde23dd	
+1dde2422	setgpn [x2]!, x1!, x30
+1dde2441	setgpn [x1]!, x2!, x30
+1dde241f	
+1dde27e0	setgpn [x0]!, xzr!, x30
+1dde24a5	
+1dde27dd	
+1dde2822	ldapur q2, [x1, #-30]
+1dde2841	ldapur q1, [x2, #-30]
+1dde281f	ldapur q31, [x0, #-30]
+1dde2be0	ldapur q0, [sp, #-30]
+1dde28a5	ldapur q5, [x5, #-30]
+1dde2bdd	ldapur q29, [x30, #-30]
+1dde2c22	
+1dde2c41	
+1dde2c1f	
+1dde2fe0	
+1dde2ca5	
+1dde2fdd	
+1ddf3022	setgoptn [x2]!, x1!
+1ddf3041	setgoptn [x1]!, x2!
+1ddf301f	
+1ddf33e0	setgoptn [x0]!, xzr!
+1ddf30a5	
+1ddf33dd	setgoptn [x29]!, x30!
+1ddf3422	setgptn [x2]!, x1!, xzr
+1ddf3441	setgptn [x1]!, x2!, xzr
+1ddf341f	
+1ddf37e0	
+1ddf34a5	
+1ddf37dd	setgptn [x29]!, x30!, xzr
+1ddf3822	ldapur q2, [x1, #-13]
+1ddf3841	ldapur q1, [x2, #-13]
+1ddf381f	ldapur q31, [x0, #-13]
+1ddf3be0	ldapur q0, [sp, #-13]
+1ddf38a5	ldapur q5, [x5, #-13]
+1ddf3bdd	ldapur q29, [x30, #-13]
+1ddf3c22	
+1ddf3c41	
+1ddf3c1f	
+1ddf3fe0	
+1ddf3ca5	
+1ddf3fdd	
+1dde3022	
+1dde3041	
+1dde301f	
+1dde33e0	
+1dde30a5	
+1dde33dd	
+1dde3422	setgptn [x2]!, x1!, x30
+1dde3441	setgptn [x1]!, x2!, x30
+1dde341f	
+1dde37e0	setgptn [x0]!, xzr!, x30
+1dde34a5	
+1dde37dd	
+1dde3822	ldapur q2, [x1, #-29]
+1dde3841	ldapur q1, [x2, #-29]
+1dde381f	ldapur q31, [x0, #-29]
+1dde3be0	ldapur q0, [sp, #-29]
+1dde38a5	ldapur q5, [x5, #-29]
+1dde3bdd	ldapur q29, [x30, #-29]
+1dde3c22	
+1dde3c41	
+1dde3c1f	
+1dde3fe0	
+1dde3ca5	
+1dde3fdd	
+1ddf4022	setgom [x2]!, x1!
+1ddf4041	setgom [x1]!, x2!
+1ddf401f	
+1ddf43e0	setgom [x0]!, xzr!
+1ddf40a5	
+1ddf43dd	setgom [x29]!, x30!
+1ddf4422	setgm [x2]!, x1!, xzr
+1ddf4441	setgm [x1]!, x2!, xzr
+1ddf441f	
+1ddf47e0	
+1ddf44a5	
+1ddf47dd	setgm [x29]!, x30!, xzr
+1ddf4822	ldapur q2, [x1, #-12]
+1ddf4841	ldapur q1, [x2, #-12]
+1ddf481f	ldapur q31, [x0, #-12]
+1ddf4be0	ldapur q0, [sp, #-12]
+1ddf48a5	ldapur q5, [x5, #-12]
+1ddf4bdd	ldapur q29, [x30, #-12]
+1ddf4c22	
+1ddf4c41	
+1ddf4c1f	
+1ddf4fe0	
+1ddf4ca5	
+1ddf4fdd	
+1dde4022	
+1dde4041	
+1dde401f	
+1dde43e0	
+1dde40a5	
+1dde43dd	
+1dde4422	setgm [x2]!, x1!, x30
+1dde4441	setgm [x1]!, x2!, x30
+1dde441f	
+1dde47e0	setgm [x0]!, xzr!, x30
+1dde44a5	
+1dde47dd	
+1dde4822	ldapur q2, [x1, #-28]
+1dde4841	ldapur q1, [x2, #-28]
+1dde481f	ldapur q31, [x0, #-28]
+1dde4be0	ldapur q0, [sp, #-28]
+1dde48a5	ldapur q5, [x5, #-28]
+1dde4bdd	ldapur q29, [x30, #-28]
+1dde4c22	
+1dde4c41	
+1dde4c1f	
+1dde4fe0	
+1dde4ca5	
+1dde4fdd	
+1ddf5022	setgomt [x2]!, x1!
+1ddf5041	setgomt [x1]!, x2!
+1ddf501f	
+1ddf53e0	setgomt [x0]!, xzr!
+1ddf50a5	
+1ddf53dd	setgomt [x29]!, x30!
+1ddf5422	setgmt [x2]!, x1!, xzr
+1ddf5441	setgmt [x1]!, x2!, xzr
+1ddf541f	
+1ddf57e0	
+1ddf54a5	
+1ddf57dd	setgmt [x29]!, x30!, xzr
+1ddf5822	ldapur q2, [x1, #-11]
+1ddf5841	ldapur q1, [x2, #-11]
+1ddf581f	ldapur q31, [x0, #-11]
+1ddf5be0	ldapur q0, [sp, #-11]
+1ddf58a5	ldapur q5, [x5, #-11]
+1ddf5bdd	ldapur q29, [x30, #-11]
+1ddf5c22	
+1ddf5c41	
+1ddf5c1f	
+1ddf5fe0	
+1ddf5ca5	
+1ddf5fdd	
+1dde5022	
+1dde5041	
+1dde501f	
+1dde53e0	
+1dde50a5	
+1dde53dd	
+1dde5422	setgmt [x2]!, x1!, x30
+1dde5441	setgmt [x1]!, x2!, x30
+1dde541f	
+1dde57e0	setgmt [x0]!, xzr!, x30
+1dde54a5	
+1dde57dd	
+1dde5822	ldapur q2, [x1, #-27]
+1dde5841	ldapur q1, [x2, #-27]
+1dde581f	ldapur q31, [x0, #-27]
+1dde5be0	ldapur q0, [sp, #-27]
+1dde58a5	ldapur q5, [x5, #-27]
+1dde5bdd	ldapur q29, [x30, #-27]
+1dde5c22	
+1dde5c41	
+1dde5c1f	
+1dde5fe0	
+1dde5ca5	
+1dde5fdd	
+1ddf6022	setgomn [x2]!, x1!
+1ddf6041	setgomn [x1]!, x2!
+1ddf601f	
+1ddf63e0	setgomn [x0]!, xzr!
+1ddf60a5	
+1ddf63dd	setgomn [x29]!, x30!
+1ddf6422	setgmn [x2]!, x1!, xzr
+1ddf6441	setgmn [x1]!, x2!, xzr
+1ddf641f	
+1ddf67e0	
+1ddf64a5	
+1ddf67dd	setgmn [x29]!, x30!, xzr
+1ddf6822	ldapur q2, [x1, #-10]
+1ddf6841	ldapur q1, [x2, #-10]
+1ddf681f	ldapur q31, [x0, #-10]
+1ddf6be0	ldapur q0, [sp, #-10]
+1ddf68a5	ldapur q5, [x5, #-10]
+1ddf6bdd	ldapur q29, [x30, #-10]
+1ddf6c22	
+1ddf6c41	
+1ddf6c1f	
+1ddf6fe0	
+1ddf6ca5	
+1ddf6fdd	
+1dde6022	
+1dde6041	
+1dde601f	
+1dde63e0	
+1dde60a5	
+1dde63dd	
+1dde6422	setgmn [x2]!, x1!, x30
+1dde6441	setgmn [x1]!, x2!, x30
+1dde641f	
+1dde67e0	setgmn [x0]!, xzr!, x30
+1dde64a5	
+1dde67dd	
+1dde6822	ldapur q2, [x1, #-26]
+1dde6841	ldapur q1, [x2, #-26]
+1dde681f	ldapur q31, [x0, #-26]
+1dde6be0	ldapur q0, [sp, #-26]
+1dde68a5	ldapur q5, [x5, #-26]
+1dde6bdd	ldapur q29, [x30, #-26]
+1dde6c22	
+1dde6c41	
+1dde6c1f	
+1dde6fe0	
+1dde6ca5	
+1dde6fdd	
+1ddf7022	setgomtn [x2]!, x1!
+1ddf7041	setgomtn [x1]!, x2!
+1ddf701f	
+1ddf73e0	setgomtn [x0]!, xzr!
+1ddf70a5	
+1ddf73dd	setgomtn [x29]!, x30!
+1ddf7422	setgmtn [x2]!, x1!, xzr
+1ddf7441	setgmtn [x1]!, x2!, xzr
+1ddf741f	
+1ddf77e0	
+1ddf74a5	
+1ddf77dd	setgmtn [x29]!, x30!, xzr
+1ddf7822	ldapur q2, [x1, #-9]
+1ddf7841	ldapur q1, [x2, #-9]
+1ddf781f	ldapur q31, [x0, #-9]
+1ddf7be0	ldapur q0, [sp, #-9]
+1ddf78a5	ldapur q5, [x5, #-9]
+1ddf7bdd	ldapur q29, [x30, #-9]
+1ddf7c22	
+1ddf7c41	
+1ddf7c1f	
+1ddf7fe0	
+1ddf7ca5	
+1ddf7fdd	
+1dde7022	
+1dde7041	
+1dde701f	
+1dde73e0	
+1dde70a5	
+1dde73dd	
+1dde7422	setgmtn [x2]!, x1!, x30
+1dde7441	setgmtn [x1]!, x2!, x30
+1dde741f	
+1dde77e0	setgmtn [x0]!, xzr!, x30
+1dde74a5	
+1dde77dd	
+1dde7822	ldapur q2, [x1, #-25]
+1dde7841	ldapur q1, [x2, #-25]
+1dde781f	ldapur q31, [x0, #-25]
+1dde7be0	ldapur q0, [sp, #-25]
+1dde78a5	ldapur q5, [x5, #-25]
+1dde7bdd	ldapur q29, [x30, #-25]
+1dde7c22	
+1dde7c41	
+1dde7c1f	
+1dde7fe0	
+1dde7ca5	
+1dde7fdd	
+1ddf8022	setgoe [x2]!, x1!
+1ddf8041	setgoe [x1]!, x2!
+1ddf801f	
+1ddf83e0	setgoe [x0]!, xzr!
+1ddf80a5	
+1ddf83dd	setgoe [x29]!, x30!
+1ddf8422	setge [x2]!, x1!, xzr
+1ddf8441	setge [x1]!, x2!, xzr
+1ddf841f	
+1ddf87e0	
+1ddf84a5	
+1ddf87dd	setge [x29]!, x30!, xzr
+1ddf8822	ldapur q2, [x1, #-8]
+1ddf8841	ldapur q1, [x2, #-8]
+1ddf881f	ldapur q31, [x0, #-8]
+1ddf8be0	ldapur q0, [sp, #-8]
+1ddf88a5	ldapur q5, [x5, #-8]
+1ddf8bdd	ldapur q29, [x30, #-8]
+1ddf8c22	
+1ddf8c41	
+1ddf8c1f	
+1ddf8fe0	
+1ddf8ca5	
+1ddf8fdd	
+1dde8022	
+1dde8041	
+1dde801f	
+1dde83e0	
+1dde80a5	
+1dde83dd	
+1dde8422	setge [x2]!, x1!, x30
+1dde8441	setge [x1]!, x2!, x30
+1dde841f	
+1dde87e0	setge [x0]!, xzr!, x30
+1dde84a5	
+1dde87dd	
+1dde8822	ldapur q2, [x1, #-24]
+1dde8841	ldapur q1, [x2, #-24]
+1dde881f	ldapur q31, [x0, #-24]
+1dde8be0	ldapur q0, [sp, #-24]
+1dde88a5	ldapur q5, [x5, #-24]
+1dde8bdd	ldapur q29, [x30, #-24]
+1dde8c22	
+1dde8c41	
+1dde8c1f	
+1dde8fe0	
+1dde8ca5	
+1dde8fdd	
+1ddf9022	setgoet [x2]!, x1!
+1ddf9041	setgoet [x1]!, x2!
+1ddf901f	
+1ddf93e0	setgoet [x0]!, xzr!
+1ddf90a5	
+1ddf93dd	setgoet [x29]!, x30!
+1ddf9422	setget [x2]!, x1!, xzr
+1ddf9441	setget [x1]!, x2!, xzr
+1ddf941f	
+1ddf97e0	
+1ddf94a5	
+1ddf97dd	setget [x29]!, x30!, xzr
+1ddf9822	ldapur q2, [x1, #-7]
+1ddf9841	ldapur q1, [x2, #-7]
+1ddf981f	ldapur q31, [x0, #-7]
+1ddf9be0	ldapur q0, [sp, #-7]
+1ddf98a5	ldapur q5, [x5, #-7]
+1ddf9bdd	ldapur q29, [x30, #-7]
+1ddf9c22	
+1ddf9c41	
+1ddf9c1f	
+1ddf9fe0	
+1ddf9ca5	
+1ddf9fdd	
+1dde9022	
+1dde9041	
+1dde901f	
+1dde93e0	
+1dde90a5	
+1dde93dd	
+1dde9422	setget [x2]!, x1!, x30
+1dde9441	setget [x1]!, x2!, x30
+1dde941f	
+1dde97e0	setget [x0]!, xzr!, x30
+1dde94a5	
+1dde97dd	
+1dde9822	ldapur q2, [x1, #-23]
+1dde9841	ldapur q1, [x2, #-23]
+1dde981f	ldapur q31, [x0, #-23]
+1dde9be0	ldapur q0, [sp, #-23]
+1dde98a5	ldapur q5, [x5, #-23]
+1dde9bdd	ldapur q29, [x30, #-23]
+1dde9c22	
+1dde9c41	
+1dde9c1f	
+1dde9fe0	
+1dde9ca5	
+1dde9fdd	
+1ddfa022	setgoen [x2]!, x1!
+1ddfa041	setgoen [x1]!, x2!
+1ddfa01f	
+1ddfa3e0	setgoen [x0]!, xzr!
+1ddfa0a5	
+1ddfa3dd	setgoen [x29]!, x30!
+1ddfa422	setgen [x2]!, x1!, xzr
+1ddfa441	setgen [x1]!, x2!, xzr
+1ddfa41f	
+1ddfa7e0	
+1ddfa4a5	
+1ddfa7dd	setgen [x29]!, x30!, xzr
+1ddfa822	ldapur q2, [x1, #-6]
+1ddfa841	ldapur q1, [x2, #-6]
+1ddfa81f	ldapur q31, [x0, #-6]
+1ddfabe0	ldapur q0, [sp, #-6]
+1ddfa8a5	ldapur q5, [x5, #-6]
+1ddfabdd	ldapur q29, [x30, #-6]
+1ddfac22	
+1ddfac41	
+1ddfac1f	
+1ddfafe0	
+1ddfaca5	
+1ddfafdd	
+1ddea022	
+1ddea041	
+1ddea01f	
+1ddea3e0	
+1ddea0a5	
+1ddea3dd	
+1ddea422	setgen [x2]!, x1!, x30
+1ddea441	setgen [x1]!, x2!, x30
+1ddea41f	
+1ddea7e0	setgen [x0]!, xzr!, x30
+1ddea4a5	
+1ddea7dd	
+1ddea822	ldapur q2, [x1, #-22]
+1ddea841	ldapur q1, [x2, #-22]
+1ddea81f	ldapur q31, [x0, #-22]
+1ddeabe0	ldapur q0, [sp, #-22]
+1ddea8a5	ldapur q5, [x5, #-22]
+1ddeabdd	ldapur q29, [x30, #-22]
+1ddeac22	
+1ddeac41	
+1ddeac1f	
+1ddeafe0	
+1ddeaca5	
+1ddeafdd	
+1ddfb022	setgoetn [x2]!, x1!
+1ddfb041	setgoetn [x1]!, x2!
+1ddfb01f	
+1ddfb3e0	setgoetn [x0]!, xzr!
+1ddfb0a5	
+1ddfb3dd	setgoetn [x29]!, x30!
+1ddfb422	setgetn [x2]!, x1!, xzr
+1ddfb441	setgetn [x1]!, x2!, xzr
+1ddfb41f	
+1ddfb7e0	
+1ddfb4a5	
+1ddfb7dd	setgetn [x29]!, x30!, xzr
+1ddfb822	ldapur q2, [x1, #-5]
+1ddfb841	ldapur q1, [x2, #-5]
+1ddfb81f	ldapur q31, [x0, #-5]
+1ddfbbe0	ldapur q0, [sp, #-5]
+1ddfb8a5	ldapur q5, [x5, #-5]
+1ddfbbdd	ldapur q29, [x30, #-5]
+1ddfbc22	
+1ddfbc41	
+1ddfbc1f	
+1ddfbfe0	
+1ddfbca5	
+1ddfbfdd	
+1ddeb022	
+1ddeb041	
+1ddeb01f	
+1ddeb3e0	
+1ddeb0a5	
+1ddeb3dd	
+1ddeb422	setgetn [x2]!, x1!, x30
+1ddeb441	setgetn [x1]!, x2!, x30
+1ddeb41f	
+1ddeb7e0	setgetn [x0]!, xzr!, x30
+1ddeb4a5	
+1ddeb7dd	
+1ddeb822	ldapur q2, [x1, #-21]
+1ddeb841	ldapur q1, [x2, #-21]
+1ddeb81f	ldapur q31, [x0, #-21]
+1ddebbe0	ldapur q0, [sp, #-21]
+1ddeb8a5	ldapur q5, [x5, #-21]
+1ddebbdd	ldapur q29, [x30, #-21]
+1ddebc22	
+1ddebc41	
+1ddebc1f	
+1ddebfe0	
+1ddebca5	
+1ddebfdd	
+1ddfc022	
+1ddfc041	
+1ddfc01f	
+1ddfc3e0	
+1ddfc0a5	
+1ddfc3dd	
+1ddfc422	
+1ddfc441	
+1ddfc41f	
+1ddfc7e0	
+1ddfc4a5	
+1ddfc7dd	
+1ddfc822	ldapur q2, [x1, #-4]
+1ddfc841	ldapur q1, [x2, #-4]
+1ddfc81f	ldapur q31, [x0, #-4]
+1ddfcbe0	ldapur q0, [sp, #-4]
+1ddfc8a5	ldapur q5, [x5, #-4]
+1ddfcbdd	ldapur q29, [x30, #-4]
+1ddfcc22	
+1ddfcc41	
+1ddfcc1f	
+1ddfcfe0	
+1ddfcca5	
+1ddfcfdd	
+1ddec022	
+1ddec041	
+1ddec01f	
+1ddec3e0	
+1ddec0a5	
+1ddec3dd	
+1ddec422	
+1ddec441	
+1ddec41f	
+1ddec7e0	
+1ddec4a5	
+1ddec7dd	
+1ddec822	ldapur q2, [x1, #-20]
+1ddec841	ldapur q1, [x2, #-20]
+1ddec81f	ldapur q31, [x0, #-20]
+1ddecbe0	ldapur q0, [sp, #-20]
+1ddec8a5	ldapur q5, [x5, #-20]
+1ddecbdd	ldapur q29, [x30, #-20]
+1ddecc22	
+1ddecc41	
+1ddecc1f	
+1ddecfe0	
+1ddecca5	
+1ddecfdd	
+1ddfd022	
+1ddfd041	
+1ddfd01f	
+1ddfd3e0	
+1ddfd0a5	
+1ddfd3dd	
+1ddfd422	
+1ddfd441	
+1ddfd41f	
+1ddfd7e0	
+1ddfd4a5	
+1ddfd7dd	
+1ddfd822	ldapur q2, [x1, #-3]
+1ddfd841	ldapur q1, [x2, #-3]
+1ddfd81f	ldapur q31, [x0, #-3]
+1ddfdbe0	ldapur q0, [sp, #-3]
+1ddfd8a5	ldapur q5, [x5, #-3]
+1ddfdbdd	ldapur q29, [x30, #-3]
+1ddfdc22	
+1ddfdc41	
+1ddfdc1f	
+1ddfdfe0	
+1ddfdca5	
+1ddfdfdd	
+1dded022	
+1dded041	
+1dded01f	
+1dded3e0	
+1dded0a5	
+1dded3dd	
+1dded422	
+1dded441	
+1dded41f	
+1dded7e0	
+1dded4a5	
+1dded7dd	
+1dded822	ldapur q2, [x1, #-19]
+1dded841	ldapur q1, [x2, #-19]
+1dded81f	ldapur q31, [x0, #-19]
+1ddedbe0	ldapur q0, [sp, #-19]
+1dded8a5	ldapur q5, [x5, #-19]
+1ddedbdd	ldapur q29, [x30, #-19]
+1ddedc22	
+1ddedc41	
+1ddedc1f	
+1ddedfe0	
+1ddedca5	
+1ddedfdd	
+1ddfe022	
+1ddfe041	
+1ddfe01f	
+1ddfe3e0	
+1ddfe0a5	
+1ddfe3dd	
+1ddfe422	
+1ddfe441	
+1ddfe41f	
+1ddfe7e0	
+1ddfe4a5	
+1ddfe7dd	
+1ddfe822	ldapur q2, [x1, #-2]
+1ddfe841	ldapur q1, [x2, #-2]
+1ddfe81f	ldapur q31, [x0, #-2]
+1ddfebe0	ldapur q0, [sp, #-2]
+1ddfe8a5	ldapur q5, [x5, #-2]
+1ddfebdd	ldapur q29, [x30, #-2]
+1ddfec22	
+1ddfec41	
+1ddfec1f	
+1ddfefe0	
+1ddfeca5	
+1ddfefdd	
+1ddee022	
+1ddee041	
+1ddee01f	
+1ddee3e0	
+1ddee0a5	
+1ddee3dd	
+1ddee422	
+1ddee441	
+1ddee41f	
+1ddee7e0	
+1ddee4a5	
+1ddee7dd	
+1ddee822	ldapur q2, [x1, #-18]
+1ddee841	ldapur q1, [x2, #-18]
+1ddee81f	ldapur q31, [x0, #-18]
+1ddeebe0	ldapur q0, [sp, #-18]
+1ddee8a5	ldapur q5, [x5, #-18]
+1ddeebdd	ldapur q29, [x30, #-18]
+1ddeec22	
+1ddeec41	
+1ddeec1f	
+1ddeefe0	
+1ddeeca5	
+1ddeefdd	
+1ddff022	
+1ddff041	
+1ddff01f	
+1ddff3e0	
+1ddff0a5	
+1ddff3dd	
+1ddff422	
+1ddff441	
+1ddff41f	
+1ddff7e0	
+1ddff4a5	
+1ddff7dd	
+1ddff822	ldapur q2, [x1, #-1]
+1ddff841	ldapur q1, [x2, #-1]
+1ddff81f	ldapur q31, [x0, #-1]
+1ddffbe0	ldapur q0, [sp, #-1]
+1ddff8a5	ldapur q5, [x5, #-1]
+1ddffbdd	ldapur q29, [x30, #-1]
+1ddffc22	
+1ddffc41	
+1ddffc1f	
+1ddfffe0	
+1ddffca5	
+1ddfffdd	
+1ddef022	
+1ddef041	
+1ddef01f	
+1ddef3e0	
+1ddef0a5	
+1ddef3dd	
+1ddef422	
+1ddef441	
+1ddef41f	
+1ddef7e0	
+1ddef4a5	
+1ddef7dd	
+1ddef822	ldapur q2, [x1, #-17]
+1ddef841	ldapur q1, [x2, #-17]
+1ddef81f	ldapur q31, [x0, #-17]
+1ddefbe0	ldapur q0, [sp, #-17]
+1ddef8a5	ldapur q5, [x5, #-17]
+1ddefbdd	ldapur q29, [x30, #-17]
+1ddefc22	
+1ddefc41	
+1ddefc1f	
+1ddeffe0	
+1ddefca5	
+1ddeffdd	

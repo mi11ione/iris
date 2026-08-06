@@ -8,14 +8,7 @@ private func decode(_ encoding: UInt32) -> Instruction {
     Iris.decode(encoding, at: 0)
 }
 
-/// Validates the element-count group — CNTB/CNTH/CNTW/CNTD, the INC/DEC and
-/// saturating INC/DEC forms over both a scalar and a vector destination. All of
-/// them carry a count pattern and a multiplier in the same two fields, and all
-/// of them accumulate into a destination they also read (except the plain
-/// counts, which only write). The saturating 32-bit forms are the subtle ones:
-/// the signed variant keeps a 64-bit destination and adds a 32-bit view of the
-/// same register as a trailing source, while the unsigned variant narrows the
-/// destination itself.
+/// Validates the element-count group.
 @Suite("SVE predicate & control / element count")
 struct SVEElementCountDecodeTests {
     @Test func thePlainCountsWriteTheirDestinationWithoutReadingIt() {
@@ -35,20 +28,20 @@ struct SVEElementCountDecodeTests {
     }
 
     @Test func theCountCarriesItsPatternAndMultiplier() {
-        let d = decode(0x04EF_E003) // cntd x3, pow2, mul #16
+        let d = decode(0x04EF_E003)
         #expect(Array(d.operands) == [
             .register(.x(3)),
             .svePredicatePattern(SVEPredicatePattern(raw: 0, multiplier: 16)),
         ])
         #expect(d.semanticWrites == RegisterSet.empty.inserting(.x(3)))
 
-        let noMultiplier = decode(0x0460_E101) // cnth x1, vl8
+        let noMultiplier = decode(0x0460_E101)
         #expect(noMultiplier.operands[1] == .svePredicatePattern(SVEPredicatePattern(raw: 8, multiplier: 1)))
     }
 
     @Test func theCountRejectsItsReservedBits() {
-        #expect(decode(0x0420_E7E0).mnemonic == .undefined) // bit 10 is the increment/decrement bit
-        #expect(decode(0x0420_EBE0).mnemonic == .undefined) // bit 11 reserved
+        #expect(decode(0x0420_E7E0).mnemonic == .undefined)
+        #expect(decode(0x0420_EBE0).mnemonic == .undefined)
     }
 
     @Test func theScalarIncrementsAndDecrementsAccumulate() {
@@ -107,21 +100,21 @@ struct SVEElementCountDecodeTests {
     }
 
     @Test func theSaturatingScalarsCarryTheirPatternAndMultiplierAfterEveryRegister() {
-        let signed = decode(0x0421_F3E0) // sqincb x0, w0, all, mul #2
+        let signed = decode(0x0421_F3E0)
         #expect(Array(signed.operands) == [
             .register(.x(0)),
             .register(.w(0)),
             .svePredicatePattern(SVEPredicatePattern(raw: 31, multiplier: 2)),
         ])
 
-        let unsigned = decode(0x0460_F440) // uqinch w0, vl2
+        let unsigned = decode(0x0460_F440)
         #expect(unsigned.mnemonic == .uqinch)
         #expect(Array(unsigned.operands) == [
             .register(.w(0)),
             .svePredicatePattern(SVEPredicatePattern(raw: 2, multiplier: 1)),
         ])
 
-        let wide = decode(0x04B3_FBC0) // sqdecw x0, mul3, mul #4
+        let wide = decode(0x04B3_FBC0)
         #expect(wide.mnemonic == .sqdecw)
         #expect(Array(wide.operands) == [
             .register(.x(0)),
@@ -130,12 +123,12 @@ struct SVEElementCountDecodeTests {
     }
 
     @Test func theSaturatingScalarsIntoTheZeroRegisterKeepNoDependency() {
-        let unsigned = decode(0x04E0_FFFF) // uqdecd wzr
+        let unsigned = decode(0x04E0_FFFF)
         #expect(unsigned.operands[0] == .register(.wzr()))
         #expect(unsigned.semanticReads == .empty)
         #expect(unsigned.semanticWrites == .empty)
 
-        let signed = decode(0x04E0_F3FF) // sqincd xzr, wzr
+        let signed = decode(0x04E0_F3FF)
         #expect(signed.operands[0] == .register(.xzr()))
         #expect(signed.operands[1] == .register(.wzr()))
         #expect(signed.semanticReads == .empty)
@@ -161,11 +154,11 @@ struct SVEElementCountDecodeTests {
     }
 
     @Test func theVectorCountsTakeEverySizeExceptByte() {
-        let d = decode(0x04F0_C7E2) // decd z2.d
+        let d = decode(0x04F0_C7E2)
         #expect(d.mnemonic == .decd)
         #expect(d.operands[0] == .scalableVector(ScalableVectorRef(registerIndex: 2, element: .d)))
 
-        let multiplied = decode(0x04B3_C3A2) // incw z2.s, mul4, mul #4
+        let multiplied = decode(0x04B3_C3A2)
         #expect(multiplied.mnemonic == .incw)
         #expect(Array(multiplied.operands) == [
             .scalableVector(ScalableVectorRef(registerIndex: 2, element: .s)),
@@ -176,25 +169,16 @@ struct SVEElementCountDecodeTests {
     }
 
     @Test func theNonSaturatingVectorCountHasNoDecrementOpcodeAboveOne() {
-        // With the saturating bit clear only INC (00) and DEC (01) exist; the
-        // two remaining opcode values are unallocated.
         #expect(decode(0x0470_CBE2).mnemonic == .undefined)
         #expect(decode(0x0470_CFE2).mnemonic == .undefined)
     }
 }
 
-/// Validates the stack-frame-adjust group — ADDVL/ADDPL, their streaming twins
-/// ADDSVL/ADDSPL, and RDVL/RDSVL. Two properties matter beyond the mnemonic.
-/// First, register 31 means the stack pointer on the add forms (this is how an
-/// SVE prologue reserves a vector-length-sized frame) and the zero register on
-/// the read forms — so it must stay in the mask for one and vanish from the
-/// other. Second, the streaming twins compute a *streaming* vector length,
-/// which does not vary with the processor's streaming mode — so unlike every
-/// other form in the tier they carry no streaming-mode dependence.
+/// Validates the stack-frame-adjust group.
 @Suite("SVE predicate & control / stack-frame adjust")
 struct SVEStackFrameAdjustDecodeTests {
     @Test func theVectorLengthAddReadsAndWritesGeneralRegisters() {
-        let d = decode(0x0421_50A2) // addvl x2, x1, #5
+        let d = decode(0x0421_50A2)
         #expect(d.mnemonic == .addvl)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [.register(.x(2)), .register(.x(1)), .immediate(value: 5, width: 6)])
@@ -204,8 +188,6 @@ struct SVEStackFrameAdjustDecodeTests {
     }
 
     @Test func theVectorLengthAddKeepsTheStackPointerInItsMask() {
-        // `addvl sp, sp, #-4` is the canonical SVE frame setup: dropping bit 31
-        // would erase the entire stack adjustment from the dataflow.
         let d = decode(0x043F_579F)
         #expect(d.mnemonic == .addvl)
         #expect(Array(d.operands) == [.register(.sp()), .register(.sp()), .immediate(value: -4, width: 6)])
@@ -232,7 +214,7 @@ struct SVEStackFrameAdjustDecodeTests {
     }
 
     @Test func theVectorLengthReadWritesOneRegisterFromAnImmediate() {
-        let d = decode(0x04BF_5020) // rdvl x0, #1
+        let d = decode(0x04BF_5020)
         #expect(d.mnemonic == .rdvl)
         #expect(Array(d.operands) == [.register(.x(0)), .immediate(value: 1, width: 6)])
         #expect(d.semanticReads == .empty)
@@ -241,23 +223,21 @@ struct SVEStackFrameAdjustDecodeTests {
     }
 
     @Test func theStreamingVectorLengthReadCarriesNoStreamingDependence() {
-        let d = decode(0x04BF_5FE0) // rdsvl x0, #-1
+        let d = decode(0x04BF_5FE0)
         #expect(d.mnemonic == .rdsvl)
         #expect(Array(d.operands) == [.register(.x(0)), .immediate(value: -1, width: 6)])
         #expect(d.scalableEffect == .none)
     }
 
     @Test func theVectorLengthReadTreatsRegisterThirtyOneAsZero() {
-        // The opposite convention from the add forms: on a read, 31 is the zero
-        // register, so it must not appear in the write mask.
-        let d = decode(0x04BF_501F) // rdvl xzr, #0
+        let d = decode(0x04BF_501F)
         #expect(d.mnemonic == .rdvl)
         #expect(Array(d.operands) == [.register(.xzr()), .immediate(value: 0, width: 6)])
         #expect(d.semanticWrites == .empty)
     }
 
     @Test func theVectorLengthReadRejectsItsReservedFields() {
-        #expect(decode(0x04FF_5020).mnemonic == .undefined) // predicate-length bit set
-        #expect(decode(0x04BE_5020).mnemonic == .undefined) // source field must be all ones
+        #expect(decode(0x04FF_5020).mnemonic == .undefined)
+        #expect(decode(0x04BE_5020).mnemonic == .undefined)
     }
 }

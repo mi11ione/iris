@@ -1,16 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD vector three-different: `0 Q U 0 1110 size 1 Rm opcode 00 Rn Rd`.
-// opcode (bits[15:12]) + U select the variant; Q selects the upper-half
-// "2" form. The class has three operand shapes, NOT one:
-//   - lengthening: Rd is 2x-wide, Rn/Rm are narrow   (SADDL, SMULL, …)
-//   - widening:    Rd & Rn are wide, Rm is narrow     (SADDW/SSUBW/U…)
-//   - narrowing:   Rd is narrow, Rn/Rm are wide       (ADDHN/SUBHN/R…)
-// Per-op size validity also differs: most allow size 8/16/32; SQDM* are
-// 16/32 only; PMULL's generic table row is 8-bit only — its poly64 form
-// (size=11, `.1q` ← `.1d`/`.2d`, FEAT_PMULL64) is decoded by a dedicated
-// branch ahead of the table. size=11 is otherwise reserved.
 
 enum AdvSIMDThreeDifferentDecode {
     @_optimize(speed)
@@ -23,7 +12,6 @@ enum AdvSIMDThreeDifferentDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // FEAT_PMULL64: pmull/pmull2 .1q ← .1d (Q=0) / .2d (Q=1) (size=11).
         if U == 0, opcode == 0b1110, size == 0b11 {
             var reads = simdfpInsertingVector(Rn, into: .empty)
             reads = simdfpInsertingVector(Rm, into: reads)
@@ -42,7 +30,6 @@ enum AdvSIMDThreeDifferentDecode {
         guard let op = diffOp(U: U, opcode: opcode) else {
             return .undefined(at: address, encoding: encoding)
         }
-        // Per-op size validity (size==3 is never valid for these forms).
         guard size < 3, (op.sizeMask >> size) & 1 == 1 else {
             return .undefined(at: address, encoding: encoding)
         }
@@ -82,12 +69,12 @@ enum AdvSIMDThreeDifferentDecode {
         let sizeMask: UInt8
     }
 
-    /// Map (U, opcode) → operation. Reserved combinations return nil.
+    /// Map (U, opcode) → operation.
     @inline(__always)
     @_effects(readonly)
     private static func diffOp(U: UInt8, opcode: UInt8) -> DiffOp? {
-        let all: UInt8 = 0b111 // sizes 8/16/32
-        let hs: UInt8 = 0b110 // sizes 16/32 (SQDM* doubling)
+        let all: UInt8 = 0b111
+        let hs: UInt8 = 0b110
         switch (U, opcode) {
         case (0, 0b0000): return DiffOp(base: .saddl, two: .saddl2, shape: .lengthening, sizeMask: all)
         case (0, 0b0001): return DiffOp(base: .saddw, two: .saddw2, shape: .widening, sizeMask: all)
@@ -119,7 +106,7 @@ enum AdvSIMDThreeDifferentDecode {
         }
     }
 
-    /// The wide (2x) arrangement: 128-bit, 2-byte/4-byte/8-byte elements.
+    /// The wide (2x) arrangement.
     @inline(__always)
     @_effects(readonly)
     private static func wideArrangement(size: UInt8) -> VectorArrangement {
@@ -130,8 +117,7 @@ enum AdvSIMDThreeDifferentDecode {
         }
     }
 
-    /// The narrow arrangement: 64-bit low half (Q=0) or 128-bit upper half
-    /// (Q=1, the "2" form).
+    /// The narrow arrangement.
     @inline(__always)
     @_effects(readonly)
     private static func narrowArrangement(size: UInt8, Q: UInt8) -> VectorArrangement {

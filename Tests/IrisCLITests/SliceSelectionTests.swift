@@ -5,10 +5,7 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates fat-binary slice selection: the documented default
-/// preference (arm64e, then arm64, then any ARM64-cputype slice),
-/// strict `--arch` matching, fat64 headers, and the little-endian fat
-/// container shapes no Apple tool emits but the walker still survives.
+/// Validates fat slice selection.
 @Suite("Fat slice selection")
 struct SliceSelectionTests {
     @Test func defaultPrefersARM64E() throws {
@@ -38,19 +35,14 @@ struct SliceSelectionTests {
     }
 
     @Test func selectionFallsBackToPlainARM64() throws {
-        // A fat holding only an arm64 slice: the arm64e preference
-        // misses, the arm64 preference selects.
         let slice = minimalBinary(words: [0xD503_201F])
         let binary = try #require(walkedBinary(bytes: littleEndianFat(slices: [(0x0100_000C, 0, slice)])))
         #expect(binary.architecture == "arm64")
     }
 
     @Test func selectionFallsBackToUnknownARM64Subtype() throws {
-        // A fat holding only an unknown-subtype ARM64 slice: both named
-        // preferences miss; the cputype fallback decodes it as base ISA
-        // and its name reveals the oddity.
         var slice = minimalBinary(words: [0xD503_201F])
-        slice.replaceSubrange(8 ..< 12, with: [9, 0, 0, 0]) // cpusubtype 9
+        slice.replaceSubrange(8 ..< 12, with: [9, 0, 0, 0])
         let binary = try #require(walkedBinary(bytes: littleEndianFat(slices: [(0x0100_000C, 9, slice)])))
         #expect(binary.architecture == "arm64 (subtype 9)")
         #expect(binary.features == [])
@@ -65,8 +57,6 @@ struct SliceSelectionTests {
     }
 
     @Test func littleEndianFat64Walks() throws {
-        // The 64-bit little-endian container (cafebabf written LE): the
-        // remaining corner of the four magic/endianness combinations.
         let slice = minimalBinary(words: [0xD503_201F])
         let binary = try #require(walkedBinary(bytes: littleEndianFat(slices: [(0x0100_000C, 0, slice)], is64: true)))
         #expect(binary.architecture == "arm64")
@@ -93,9 +83,6 @@ struct SliceSelectionTests {
     }
 }
 
-/// Assemble a little-endian fat container (a shape no Apple tool emits;
-/// real fat headers are big-endian) holding the given
-/// `(cputype, cpusubtype, slice)` triples back to back.
 func littleEndianFat(slices: [(cputype: UInt32, cpusubtype: UInt32, bytes: [UInt8])], is64: Bool = false) -> [UInt8] {
     var a = MachOAssembler(bigEndian: false)
     a.u32(is64 ? 0xCAFE_BABF : 0xCAFE_BABE)
@@ -108,12 +95,12 @@ func littleEndianFat(slices: [(cputype: UInt32, cpusubtype: UInt32, bytes: [UInt
         if is64 {
             a.u64(UInt64(offset))
             a.u64(UInt64(slice.bytes.count))
-            a.u32(0) // align
-            a.u32(0) // reserved
+            a.u32(0)
+            a.u32(0)
         } else {
             a.u32(UInt32(offset))
             a.u32(UInt32(slice.bytes.count))
-            a.u32(0) // align
+            a.u32(0)
         }
         offset += slice.bytes.count
     }

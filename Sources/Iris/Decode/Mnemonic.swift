@@ -1,38 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Mnemonic identity. Wrapper-over-UInt16 rather
-// than a true Swift `enum` because the ARM64 closed-form mnemonic surface
-// is 1,105 declared constants (4 sentinel-range values + 1,101 family
-// canonical and alias mnemonics), large enough to make a single
-// `enum` declaration tedious and slow to switch over. The wrapper allows
-// each family's mnemonic file to add its own `static let` constants in a
-// reserved raw-value range.
-//
-// Raw-value range allocation (any family adding a new constant must use
-// a value inside its declared range; tests enforce
-// uniqueness and range-membership):
-//
-//   0     ..< 256   — decoder sentinels (and UDF)
-//   256   ..< 1024  — Data Processing — Immediate
-//   1024  ..< 2048  — Branches, Exception, System
-//   2048  ..< 4096  — Loads & Stores
-//   4096  ..< 6144  — Data Processing — Register
-//   6144  ..< 12288 — SIMD & Floating-Point
-//   12288 ..< 16384 — Crypto + Apple Extensions
-//   16384 ..< 28672 — SVE / SVE2 tier
-//   28672 ..< 40960 — SME / SME2 tier
-//   40960 ..< 65535 — reserved for future extensions
-//   65535            — invalid; reserved sentinel for "uninitialized"
 
 /// Closed-form identity for an ARM64 instruction mnemonic.
 ///
-/// `Mnemonic` is a value-typed wrapper over the on-record 16-bit identifier
-/// used in ``InstructionRecord``. Decoder sentinels (``undefined``,
-/// ``dataMarker``, ``truncatedTail``) are declared here; the encoding
-/// families extend the type with their canonical and alias-resolved
-/// mnemonics via per-family extensions, each within its allocated
-/// raw-value range.
+/// A value-typed wrapper over the on-record 16-bit identifier. The decoder
+/// sentinels are declared here; each encoding family extends the type with
+/// its own constants inside an allocated raw-value range.
 @frozen
 public struct Mnemonic: RawRepresentable, Sendable, Hashable {
     /// On-record 16-bit identifier.
@@ -68,15 +41,9 @@ public extension Mnemonic {
     /// despite being exception-generating.
     static let udf = Mnemonic(rawValue: 3)
 
-    /// Reserved raw-value range allocations per declaring file. Each
-    /// entry is a `(label, range)` pair where the range is the span of
-    /// raw values the declaring family may use for its `static let`
-    /// constants. Defined as a single source of truth so any tooling
-    /// that wants to render a `Mnemonic` to a human-readable label can
-    /// map a raw value back to its declaring family without duplicating
-    /// the allocation table.
-    /// Mirrors the header-comment table at the top of this file and the
-    /// range dispatch inside ``name`` (both pinned together by tests).
+    /// Reserved raw-value range allocations per declaring family, as
+    /// `(label, range)` pairs. The single source of truth tooling maps a raw
+    /// value back through, mirroring the range dispatch inside ``name``.
     static let allocations: [(label: String, range: ClosedRange<UInt16>)] = [
         ("Sentinels & UDF", 0 ... 255),
         ("Data Processing — Immediate", 256 ... 1023),
@@ -93,36 +60,16 @@ public extension Mnemonic {
 extension Mnemonic: CustomStringConvertible {
     /// Canonical lowercase name (`"add"`, `"ldp"`, `"b.cond"`).
     ///
-    /// Total: decoder sentinels return fixed census labels
-    /// (`"undefined"`, `"data"`, `"truncated"`, `"amx-unknown"`; `"udf"`
-    /// is a real mnemonic), composite encodings get their manual
-    /// spelling lowercased (`"b.cond"`, `"bc.cond"`, `"msr"`), and
-    /// unallocated raw values return `"?<raw>"` — deterministic and
-    /// debuggable, unreachable via decode. Names are census labels, not
-    /// assembly: the assembly rendering of a whole instruction
-    /// (including sentinel records) is ``Instruction/text``.
-    ///
-    /// O(1): a range dispatch (the ``allocations`` table's ranges, made
-    /// executable) into a per-family table of static literals declared
-    /// beside each family's constants.
-    ///
-    /// Derived from ``nameBytes`` so there is one table, not two: the
-    /// spelling lives in exactly one place and a `String` view of it cannot
-    /// drift from the bytes the disassembler emits. Every mnemonic is short
-    /// enough for the storage `String` keeps inline, so this constructs no
-    /// heap object on a named path.
+    /// Total: sentinels return fixed census labels and unallocated raw values
+    /// return `"?<raw>"`. These are census labels, not assembly — the rendering
+    /// of a whole instruction is ``Instruction/text``.
     public var name: String {
         guard let bytes = nameBytes else { return "?\(rawValue)" }
         return bytes.withUTF8Buffer { String(decoding: $0, as: UTF8.self) }
     }
 
-    /// The mnemonic's canonical spelling as a compile-time literal, or
-    /// `nil` for a raw value with no declared constant.
-    ///
-    /// `StaticString` is a pointer and a length, not a heap object, so the
-    /// byte path appends one with no allocation, no reference counting and
-    /// no conversion — where a `String` return had to be walked through
-    /// `withUTF8` on every instruction.
+    /// The mnemonic's canonical spelling as a compile-time literal, or `nil`
+    /// for a raw value with no declared constant.
     var nameBytes: StaticString? {
         switch rawValue {
         case 0 ... 255: Mnemonic.sentinelName(self)
@@ -132,10 +79,6 @@ extension Mnemonic: CustomStringConvertible {
         case 4096 ... 6143: Mnemonic.dataProcessingRegisterName(self)
         case 6144 ... 12287: Mnemonic.simdAndFPName(self)
         case 12288 ... 16383: Mnemonic.cryptoAppleExtensionsName(self)
-        // The SVE/SME tiers subdivide their slabs into the per-region
-        // canonicalizers that own the token text (contiguous, non-overlapping
-        // ranges pinned by MnemonicTests). Raw values above the last declared
-        // constant in a tier fall through to the "?"-sentinel default.
         case 16384 ... 16468: SVEPredicateControlCanonicalizer.name(self)
         case 16469 ... 16626: SVEIntegerCanonicalizer.name(self)
         case 16627 ... 16683: SVEFloatingPointCanonicalizer.name(self)
@@ -152,8 +95,7 @@ extension Mnemonic: CustomStringConvertible {
         name
     }
 
-    /// Names for the sentinel range (0...255): the three decoder
-    /// sentinels plus UDF, the range's one real mnemonic.
+    /// Names for the sentinel range (0...255).
     static func sentinelName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .undefined: "undefined"

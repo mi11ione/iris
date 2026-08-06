@@ -20,7 +20,6 @@ private func expectFamily(_ e: UInt32, _ m: Mnemonic, _ label: String) {
     #expect(!t.isEmpty && !t.contains("?") && !t.contains("\n"), "\(label) -> \(t)")
 }
 
-/// Every `lutiTable` row (value → mnemonic) — the ZT0-lookup LUTI2/4/6 forms.
 private let lutis: [(UInt32, Mnemonic)] = [
     (0xC08A_0000, .luti6),
     (0xC08A_4000, .luti4),
@@ -53,10 +52,7 @@ private let lutis: [(UInt32, Mnemonic)] = [
     (0xC0CC_2000, .luti2),
 ]
 
-/// Validates the SME2 move/lookup decoders (the `0xC0` cell): MOVA/MOVAZ
-/// multi-slice moves between the ZA array and vector lists, the ZA-array and
-/// ZT0 ZERO forms, MOVT between a GPR (or vector) and ZT0, and the ZT0-table
-/// LUTI2/LUTI4/LUTI6 lookups. MOVA renders `mov`; MOVAZ renders `movaz`.
+/// Validates the SME2 move/lookup decoders.
 @Suite("SME2 / move-lookup decode")
 struct SME2MoveLookupDecodeTests {
     @Test func everyLutiRowResolvesAndIsConsistent() {
@@ -70,8 +66,6 @@ struct SME2MoveLookupDecodeTests {
     }
 
     @Test func theMovaArrayFormsMoveBetweenAZADVectorAndAList() {
-        // Write direction (`mov za.d[...], {Zn}`) and read direction
-        // (`mov`/`movaz {Zd}, za.d[...]`) at both group widths.
         #expect(text(0xC004_0800) == "mov za.d[w8, 0, vgx2], { z0.d, z1.d }")
         #expect(text(0xC004_0C00) == "mov za.d[w8, 0, vgx4], { z0.d - z3.d }")
         #expect(text(0xC006_0800) == "mov { z0.d, z1.d }, za.d[w8, 0, vgx2]")
@@ -81,8 +75,6 @@ struct SME2MoveLookupDecodeTests {
     }
 
     @Test func theMovaTileSliceFormsCoverSingleSliceAndMultiDirections() {
-        // Single-slice MOVAZ across every element (`.q` is the bit16 form), and
-        // the multi list<->tile move in both directions plus its MOVAZ twin.
         expectFamily(0xC002_0200, .movaz, "movaz single .b")
         expectFamily(0xC042_0200, .movaz, "movaz single .h")
         expectFamily(0xC082_0200, .movaz, "movaz single .s")
@@ -134,16 +126,12 @@ struct SME2MoveLookupDecodeTests {
     }
 
     @Test func reservedBitsInTheMovaTileSliceFormsRejectToAHole() {
-        // The write direction reserves bits[5:3] and (4-way) bit6; the read
-        // direction reserves bit8 and the destination low bits. A set reserved
-        // bit must fall out of the MOVA match rather than decode a wrong move.
         for e: UInt32 in [0xC004_0008, 0xC006_0100, 0xC004_0440, 0xC006_0001, 0xC004_0404] {
             #expect(decode(e).mnemonic != .mov, "0x\(String(e, radix: 16)) slipped a reserved bit")
         }
     }
 
     @Test func anUnallocatedMoveLookupWordIsAClaimedHole() {
-        // A ZERO-array miss, a ZERO-ZT0 miss, a MOVT miss and a LUTI miss.
         for e: UInt32 in [0xC00C_1000, 0xC048_0000, 0xC04C_0000, 0xC0CA_0400] {
             let d = decode(e)
             #expect(d.mnemonic == .undefined, "0x\(String(e, radix: 16))")

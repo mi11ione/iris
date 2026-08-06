@@ -1,16 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Barrier instructions (CRmSystemI).
-// Encoding: 1101 0101 0000 0011 0011 CRm op2 11111
-// op2 routes to family:
-//   010 → CLREX
-//   100 → DSB (option / SSBB / PSSBB special-cased on CRm)
-//   101 → DMB
-//   110 → ISB
-//   111 → SB (CRm must be 0)
-//   001 → DSB nXS (CRm ∈ {2, 6, 10, 14})
-// Other op2 → .undefined.
 
 enum BarrierDecode {
     @inline(__always)
@@ -25,7 +14,7 @@ enum BarrierDecode {
         case 0b110:
             decodeISB(encoding: encoding, address: address, CRm: CRm, &sink)
         case 0b111:
-            decodeSB(encoding: encoding, address: address, CRm: CRm)
+            decodeSB(encoding: encoding, address: address)
         case 0b001:
             decodeDSBnXS(encoding: encoding, address: address, CRm: CRm, &sink)
         default:
@@ -35,7 +24,6 @@ enum BarrierDecode {
 
     @inline(__always)
     private static func decodeCLREX(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
-        // CLREX renders bare when CRm == 0xF; `clrex #N` otherwise.
         let operandMark = sink.mark
         if CRm != 0xF {
             sink.append(.unsignedImmediate(value: UInt64(CRm), width: 4))
@@ -51,7 +39,6 @@ enum BarrierDecode {
 
     @inline(__always)
     private static func decodeDSB(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
-        // SSBB / PSSBB special-cases.
         if CRm == 0 {
             return DecodedDraft(
                 address: address,
@@ -68,6 +55,14 @@ enum BarrierDecode {
                 category: .branchesExceptionSystem,
             )
         }
+        if CRm == 12 {
+            return DecodedDraft(
+                address: address,
+                encoding: encoding,
+                mnemonic: .dfb,
+                category: .branchesExceptionSystem,
+            )
+        }
         return decodeDSBOrDMB(encoding: encoding, address: address, CRm: CRm, mnemonic: .dsb, &sink)
     }
 
@@ -80,7 +75,6 @@ enum BarrierDecode {
     private static func decodeDSBOrDMB(
         encoding: UInt32, address: UInt64, CRm: UInt8, mnemonic: Mnemonic, _ sink: inout OperandSink,
     ) -> DecodedDraft {
-        // Named option if recognised; otherwise raw `#N`.
         if let option = BarrierOption(rawOptionBits: CRm) {
             return DecodedDraft(
                 address: address,
@@ -115,8 +109,7 @@ enum BarrierDecode {
     }
 
     @inline(__always)
-    private static func decodeSB(encoding: UInt32, address: UInt64, CRm _: UInt8) -> DecodedDraft {
-        // SB ignores CRm (the field is reserved for SB), rendering bare.
+    private static func decodeSB(encoding: UInt32, address: UInt64) -> DecodedDraft {
         DecodedDraft(
             address: address,
             encoding: encoding,
@@ -127,19 +120,6 @@ enum BarrierDecode {
 
     @inline(__always)
     private static func decodeDSBnXS(encoding: UInt32, address: UInt64, CRm: UInt8, _ sink: inout OperandSink) -> DecodedDraft {
-        // FEAT_XS recognises CRm ∈ {2, 6, 10, 14} only — other values are
-        // reserved within the op2=001 slot. The decoder still produces a
-        // `.dsb` record carrying the raw CRm as an immediate operand so
-        // the canonicalizer can render the named "oshnxs"/"nshnxs"/
-        // "ishnxs"/"synxs" form for the four valid CRm values; unknown
-        // values render as the underlying `msr S0_...` form per llvm-mc
-        // fallback.
-        // To keep the structural-field surface simple, emit
-        // .dsb with `.unsignedImmediate(value: CRm | 0x10, width: 5)` for
-        // the four valid CRm values (encoding the nXS hint), and
-        // .undefined for the rest (matching llvm-mc's MSR-fallback would
-        // require a sysreg synthesis path that isn't worth the complexity
-        // for an instruction Apple silicon barely emits).
         switch CRm {
         case 2, 6, 10, 14:
             DecodedDraft(

@@ -3,14 +3,11 @@
 
 import Iris
 
-/// The `stats` verb's instruction census: per-mnemonic and per-category
-/// counts, extension-site counts (PAC / MTE / AMX / crypto), and word
-/// totals, accumulated streamingly and rendered as a table or one JSON
-/// object.
+/// The `stats` verb's instruction census.
 @frozen
 public struct Census: Sendable {
-    /// Count per mnemonic name (sentinel records excluded, they are
-    /// counted in the totals, not the mnemonic census).
+    /// Count per mnemonic name (sentinel records excluded, they are counted in
+    /// the totals, not the mnemonic census).
     public private(set) var mnemonicCounts: [String: Int] = [:]
     /// Count per category name, sentinels included.
     public private(set) var categoryCounts: [String: Int] = [:]
@@ -37,9 +34,11 @@ public struct Census: Sendable {
     public mutating func add(_ instruction: Instruction) {
         totalWords += 1
         categoryCounts[JSONText.categoryName(instruction.category), default: 0] += 1
-        switch instruction.category {
-        case .undefined:
+        if instruction.isUndefined {
             undefinedWords += 1
+            return
+        }
+        switch instruction.category {
         case .dataInCodeMarker:
             dataWords += 1
         case .truncatedTail:
@@ -60,8 +59,7 @@ public struct Census: Sendable {
         }
     }
 
-    /// The table rendering: totals, extension sites, per-category and
-    /// per-mnemonic counts (descending count, then name).
+    /// The table rendering.
     public func tableLines() -> [String] {
         var lines: [String] = []
         lines.append("total words        \(totalWords)")
@@ -89,8 +87,7 @@ public struct Census: Sendable {
         return lines
     }
 
-    /// The `stats --json` rendering: one JSON object (`kind` is `census`),
-    /// map keys sorted by name for byte-stable output.
+    /// The `stats --json` rendering.
     public func jsonObject() -> String {
         var fields: [String] = []
         fields.append("\"schemaVersion\":\(JSONText.schemaVersion)")
@@ -110,11 +107,7 @@ public struct Census: Sendable {
         return "{" + fields.joined(separator: ",") + "}"
     }
 
-    /// The `stats --json --slim` rendering: the census object with the two
-    /// constant fields (`schemaVersion`, `kind`) dropped, matching the
-    /// instruction-stream slim. Every count stays (a zero count is signal:
-    /// it is exactly what a CI gate like `pointerAuthentication > 0`
-    /// reads), so the census slims only by those two keys.
+    /// The `stats --json --slim` rendering.
     public func slimJsonObject() -> String {
         var fields: [String] = []
         fields.append("\"totalWords\":\(totalWords)")

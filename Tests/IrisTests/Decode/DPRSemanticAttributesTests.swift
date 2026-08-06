@@ -5,88 +5,85 @@ import Iris
 import IrisValidation
 import Testing
 
-/// Validates the per-mnemonic semantic-attribute table + the
-/// `DPRSemanticChecker.verify(draft:)` entry point. Covers every
-/// branch of `expectedFlagEffect`, `expectedReadMask`, `expectedWriteMask`,
-/// `registerMaskAt`, plus every `DPRSemanticIssue` field-mismatch path.
+/// Validates the per-mnemonic attribute tables and
+/// `DPRSemanticChecker.verify(draft:)`, covering every expected-mask branch.
 @Suite("DPR / Semantic attribute checker")
 struct DPRSemanticAttributesTests {
     @Test func everyDPRRecordPassesSemanticCheck() {
-        // Sample one encoding per mnemonic family; each must pass the checker.
         let cases: [UInt32] = [
-            0x8B02_0020, // add
-            0xAB02_0020, // adds
-            0xCB02_0020, // sub
-            0xEB02_0020, // subs
-            0xAB02_003F, // cmn alias
-            0xEB02_003F, // cmp alias
-            0xCB01_03E0, // neg alias
-            0xEB01_03E0, // negs alias
-            0x8B22_6020, // add extended
-            0xEB21_63FF, // cmp extended alias
-            0x8A02_0020, // and
-            0xAA02_0020, // orr
-            0xCA02_0020, // eor
-            0xEA02_0020, // ands
-            0x8A22_0020, // bic
-            0xAA22_0020, // orn
-            0xCA22_0020, // eon
-            0xEA22_0020, // bics
-            0xAA02_03E0, // mov alias
-            0xAA22_03E0, // mvn alias
-            0xEA02_003F, // tst alias
-            0x9A02_0020, // adc
-            0xBA02_0020, // adcs
-            0xDA02_0020, // sbc
-            0xFA02_0020, // sbcs
-            0xDA01_03E0, // ngc alias
-            0xFA01_03E0, // ngcs alias
-            0xFA42_0025, // ccmp reg
-            0xFA40_0825, // ccmp imm
-            0xBA42_0025, // ccmn reg
-            0x9A82_0020, // csel
-            0x9A82_0420, // csinc
-            0xDA82_0020, // csinv
-            0xDA82_0420, // csneg
-            0x9A9F_07E0, // cset alias
-            0xDA9F_03E0, // csetm alias
-            0x9A81_0420, // cinc alias
-            0xDA81_0020, // cinv alias
-            0xDA81_0420, // cneg alias
-            0x9B02_0C20, // madd
-            0x9B02_8C20, // msub
-            0x9B22_0C20, // smaddl
-            0x9B22_8C20, // smsubl
-            0x9BA2_0C20, // umaddl
-            0x9BA2_8C20, // umsubl
-            0x9B42_7C20, // smulh
-            0x9BC2_7C20, // umulh
-            0x9B02_7C20, // mul alias
-            0x9B02_FC20, // mneg alias
-            0x9B22_7C20, // smull alias
-            0x9B22_FC20, // smnegl alias
-            0x9BA2_7C20, // umull alias
-            0x9BA2_FC20, // umnegl alias
-            0x9AC2_0820, // udiv
-            0x9AC2_0C20, // sdiv
-            0x9AC2_2020, // lslv → lsl
-            0x9AC2_2420, // lsrv → lsr
-            0x9AC2_2820, // asrv → asr
-            0x9AC2_2C20, // rorv → ror
-            0x1AC2_4020, // crc32b
-            0x1AC2_4420, // crc32h
-            0x1AC2_4820, // crc32w
-            0x9AC2_4C20, // crc32x
-            0x1AC2_5020, // crc32cb
-            0x1AC2_5420, // crc32ch
-            0x1AC2_5820, // crc32cw
-            0x9AC2_5C20, // crc32cx
-            0xDAC0_0020, // rbit
-            0xDAC0_0420, // rev16
-            0xDAC0_0820, // rev32 (sf=1)
-            0xDAC0_0C20, // rev (sf=1)
-            0xDAC0_1020, // clz
-            0xDAC0_1420, // cls
+            0x8B02_0020,
+            0xAB02_0020,
+            0xCB02_0020,
+            0xEB02_0020,
+            0xAB02_003F,
+            0xEB02_003F,
+            0xCB01_03E0,
+            0xEB01_03E0,
+            0x8B22_6020,
+            0xEB21_63FF,
+            0x8A02_0020,
+            0xAA02_0020,
+            0xCA02_0020,
+            0xEA02_0020,
+            0x8A22_0020,
+            0xAA22_0020,
+            0xCA22_0020,
+            0xEA22_0020,
+            0xAA02_03E0,
+            0xAA22_03E0,
+            0xEA02_003F,
+            0x9A02_0020,
+            0xBA02_0020,
+            0xDA02_0020,
+            0xFA02_0020,
+            0xDA01_03E0,
+            0xFA01_03E0,
+            0xFA42_0025,
+            0xFA40_0825,
+            0xBA42_0025,
+            0x9A82_0020,
+            0x9A82_0420,
+            0xDA82_0020,
+            0xDA82_0420,
+            0x9A9F_07E0,
+            0xDA9F_03E0,
+            0x9A81_0420,
+            0xDA81_0020,
+            0xDA81_0420,
+            0x9B02_0C20,
+            0x9B02_8C20,
+            0x9B22_0C20,
+            0x9B22_8C20,
+            0x9BA2_0C20,
+            0x9BA2_8C20,
+            0x9B42_7C20,
+            0x9BC2_7C20,
+            0x9B02_7C20,
+            0x9B02_FC20,
+            0x9B22_7C20,
+            0x9B22_FC20,
+            0x9BA2_7C20,
+            0x9BA2_FC20,
+            0x9AC2_0820,
+            0x9AC2_0C20,
+            0x9AC2_2020,
+            0x9AC2_2420,
+            0x9AC2_2820,
+            0x9AC2_2C20,
+            0x1AC2_4020,
+            0x1AC2_4420,
+            0x1AC2_4820,
+            0x9AC2_4C20,
+            0x1AC2_5020,
+            0x1AC2_5420,
+            0x1AC2_5820,
+            0x9AC2_5C20,
+            0xDAC0_0020,
+            0xDAC0_0420,
+            0xDAC0_0820,
+            0xDAC0_0C20,
+            0xDAC0_1020,
+            0xDAC0_1420,
         ]
         for encoding in cases {
             let d = decode(encoding, at: 0)
@@ -101,9 +98,6 @@ struct DPRSemanticAttributesTests {
         #expect(DPRSemanticChecker.verify(d) == nil)
     }
 
-    /// Minimal DPR draft carrying a mnemonic (and operands, for RMIF's
-    /// mask-dependent write set). `expectedFlagEffect` reads only the
-    /// mnemonic, except for RMIF, which reads the imm4 mask at operand[2].
     private func dprDraft(_ m: Mnemonic, operands: [Operand] = []) -> Instruction {
         Instruction(address: 0, encoding: 0, mnemonic: m, category: .dataProcessingRegister, operands: operands)
     }
@@ -139,7 +133,6 @@ struct DPRSemanticAttributesTests {
     }
 
     @Test func rmifWritesMaskSelectedFlags() {
-        /// operand[2] is the imm4 mask: bit3→N, bit2→Z, bit1→C, bit0→V.
         func rmif(mask: UInt64) -> Instruction {
             dprDraft(.rmif, operands: [
                 .unsignedImmediate(value: 0, width: 6),
@@ -227,7 +220,6 @@ struct DPRSemanticAttributesTests {
     }
 
     @Test func expectedReadMaskForUnknownMnemonicIsNil() {
-        // .b is a BES-family mnemonic — DPR's switch returns nil for it.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .b,
             category: .dataProcessingRegister,
@@ -280,7 +272,6 @@ struct DPRSemanticAttributesTests {
     }
 
     @Test func extraneousSemanticReadsReturnsIssue() {
-        // Add an unexpected register to the read set.
         let base = decode(0x8B02_0020, at: 0)
         let d = mutated(base, semanticReads: base.semanticReads.inserting(.x(10)))
         let issue = DPRSemanticChecker.verify(d)
@@ -293,36 +284,25 @@ struct DPRSemanticAttributesTests {
         #expect(issue?.field == "semanticWrites")
     }
 
-    //
-    // The semantic checker derives expected masks from the draft's own
-    // operand list, so a decoder bug that corrupts BOTH the operand list
-    // AND the reads/writes in matching ways would pass the checker.
-    // These tests assert exact reads/writes computed independently from
-    // the encoding fields, catching that class of bug.
-
     @Test func addShiftedSemanticMasksMatchEncoding() {
-        // ADD x0, x1, x2 → reads {x1, x2}, writes {x0}.
         let d = decode(0x8B02_0020, at: 0)
         #expect(d.semanticReads.mask == (UInt64(1) << 1) | (UInt64(1) << 2))
         #expect(d.semanticWrites.mask == (UInt64(1) << 0))
     }
 
     @Test func cmpAliasSemanticMasksDropRd() {
-        // CMP x1, x2 (Rd=XZR) → reads {x1, x2}, writes {} (XZR dropped).
         let d = decode(0xEB02_003F, at: 0)
         #expect(d.semanticReads.mask == (UInt64(1) << 1) | (UInt64(1) << 2))
         #expect(d.semanticWrites.mask == 0)
     }
 
     @Test func tstAliasSemanticMasksDropRd() {
-        // TST x1, x2 → reads {x1, x2}, writes {}.
         let d = decode(0xEA02_003F, at: 0)
         #expect(d.semanticReads.mask == (UInt64(1) << 1) | (UInt64(1) << 2))
         #expect(d.semanticWrites.mask == 0)
     }
 
     @Test func csetAliasSemanticMasksFromRnRmXZR() {
-        // CSET x0, ne — Rn=Rm=XZR dropped → reads empty, writes {x0}.
         let d = decode(0x9A9F_07E0, at: 0)
         #expect(d.semanticReads.mask == 0)
         #expect(d.semanticWrites.mask == (UInt64(1) << 0))
@@ -335,15 +315,12 @@ struct DPRSemanticAttributesTests {
     }
 
     @Test func cnegWithXZRSemanticMasksAllowZeroRead() {
-        // CNEG x0, xzr, ne — Rn=XZR allowed by CNEG; reads dropped to 0,
-        // writes {x0}.
         let d = decode(0xDA9F_07E0, at: 0)
         #expect(d.semanticReads.mask == 0)
         #expect(d.semanticWrites.mask == (UInt64(1) << 0))
     }
 
     @Test func smaddlSemanticMasksThreeSource() {
-        // SMADDL x0, w1, w2, x3 → reads {w1, w2, x3} (canonical-indexed all to 1/2/3), writes {x0}.
         let d = decode(0x9B22_0C20, at: 0)
         let expected = (UInt64(1) << 1) | (UInt64(1) << 2) | (UInt64(1) << 3)
         #expect(d.semanticReads.mask == expected)
@@ -351,25 +328,20 @@ struct DPRSemanticAttributesTests {
     }
 
     @Test func smulhSemanticMasksNoRa() {
-        // SMULH x0, x1, x2 → reads {x1, x2}, writes {x0} (no Ra).
         let d = decode(0x9B42_7C20, at: 0)
         #expect(d.semanticReads.mask == (UInt64(1) << 1) | (UInt64(1) << 2))
         #expect(d.semanticWrites.mask == (UInt64(1) << 0))
     }
 
     @Test func crc32xSemanticMasksWithMixedWidths() {
-        // CRC32X w0, w1, x2 — reads {1, 2} (canonical indices), writes {0}.
         let d = decode(0x9AC2_4C20, at: 0)
         #expect(d.semanticReads.mask == (UInt64(1) << 1) | (UInt64(1) << 2))
         #expect(d.semanticWrites.mask == (UInt64(1) << 0))
     }
 
     @Test func rmifWithoutItsMaskOperandExpectsFullNZCV() {
-        // The RMIF flag expectation reads the imm4 mask from operand[2];
-        // a hand-built record without it falls back to the full set.
         let bare = Instruction(mnemonic: .rmif, category: .dataProcessingRegister)
         #expect(DPRSemanticAttributes.expectedFlagEffect(for: bare) == .nzcv)
-        // Decoded RMIF with mask 0b1111 selects all four flags.
         let full = decode(0xBA01_842F, at: 0)
         #expect(DPRSemanticAttributes.expectedFlagEffect(for: full)
             == [.writesN, .writesZ, .writesC, .writesV])

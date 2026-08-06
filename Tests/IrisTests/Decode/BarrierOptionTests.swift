@@ -4,8 +4,8 @@
 import Iris
 import Testing
 
-/// Validates BarrierOption — the architectural memory-barrier options
-/// for DSB/DMB/ISB, including the rejected reserved encodings.
+/// Validates BarrierOption — the architectural memory-barrier options for
+/// DSB/DMB/ISB, including the rejected reserved encodings.
 @Suite("BarrierOption / architectural option bits")
 struct BarrierOptionRawTests {
     @Test func everyNamedCaseHasStableRawValue() {
@@ -56,7 +56,6 @@ struct BarrierOptionInitTests {
     }
 
     @Test func highBitsAreMaskedAway() {
-        // 0xF1 truncates to 0b0001 == .oshld; high nibble must be ignored.
         #expect(BarrierOption(rawOptionBits: 0xF1) == .oshld)
         #expect(BarrierOption(rawOptionBits: 0xFF) == .sy)
     }

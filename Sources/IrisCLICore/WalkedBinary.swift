@@ -3,10 +3,7 @@
 
 import Iris
 
-/// Everything the CLI needs from one Mach-O slice: its decodable code
-/// sections, the symbol index for labels and branch symbolication,
-/// function-start addresses for grouping, the decode features its
-/// architecture implies, and every malformation the walk surfaced.
+/// Everything the CLI needs from one Mach-O slice.
 @frozen
 public struct WalkedBinary: Sendable {
     /// Path the binary was opened from.
@@ -17,17 +14,16 @@ public struct WalkedBinary: Sendable {
     public let features: Features
     /// Executable sections in load-command walk order.
     public let codeSections: [CodeSection]
-    /// Non-code, file-backed sections (`__cstring`, `__const`, `__data`,
-    /// …) in load-command walk order, for resolving an address-forming
-    /// instruction's referenced data. Empty when the slice has none.
+    /// Non-code, file-backed sections (`__cstring`, `__const`, `__data`, …) in
+    /// load-command walk order, for resolving an address-forming instruction's
+    /// referenced data.
     public let dataSections: [DataSection]
     /// Defined symbols, address-indexed.
     public let symbols: SymbolIndex
     /// Ascending `LC_FUNCTION_STARTS` addresses; empty when absent.
     public let functionStarts: [UInt64]
     /// Imported-symbol name keyed by `__stubs`/`__auth_stubs` entry VM
-    /// address; empty when the binary has no symbol stubs. A branch whose
-    /// target is one of these addresses calls the named import.
+    /// address; empty when the binary has no symbol stubs.
     public let stubTargets: [UInt64: String]
     /// Malformations stepped around during the walk.
     public let diagnostics: [WalkerDiagnostic]
@@ -62,9 +58,7 @@ public struct WalkedBinary: Sendable {
     }
 }
 
-/// Result of walking a path: a usable binary, or one of the typed
-/// failures the CLI maps to its exit codes (2 for
-/// unreadable/not-Mach-O, 3 for architecture unavailability).
+/// Result of walking a path.
 @frozen
 public enum WalkOutcome: Sendable {
     /// A decodable slice was selected and walked.
@@ -73,8 +67,7 @@ public enum WalkOutcome: Sendable {
     case unreadable(detail: String)
     /// The bytes are not a (64-bit) Mach-O or fat container.
     case notMachO(detail: String)
-    /// The container holds no slice satisfying the requested (or
-    /// default) architecture selection; `available` names every slice
-    /// present.
+    /// The container holds no slice satisfying the requested (or default)
+    /// architecture selection; `available` names every slice present.
     case archUnavailable(requested: ArchSelection?, available: [String])
 }

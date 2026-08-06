@@ -1,26 +1,14 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Canonicalizer for SVE-predicate — SVE predicate & control. Renders a
-// decoded record to llvm-mc-compatible disassembly text (the validator's
-// parity oracle over the full op0=2 in-scope space). Per-mnemonic format
-// dispatch covers every rendering rule: the governing-predicate-
-// bare / other-predicate-suffixed rule, /z-/m qualifiers, the 32-value
-// pattern table, the 3-tier pattern/mul elision ladder, signed-vs-unsigned
-// scalar widths, SP-vs-XZR register text, and the INDEX/MOVPRFX shapes.
 
 /// Canonical llvm-mc-compatible disassembly text for an SVE predicate &
-/// control record. A scalable-tier hole never reaches here: the text router
-/// renders it as `.long` before dispatching.
+/// control record.
 enum SVEPredicateControlCanonicalizer {
-    /// The byte path — rendered straight into a UTF-8 buffer. Operands are
-    /// addressed positionally through the `put*` helpers, which take the
-    /// zero-based operand view directly rather than a materialized `Array`.
+    /// The byte path.
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
         let ops = instruction.operands
         let m = instruction.mnemonic
         switch m {
-        // G1 — initialise / test.
         case .ptrue, .ptrues:
             putPtrue(m, ops, into: &out)
         case .pfalse:
@@ -31,14 +19,10 @@ enum SVEPredicateControlCanonicalizer {
             putPred(ops, 0, into: &out)
             out.put(", ")
             putPred(ops, 1, into: &out)
-        // G2 — predicate logical (4-op /z, or SEL bare Pg).
         case .and, .ands, .bic, .bics, .eor, .eors, .orr, .orrs, .orn, .orns,
              .nand, .nands, .nor, .nors, .sel:
             putFour(m, ops, into: &out)
-        // G2 aliases.
         case .mov, .movs, .not, .nots:
-            // MOV/MOVS have a 2-operand form (from ORR/ORRS) and a 3-operand
-            // form (from AND/ANDS or SEL); NOT/NOTS are always 3-operand.
             if ops.count == 2 {
                 putHead(m, into: &out)
                 putPred(ops, 0, into: &out)
@@ -47,16 +31,13 @@ enum SVEPredicateControlCanonicalizer {
             } else {
                 putThree(m, ops, into: &out)
             }
-        // G3 — break (3-op), break-pair (4-op), pfirst/pnext (3-op).
         case .brka, .brkas, .brkb, .brkbs:
             putThree(m, ops, into: &out)
         case .brkn, .brkns, .brkpa, .brkpas, .brkpb, .brkpbs:
             putFour(m, ops, into: &out)
         case .pfirst, .pnext:
             putThree(m, ops, into: &out)
-        // G4 — first-fault.
         case .rdffr, .rdffrs:
-            // Unpredicated form has one operand; predicated has two (Pd, Pg/z).
             putHead(m, into: &out)
             putPred(ops, 0, into: &out)
             if ops.count != 1 {
@@ -68,7 +49,6 @@ enum SVEPredicateControlCanonicalizer {
             putPred(ops, 0, into: &out)
         case .setffr:
             putGroupName(m, into: &out)
-        // G5 — predicate count.
         case .cntp:
             putHead(m, into: &out)
             putReg(ops, 0, into: &out)
@@ -78,7 +58,6 @@ enum SVEPredicateControlCanonicalizer {
             putPred(ops, 2, into: &out)
         case .incp, .decp, .sqincp, .uqincp, .sqdecp, .uqdecp:
             putCountPredicate(m, ops, into: &out)
-        // G6 — loop predicates.
         case .whilege, .whilegt, .whilelt, .whilele, .whilehs, .whilehi,
              .whilelo, .whilels, .whilerw, .whilewr:
             putHead(m, into: &out)
@@ -92,7 +71,6 @@ enum SVEPredicateControlCanonicalizer {
             putReg(ops, 0, into: &out)
             out.put(", ")
             putReg(ops, 1, into: &out)
-        // G7 — element count + adjust.
         case .rdvl, .rdsvl:
             putHead(m, into: &out)
             putReg(ops, 0, into: &out)
@@ -111,7 +89,6 @@ enum SVEPredicateControlCanonicalizer {
              .sqincb, .sqinch, .sqincw, .sqincd, .uqincb, .uqinch, .uqincw, .uqincd,
              .sqdecb, .sqdech, .sqdecw, .sqdecd, .uqdecb, .uqdech, .uqdecw, .uqdecd:
             putElementCount(m, ops, destCount: elementCountDestCount(ops), into: &out)
-        // G8 — index.
         case .index:
             putHead(m, into: &out)
             putScalableVector(ops, 0, into: &out)
@@ -119,9 +96,7 @@ enum SVEPredicateControlCanonicalizer {
             putIndexOperand(ops, 1, into: &out)
             out.put(", ")
             putIndexOperand(ops, 2, into: &out)
-        // G9 — movprfx.
         case .movprfx:
-            // Unpredicated: [Zd, Zn]. Predicated: [Zd.T, Pg/{z,m}, Zn.T].
             putHead(m, into: &out)
             putScalableVector(ops, 0, into: &out)
             out.put(", ")
@@ -133,12 +108,9 @@ enum SVEPredicateControlCanonicalizer {
                 putScalableVector(ops, 2, into: &out)
             }
         default:
-            // sentinel for a mnemonic outside the group
             putGroupName(m, into: &out)
         }
     }
-
-    // MARK: per-shape formatters
 
     @inline(__always)
     private static func putHead(_ m: Mnemonic, into out: inout TextBytes) {
@@ -146,9 +118,7 @@ enum SVEPredicateControlCanonicalizer {
         out.put(UInt8(ascii: " "))
     }
 
-    /// This group's own spelling table. A mnemonic from outside the group
-    /// renders the `?<raw>` sentinel rather than the spelling another
-    /// family owns.
+    /// This group's own spelling table.
     @inline(__always)
     private static func putGroupName(_ m: Mnemonic, into out: inout TextBytes) {
         if let spelling = name(m) {
@@ -164,7 +134,6 @@ enum SVEPredicateControlCanonicalizer {
     ) {
         putHead(m, into: &out)
         putPred(ops, 0, into: &out)
-        // PTRUE always elides the `all` (31) pattern (no mul field).
         guard case let .svePredicatePattern(pat) = operand(ops, ops.count - 1) else { return }
         if SVEPatternName.isAll(pat.raw) { return }
         out.put(", ")
@@ -194,7 +163,6 @@ enum SVEPredicateControlCanonicalizer {
     private static func putCountPredicate(
         _ m: Mnemonic, _ ops: Instruction.Operands, into out: inout TextBytes,
     ) {
-        // Vector: [Zdn.T, Pm.T]. Scalar: [Rdn, Pm.T] or signed-32 [Xdn, Pm.T, Wdn].
         putHead(m, into: &out)
         if case .scalableVector = operand(ops, 0) {
             putScalableVector(ops, 0, into: &out)
@@ -214,8 +182,6 @@ enum SVEPredicateControlCanonicalizer {
     private static func putElementCount(
         _ m: Mnemonic, _ ops: Instruction.Operands, destCount: Int, into out: inout TextBytes,
     ) {
-        // dest operands (1 scalar, or 1 scalar + 1 W-source-view for signed-32,
-        // or 1 vector) then the pattern/mul with the 3-tier elision ladder.
         putHead(m, into: &out)
         if destCount == 2 {
             putReg(ops, 0, into: &out)
@@ -228,7 +194,6 @@ enum SVEPredicateControlCanonicalizer {
         }
         guard case let .svePredicatePattern(pat) = operand(ops, destCount) else { return }
         let mulPresent = pat.multiplier != 1
-        // drop `all` when it would be trailing
         if SVEPatternName.isAll(pat.raw), !mulPresent { return }
         out.put(", ")
         out.putString(SVEPatternName.text(pat.raw))
@@ -239,8 +204,7 @@ enum SVEPredicateControlCanonicalizer {
     }
 
     /// The number of leading register operands before the pattern for an
-    /// element-count form: 2 for a signed-32 saturating scalar (X dest + W
-    /// source-view), 1 otherwise.
+    /// element-count form.
     private static func elementCountDestCount(_ ops: Instruction.Operands) -> Int {
         if ops.count >= 2, case .register = ops[0], case .register = ops[1] {
             return 2
@@ -248,9 +212,7 @@ enum SVEPredicateControlCanonicalizer {
         return 1
     }
 
-    // MARK: operand renderers
-
-    /// A predicate operand: `p<n>` + `.<T>` if sized + `/z`|`/m`.
+    /// A predicate operand.
     private static func putPred(
         _ ops: Instruction.Operands, _ i: Int, into out: inout TextBytes,
     ) {
@@ -311,7 +273,7 @@ enum SVEPredicateControlCanonicalizer {
         }
     }
 
-    /// An INDEX start/step operand — either a register or a signed immediate.
+    /// An INDEX start/step operand.
     private static func putIndexOperand(
         _ ops: Instruction.Operands, _ i: Int, into out: inout TextBytes,
     ) {
@@ -358,8 +320,6 @@ enum SVEPredicateControlCanonicalizer {
             }
         }
     }
-
-    // MARK: name table
 
     @_effects(readonly)
     static func name(_ m: Mnemonic) -> StaticString? {

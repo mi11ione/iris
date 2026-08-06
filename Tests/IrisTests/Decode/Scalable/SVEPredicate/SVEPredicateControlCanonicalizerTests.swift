@@ -8,26 +8,16 @@ private func text(_ encoding: UInt32) -> String {
     Iris.decode(encoding, at: 0).text
 }
 
-/// A draft with a hand-built operand list, for the shape-violation paths.
 private func draft(_ mnemonic: Mnemonic, _ operands: [Operand]) -> Instruction {
     Instruction(
         address: 0, encoding: 0x2518_E000, mnemonic: mnemonic, category: .sve, operands: operands,
     )
 }
 
-/// Validates the disassembly-text rendering rules. The text is what the corpus
-/// runner diffs against the reference assembler, so every rule that changes a
-/// character is pinned here: which predicates carry an element suffix and which
-/// stay bare, where the zeroing and merging qualifiers go, how the count pattern
-/// and its multiplier elide (a three-tier ladder in which `all` disappears when
-/// it would trail but comes back when a multiplier follows it), which register
-/// width each saturating form prints, and when register 31 is the stack pointer
-/// rather than the zero register.
+/// Validates the disassembly-text rendering rules.
 @Suite("SVE predicate & control / disassembly text")
 struct SVEPredicateControlCanonicalizerTests {
     @Test func anUndefinedRecordRendersAsNothing() {
-        // The reference assembler emits no text for a rejected encoding, so an
-        // empty string is what parity requires.
         #expect(text(0x2543_4A30) == ".long 0x25434a30")
     }
 
@@ -40,8 +30,6 @@ struct SVEPredicateControlCanonicalizerTests {
     }
 
     @Test func theCountedPredicateCarriesItsSizeEvenThoughItGovernsNothing() {
-        // The suffix-less spelling of these is assembler-only: the disassembler
-        // always prints the sized predicate.
         #expect(text(0x256C_8043) == "incp z3.h, p2.h")
         #expect(text(0x256C_8843) == "incp x3, p2.h")
     }
@@ -56,8 +44,6 @@ struct SVEPredicateControlCanonicalizerTests {
     }
 
     @Test func everyCountPatternRendersThroughTheSharedTable() {
-        // PTRUE has no multiplier field, so it exercises the pattern table
-        // directly — including the `all` default, which it always elides.
         let base: UInt32 = 0x2518_E000
         for raw in UInt8(0) ... 30 {
             let expected = "ptrue p0.b, \(svePatternText[Int(raw)])"
@@ -74,8 +60,6 @@ struct SVEPredicateControlCanonicalizerTests {
     }
 
     @Test func theMultiplierOfOneIsNeverPrinted() {
-        // The multiplier field is stored biased by one, so its zero value means
-        // "times one" — which the reference assembler leaves out.
         #expect(text(0x0470_E085) == "inch x5, vl4")
         #expect(text(0x04B2_E3C6) == "incw x6, mul3, mul #3")
     }
@@ -133,12 +117,7 @@ struct SVEPredicateControlCanonicalizerTests {
     }
 }
 
-/// Validates the shape-violation sentinels. Every operand renderer answers with
-/// a `?`-prefixed marker rather than crashing or inventing plausible-looking
-/// text when it is handed an operand of the wrong kind or an index past the end
-/// of the list. That matters because the canonicalizer is also the parity
-/// instrument: a malformed record must show up in the diff as obviously wrong
-/// text, not as a trap and not as text that happens to read correctly.
+/// Validates the shape-violation sentinels.
 @Suite("SVE predicate & control / disassembly shape violations")
 struct SVEPredicateControlCanonicalizerShapeTests {
     private func format(_ d: Instruction) -> String {
@@ -187,22 +166,16 @@ struct SVEPredicateControlCanonicalizerShapeTests {
     }
 
     @Test func anUnsignedImmediateInAnImmediateSlotStillRenders() {
-        // The group only ever emits signed immediates, but the renderer accepts
-        // the unsigned carrier too rather than falling to the marker.
         let ops: [Operand] = [.register(.x(0)), .unsignedImmediate(value: 7, width: 6)]
         #expect(format(draft(.rdvl, ops)) == "rdvl x0, #7")
     }
 
     @Test func anOperandPastTheEndOfTheListRendersAsAMarker() {
-        // Each renderer substitutes a zero immediate for a missing operand, so a
-        // short list degrades to markers instead of trapping.
         #expect(format(draft(.ptest, [])) == "ptest ?p, ?p")
         #expect(format(draft(.addvl, [.register(.x(0))])) == "addvl x0, ?r, #0")
     }
 
     @Test func aCountPatternSlotHoldingSomethingElseDropsTheOperand() {
-        // PTRUE and the element counts both read their trailing pattern by
-        // position; a record without one still renders its registers.
         #expect(format(draft(.ptrue, [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 0, element: .b, role: .result)),
         ])) == "ptrue p0.b")
@@ -220,8 +193,6 @@ struct SVEPredicateControlCanonicalizerShapeTests {
     }
 
     @Test func aGeneralRoleRegisterAtIndexThirtyOneRendersAsTheZeroRegister() {
-        // Encoding 31 with no role attached is the zero register in every form
-        // this group renders that way.
         #expect(format(draft(.cntp, [
             .register(.x(31)),
             .scalablePredicate(ScalablePredicateRef(registerIndex: 0)),
@@ -231,16 +202,12 @@ struct SVEPredicateControlCanonicalizerShapeTests {
     }
 
     @Test func aRegisterOutsideTheGeneralPurposeFileRendersAsAMarker() {
-        // A SIMD reference has a canonical index above the general-purpose file;
-        // no form in this group takes one, so it can only be a malformed record.
         #expect(format(draft(.rdvl, [
             .register(.simd(0)), .immediate(value: 1, width: 6),
         ])) == "rdvl ?32, #1")
     }
 
     @Test func aQuadElementSuffixRenders() {
-        // No encoding in this group produces a quadword element, but the suffix
-        // table is shared, so it must answer for one.
         #expect(format(draft(.pfalse, [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 3, element: .q, role: .result)),
         ])) == "pfalse p3.q")

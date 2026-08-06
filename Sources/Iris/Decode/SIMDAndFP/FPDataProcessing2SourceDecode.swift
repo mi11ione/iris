@@ -1,17 +1,8 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FP data-processing (2 source) per ARM ARM § C4.1.96.39.
-// Encoding: `0 0 0 11110 ftype 1 Rm opcode 10 Rn Rd`.
-// Opcode (bits[15:12]) selects FMUL/FDIV/FADD/FSUB/FMAX/FMIN/FMAXNM/
-// FMINNM/FNMUL. ftype selects S/D/H precision; H requires FEAT_FP16 at
-// runtime but the decoder produces the H-form regardless (the decoder is
-// feature-flag-agnostic).
 
 enum FPDataProcessing2SourceDecode {
-    /// Discriminator for this sub-class: bits[31:24] == 0b00011110 AND
-    /// bits[21] == 1 AND bits[11:10] == 0b10. The caller (the top-level
-    /// SIMD/FP dispatcher) routes here when those bits match.
+    /// Discriminator for this sub-class.
     @_optimize(speed)
     static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let ftype = UInt8((encoding >> 22) & 0x3)
@@ -20,13 +11,10 @@ enum FPDataProcessing2SourceDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // ftype=10 is reserved at this class (the X↔V.D[1] FMOV variants
-        // use ftype=10 in the integer-conversion class, not here).
         guard let size = scalarSizeFromFtype(ftype) else {
             return .undefined(at: address, encoding: encoding)
         }
 
-        // Opcode mapping per ARM ARM § C7.2 FxOp tables.
         let mnemonic: Mnemonic
         switch opcode {
         case 0b0000: mnemonic = .fmul
@@ -38,7 +26,6 @@ enum FPDataProcessing2SourceDecode {
         case 0b0110: mnemonic = .fmaxnm
         case 0b0111: mnemonic = .fminnm
         case 0b1000: mnemonic = .fnmul
-        // 0b1001..0b1111 reserved.
         default: return .undefined(at: address, encoding: encoding)
         }
 

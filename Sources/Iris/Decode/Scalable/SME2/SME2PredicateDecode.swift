@@ -1,20 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// the SVE-region predicate-as-counter carve (op0=0b0010,
-// top byte 0x25, b21=1): WHILE producing a counter predicate (PN8-PN15,
-// mandatory vlx2/vlx4) or a predicate pair ({P2d, P2d+1}), PEXT (single and
-// mod-16-wrapping pair), PTRUE-counter, CNTP-counter (PN0-PN15 source),
-// FIRSTP/LASTP, and PSEL (tsz trailing-one size/index scheme; tsz=0000 is
-// reserved). The eight iclass families are mutually disjoint under their
-// structural masks, so match order is immaterial; every unmatched carve word
-// is a claimed hole (UNDEFINED, category `.sve` — the carve stays in the SVE
-// family's identity per the scalable core routing).
 
 /// The SME2 predicate-as-counter decoder for SME2 (op0=2 carve).
 enum SME2PredicateDecode {
-    /// Decode an in-scope carve word. Precondition (by construction, not
-    /// asserted): `isSVECounterPredicateEncoding(e)`.
+    /// Decode an in-scope carve word.
     @_optimize(speed)
     static func decode(encoding e: UInt32, address a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if e & 0xFF20_D010 == 0x2520_4010 { return decodeWhileCounter(e, a, &sink) }
@@ -29,9 +18,7 @@ enum SME2PredicateDecode {
         return undefinedSVE(e, a)
     }
 
-    // MARK: - families
-
-    /// `WHILE<cc> PNd.<T>, Xn, Xm, vlx<2|4>` — counter destination, NZCV.
+    /// `WHILE<cc> PNd.<T>, Xn, Xm, vlx<2|4>`.
     @inline(__always)
     private static func decodeWhileCounter(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let element = sizeElement(e)
@@ -52,11 +39,11 @@ enum SME2PredicateDecode {
         )
     }
 
-    /// `WHILE<cc> { P2d.<T>, P2d+1.<T> }, Xn, Xm` — even/odd pair, NZCV.
+    /// `WHILE<cc> { P2d.<T>, P2d+1.<T> }, Xn, Xm`.
     @inline(__always)
     private static func decodeWhilePair(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let element = sizeElement(e)
-        let first = UInt8(e & 0xE) // Pd<<1
+        let first = UInt8(e & 0xE)
         let rn = UInt8((e >> 5) & 0x1F)
         let rm = UInt8((e >> 16) & 0x1F)
         return DecodedDraft(
@@ -111,7 +98,7 @@ enum SME2PredicateDecode {
         )
     }
 
-    /// `CNTP Xd, PNn.<T>, vlx<2|4>` — count active counter-predicate elements.
+    /// `CNTP Xd, PNn.<T>, vlx<2|4>`.
     @inline(__always)
     private static func decodeCntpCounter(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let pnn = UInt8((e >> 5) & 0xF)
@@ -128,7 +115,7 @@ enum SME2PredicateDecode {
         )
     }
 
-    /// `FIRSTP|LASTP Xd, Pg, Pn.<T>` — index of the first/last active element.
+    /// `FIRSTP|LASTP Xd, Pg, Pn.<T>`.
     @inline(__always)
     private static func decodeFirstLastP(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, _ sink: inout OperandSink) -> DecodedDraft {
         let pg = UInt8((e >> 10) & 0xF)
@@ -144,11 +131,9 @@ enum SME2PredicateDecode {
         )
     }
 
-    /// `PSEL Pd, Pn, Pm.<T>[Wv, i]` — predicate select by indexed element.
+    /// `PSEL Pd, Pn, Pm.<T>[Wv, i]`.
     @inline(__always)
     private static func decodePsel(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // tsz trailing-one size/index scheme: tszl bits[20:18], tszh bit22,
-        // i1 bit23; tszh:tszl == 0000 is reserved.
         let tszl = UInt8((e >> 18) & 0x7)
         let tszh = UInt8((e >> 22) & 0x1)
         let i1 = UInt8((e >> 23) & 0x1)
@@ -167,7 +152,7 @@ enum SME2PredicateDecode {
             element = .d
             index = i1
         } else {
-            return undefinedSVE(e, a) // tsz == 0000 reserved
+            return undefinedSVE(e, a)
         }
         let pd = UInt8(e & 0xF)
         let pn = UInt8((e >> 10) & 0xF)
@@ -186,8 +171,6 @@ enum SME2PredicateDecode {
             scalableEffect: .readsStreamingMode,
         )
     }
-
-    // MARK: - shared
 
     /// Element size from bits[23:22].
     @inline(__always)
@@ -216,8 +199,8 @@ enum SME2PredicateDecode {
         .register(index == 31 ? .xzr() : .x(index))
     }
 
-    /// A well-formed in-scope UNDEFINED record for a carve hole
-    /// (`category = .sve`, raw encoding preserved).
+    /// A well-formed in-scope UNDEFINED record for a carve hole (`category =
+    /// .sve`, raw encoding preserved).
     @inline(__always)
     private static func undefinedSVE(_ e: UInt32, _ a: UInt64) -> DecodedDraft {
         DecodedDraft(address: a, encoding: e, mnemonic: .undefined, category: .sve)

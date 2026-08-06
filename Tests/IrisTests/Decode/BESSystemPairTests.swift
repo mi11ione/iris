@@ -4,20 +4,14 @@
 import Iris
 import Testing
 
-/// Validates the FEAT_D128 128-bit system forms — SYSP (with and without
-/// a TLBIP alias, including the xzr pair and the odd-Rt rejection) and
-/// MSRR / MRRS (pair reads/writes, generic sysreg naming, odd-Rt
-/// rejection) — plus the SME / NMI / SEBEP MSR-immediate forms
-/// (SMSTART/SMSTOP with sm/za/both targets, ALLINT, PM).
+/// Validates the FEAT_D128 128-bit forms.
 @Suite("BES / 128-bit system pairs and SME PSTATE forms")
 struct BESSystemPairTests {
-    /// SYSP word: bits 23:22 = 01, L = 0, op0 = 01.
     private func syspWord(op1: UInt32, crn: UInt32, crm: UInt32, op2: UInt32, rt: UInt32) -> UInt32 {
         0xD548_0000 | op1 << 16 | crn << 12 | crm << 8 | op2 << 5 | rt
     }
 
     @Test func syspWithTLBIPAliasRendersThePair() {
-        // (op1=0, CRn=8, CRm=1, op2=1) → "tlbip vae1os" (.reg kind).
         let d = decode(syspWord(op1: 0, crn: 8, crm: 1, op2: 1, rt: 4))
         #expect(d.mnemonic == .sysp)
         #expect(d.category == .branchesExceptionSystem)
@@ -26,14 +20,12 @@ struct BESSystemPairTests {
     }
 
     @Test func syspAliasWithRt31RendersXzrPair() {
-        // Aliased SYSP always renders the pair, including xzr, xzr.
         let d = decode(syspWord(op1: 0, crn: 8, crm: 1, op2: 1, rt: 31))
         #expect(d.mnemonic == .sysp)
         #expect(d.text == "tlbip vae1os, xzr, xzr")
     }
 
     @Test func genericSyspRendersKeyTupleAndPair() {
-        // (op1=0, CRn=0, CRm=0, op2=0) has no TLBIP alias.
         let d = decode(syspWord(op1: 0, crn: 0, crm: 0, op2: 0, rt: 2))
         #expect(d.mnemonic == .sysp)
         #expect(d.semanticReads.contains(.x(2)) && d.semanticReads.contains(.x(3)))
@@ -55,8 +47,7 @@ struct BESSystemPairTests {
     }
 
     @Test func msrrReadsThePairAndNamesTheSysreg() {
-        // MSRR: bits 23:22 = 01, L = 0, op0 = 10 → 0xD550_0000.
-        let d = decode(0xD550_0000 | 6) // op1=0 CRn=0 CRm=0 op2=0 Rt=6
+        let d = decode(0xD550_0000 | 6)
         #expect(d.mnemonic == .msrr)
         #expect(d.semanticReads.contains(.x(6)) && d.semanticReads.contains(.x(7)))
         #expect(d.semanticWrites.isEmpty)
@@ -64,7 +55,6 @@ struct BESSystemPairTests {
     }
 
     @Test func mrrsWritesThePairAndNamesTheSysreg() {
-        // MRRS: bits 23:22 = 01, L = 1, op0 = 10 → 0xD570_0000.
         let d = decode(0xD570_0000 | 6)
         #expect(d.mnemonic == .mrrs)
         #expect(d.semanticWrites.contains(.x(6)) && d.semanticWrites.contains(.x(7)))
@@ -78,21 +68,15 @@ struct BESSystemPairTests {
     }
 
     @Test func d128ReservedBits23_22AreUndefined() {
-        // bits 23:22 = 10 / 11 are reserved in the System tier.
-        #expect(decode(0xD580_0000).isUndefined)
         #expect(decode(0xD5C0_0000).isUndefined)
+        #expect(decode(0xD5A0_0000).isUndefined)
     }
 
-    /// MSR-immediate word: op1/CRm/op2 at their System-tier positions,
-    /// bits 15:12 = 0100, Rt = 11111.
     private func msrImmWord(op1: UInt32, crm: UInt32, op2: UInt32) -> UInt32 {
         0xD500_401F | op1 << 16 | crm << 8 | op2 << 5
     }
 
     @Test func smstartSmstopDecodeEveryTargetForm() {
-        // The CRm target bits also say which PSTATE field the transition
-        // writes (ARM ARM C6): SM for `sm`, ZA for `za`, both for the bare
-        // form. Neither is a register, so the write lands on scalableEffect.
         let rows: [(crm: UInt32, mnemonic: Mnemonic, text: String, effect: ScalableEffect)] = [
             (0b010, .smstop, "smstop sm", .writesStreamingMode),
             (0b011, .smstart, "smstart sm", .writesStreamingMode),
@@ -107,8 +91,6 @@ struct BESSystemPairTests {
             #expect(d.category == .branchesExceptionSystem)
             #expect(d.text == row.text)
             #expect(d.scalableEffect == row.effect, "\(row.text) effect")
-            // The transition is not a general-register write, and the
-            // streaming-mode flags are the only scalable state it touches.
             #expect(d.semanticWrites.isEmpty)
             #expect(d.scalableReads.isEmpty && d.scalableWrites.isEmpty)
         }
@@ -133,7 +115,6 @@ struct BESSystemPairTests {
         #expect(Array(pm1.operands) == [
             .pstateField(.pm), .unsignedImmediate(value: 1, width: 4),
         ])
-        // PSTATE-field names render in the MSR-immediate text.
         #expect(pm1.text == "msr pm, #1")
         #expect(allint1.text == "msr allint, #1")
     }

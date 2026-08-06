@@ -16,19 +16,15 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the 32-bit-index gather loads (0x84/0x85) — scalar-base +
-/// `Zm.s` vector index with a `uxtw`/`sxtw` extend and an optional access-size
-/// scale, and the vector-base `[Zn.s{, #imm}]` form. The gather addressing
-/// operand records structure only (base, index, extend, scale, displacement);
-/// the effective address is never computed here.
+/// Validates the 32-bit-index gather loads.
 @Suite("SVE memory / 32-bit gather loads")
 struct SVE32BitGatherDecodeTests {
     private static let rows: [(UInt32, Mnemonic, String)] = [
         (0x8400_4000, .ld1b, "ld1b { z0.s }, p0/z, [x0, z0.s, uxtw]"),
         (0x8440_4000, .ld1b, "ld1b { z0.s }, p0/z, [x0, z0.s, sxtw]"),
-        (0x8420_C000, .ld1b, "ld1b { z0.s }, p0/z, [z0.s]"), // vector base
-        (0x8421_C000, .ld1b, "ld1b { z0.s }, p0/z, [z0.s, #1]"), // vector base + imm
-        (0x84A0_4000, .ld1h, "ld1h { z0.s }, p0/z, [x0, z0.s, uxtw #1]"), // scaled
+        (0x8420_C000, .ld1b, "ld1b { z0.s }, p0/z, [z0.s]"),
+        (0x8421_C000, .ld1b, "ld1b { z0.s }, p0/z, [z0.s, #1]"),
+        (0x84A0_4000, .ld1h, "ld1h { z0.s }, p0/z, [x0, z0.s, uxtw #1]"),
         (0x8400_0000, .ld1sb, "ld1sb { z0.s }, p0/z, [x0, z0.s, uxtw]"),
         (0x8480_0000, .ld1sh, "ld1sh { z0.s }, p0/z, [x0, z0.s, uxtw]"),
         (0x8500_4000, .ld1w, "ld1w { z0.s }, p0/z, [x0, z0.s, uxtw]"),
@@ -46,23 +42,21 @@ struct SVE32BitGatherDecodeTests {
     }
 
     @Test func aVectorBaseGatherReadsOnlyTheIndexVector() {
-        let d = decode(0x8420_D043) // ld1b { z3.s }, p4/z, [z2.s]
+        let d = decode(0x8420_D043)
         #expect(text(0x8420_D043) == "ld1b { z3.s }, p4/z, [z2.s]")
-        #expect(canonicalIndices(d.semanticReads) == [34]) // Z2 base-vector only
-        #expect(canonicalIndices(d.semanticWrites) == [35]) // Z3
+        #expect(canonicalIndices(d.semanticReads) == [34])
+        #expect(canonicalIndices(d.semanticWrites) == [35])
     }
 }
 
-/// Validates the 64-bit-index gather loads (0xC4/0xC5) — the scalar-base
-/// `Zm.d` unpacked (`uxtw`/`sxtw`) and packed (`lsl` / bare) forms, the
-/// vector-base `[Zn.d{, #imm}]`, and the SVE2p1 quadword `LD1Q` (`[Zn.d, Xm]`).
+/// Validates the 64-bit-index gather loads (0xC4/0xC5).
 @Suite("SVE memory / 64-bit gather loads")
 struct SVE64BitGatherDecodeTests {
     private static let rows: [(UInt32, Mnemonic, String)] = [
         (0xC400_4000, .ld1b, "ld1b { z0.d }, p0/z, [x0, z0.d, uxtw]"),
-        (0xC440_C000, .ld1b, "ld1b { z0.d }, p0/z, [x0, z0.d]"), // packed, unscaled → bare
-        (0xC420_C000, .ld1b, "ld1b { z0.d }, p0/z, [z0.d]"), // vector base
-        (0xC4E0_C000, .ld1h, "ld1h { z0.d }, p0/z, [x0, z0.d, lsl #1]"), // packed scaled
+        (0xC440_C000, .ld1b, "ld1b { z0.d }, p0/z, [x0, z0.d]"),
+        (0xC420_C000, .ld1b, "ld1b { z0.d }, p0/z, [z0.d]"),
+        (0xC4E0_C000, .ld1h, "ld1h { z0.d }, p0/z, [x0, z0.d, lsl #1]"),
         (0xC4A0_4000, .ld1h, "ld1h { z0.d }, p0/z, [x0, z0.d, uxtw #1]"),
         (0xC5C0_C000, .ld1d, "ld1d { z0.d }, p0/z, [x0, z0.d]"),
         (0xC5E0_C000, .ld1d, "ld1d { z0.d }, p0/z, [x0, z0.d, lsl #3]"),
@@ -77,15 +71,14 @@ struct SVE64BitGatherDecodeTests {
     }
 
     @Test func quadwordGatherUsesAVectorBaseWithAScalarIndex() {
-        let d = decode(0xC400_A000) // ld1q { z0.q }, p0/z, [z0.d, x0]
+        let d = decode(0xC400_A000)
         #expect(d.mnemonic == .ld1q)
         #expect(text(0xC400_A000) == "ld1q { z0.q }, p0/z, [z0.d, x0]")
-        #expect(text(0xC41F_A000) == "ld1q { z0.q }, p0/z, [z0.d]") // Rm=31 → no scalar index
+        #expect(text(0xC41F_A000) == "ld1q { z0.q }, p0/z, [z0.d]")
     }
 }
 
-/// Validates the first-fault gather loads — the gather-index twins of LDFF1,
-/// which set `firstFaulting` and read+write FFR.
+/// Validates the first-fault gather loads.
 @Suite("SVE memory / first-fault gather loads")
 struct SVEGatherFirstFaultDecodeTests {
     private static let rows: [(UInt32, Mnemonic, String)] = [
@@ -110,13 +103,12 @@ struct SVEGatherFirstFaultDecodeTests {
 }
 
 /// Validates the vector-base non-temporal gather (`gldnt`, `LDNT1*` with a
-/// `Zn.<T>` base) — it carries `nonTemporal` and renders `[Zn.<T>, Xm]`, with
-/// the `Rm=31` `[Zn.<T>]` special case.
+/// `Zn.<T>` base).
 @Suite("SVE memory / vector-base non-temporal gather")
 struct SVEGatherNonTemporalDecodeTests {
     private static let rows: [(UInt32, Mnemonic, String)] = [
         (0x8400_A000, .ldnt1b, "ldnt1b { z0.s }, p0/z, [z0.s, x0]"),
-        (0x841F_A000, .ldnt1b, "ldnt1b { z0.s }, p0/z, [z0.s]"), // Rm=31
+        (0x841F_A000, .ldnt1b, "ldnt1b { z0.s }, p0/z, [z0.s]"),
         (0x8400_8000, .ldnt1sb, "ldnt1sb { z0.s }, p0/z, [z0.s, x0]"),
         (0x8500_A000, .ldnt1w, "ldnt1w { z0.s }, p0/z, [z0.s, x0]"),
         (0xC400_C000, .ldnt1b, "ldnt1b { z0.d }, p0/z, [z0.d, x0]"),
@@ -135,14 +127,12 @@ struct SVEGatherNonTemporalDecodeTests {
     }
 }
 
-/// Validates the scatter stores (0xE4/0xE5) — scalar-base + `Zm` vector index
-/// (`uxtw`/`sxtw`/`lsl`/bare), the vector-base `[Zn.<T>{, #imm}]`, the SVE2p1
-/// quadword `ST1Q` (`[Zn.d, Xm]`), and the vector-base non-temporal `sstnt`.
+/// Validates the scatter stores (0xE4/0xE5).
 @Suite("SVE memory / scatter stores")
 struct SVEScatterDecodeTests {
     private static let scatterSV: [(UInt32, Mnemonic, String)] = [
         (0xE400_8000, .st1b, "st1b { z0.d }, p0, [x0, z0.d, uxtw]"),
-        (0xE400_A000, .st1b, "st1b { z0.d }, p0, [x0, z0.d]"), // packed, unscaled → bare
+        (0xE400_A000, .st1b, "st1b { z0.d }, p0, [x0, z0.d]"),
         (0xE400_C000, .st1b, "st1b { z0.d }, p0, [x0, z0.d, sxtw]"),
         (0xE4A0_A000, .st1h, "st1h { z0.d }, p0, [x0, z0.d, lsl #1]"),
         (0xE500_8000, .st1w, "st1w { z0.d }, p0, [x0, z0.d, uxtw]"),
@@ -173,16 +163,16 @@ struct SVEScatterDecodeTests {
     }
 
     @Test func aScatterReadsBaseIndexAndData() {
-        let d = decode(0xE502_9023) // st1w { z3.d }, p4, [x1, z2.d, uxtw]
+        let d = decode(0xE502_9023)
         #expect(text(0xE502_9023) == "st1w { z3.d }, p4, [x1, z2.d, uxtw]")
-        #expect(canonicalIndices(d.semanticReads) == [1, 34, 35]) // base + index + data
+        #expect(canonicalIndices(d.semanticReads) == [1, 34, 35])
         #expect(canonicalIndices(d.semanticWrites) == [])
     }
 
     @Test func quadwordScatterUsesAVectorBase() {
         #expect(decode(0xE420_2000).mnemonic == .st1q)
         #expect(text(0xE420_2000) == "st1q { z0.q }, p0, [z0.d, x0]")
-        #expect(text(0xE43F_2000) == "st1q { z0.q }, p0, [z0.d]") // Rm=31
+        #expect(text(0xE43F_2000) == "st1q { z0.q }, p0, [z0.d]")
     }
 
     @Test func scatterNonTemporalCarriesTheFlag() {
@@ -200,24 +190,19 @@ struct SVEScatterDecodeTests {
     }
 }
 
-/// Validates the SVE prefetch family (`PRFB`/`PRFH`/`PRFW`/`PRFD`) across all
-/// four addressing shapes: contiguous scalar+immediate (`[Xn, #imm, mul vl]`)
-/// and scalar+scalar (`[Xn, Xm, lsl #k]`), gather scalar+vector-index (`[Xn,
-/// Zm.<T>, ext #msz]`), and vector-base + immediate (`[Zn.<T>{, #imm}]`). The
-/// prefetch operation renders as its named policy (`pldl1keep`), the access is
-/// `.prefetch`, and nothing is written.
+/// Validates the SVE prefetch family across all four addressing shapes.
 @Suite("SVE memory / prefetch addressing forms")
 struct SVEPrefetchDecodeTests {
     private static let rows: [(UInt32, Mnemonic, String)] = [
-        (0x85C0_0000, .prfb, "prfb pldl1keep, p0, [x0]"), // scalar + imm
+        (0x85C0_0000, .prfb, "prfb pldl1keep, p0, [x0]"),
         (0x85C1_0000, .prfb, "prfb pldl1keep, p0, [x0, #1, mul vl]"),
-        (0x8500_C000, .prfw, "prfw pldl1keep, p0, [x0, x0, lsl #2]"), // scalar + scalar
-        (0x8420_0000, .prfb, "prfb pldl1keep, p0, [x0, z0.s, uxtw]"), // 32-bit gather index
+        (0x8500_C000, .prfw, "prfw pldl1keep, p0, [x0, x0, lsl #2]"),
+        (0x8420_0000, .prfb, "prfb pldl1keep, p0, [x0, z0.s, uxtw]"),
         (0x8420_2000, .prfh, "prfh pldl1keep, p0, [x0, z0.s, uxtw #1]"),
-        (0x8400_E000, .prfb, "prfb pldl1keep, p0, [z0.s]"), // vector base
-        (0x8501_E000, .prfw, "prfw pldl1keep, p0, [z0.s, #4]"), // vector base + imm
-        (0xC420_0000, .prfb, "prfb pldl1keep, p0, [x0, z0.d, uxtw]"), // 64-bit gather index
-        (0xC460_A000, .prfh, "prfh pldl1keep, p0, [x0, z0.d, lsl #1]"), // packed lsl
+        (0x8400_E000, .prfb, "prfb pldl1keep, p0, [z0.s]"),
+        (0x8501_E000, .prfw, "prfw pldl1keep, p0, [z0.s, #4]"),
+        (0xC420_0000, .prfb, "prfb pldl1keep, p0, [x0, z0.d, uxtw]"),
+        (0xC460_A000, .prfh, "prfh pldl1keep, p0, [x0, z0.d, lsl #1]"),
         (0xC580_E000, .prfd, "prfd pldl1keep, p0, [z0.d]"),
     ]
 
@@ -232,21 +217,18 @@ struct SVEPrefetchDecodeTests {
     }
 
     @Test func aGatherPrefetchReadsTheBaseAndIndex() {
-        let d = decode(0xC420_0000) // prfb pldl1keep, p0, [x0, z0.d, uxtw]
-        #expect(canonicalIndices(d.semanticReads) == [0, 32]) // X0 base + Z0 index
+        let d = decode(0xC420_0000)
+        #expect(canonicalIndices(d.semanticReads) == [0, 32])
         #expect(d.scalableReads.containsPredicate(0))
     }
 
     @Test func aPrefetchWithHighBit4IsUndefined() {
-        // Every SVE prefetch fixes bit4=0 (the prefetch op is bits[3:0]); a word
-        // with bit4 set is a hole.
         #expect(decode(0x85C0_0010).mnemonic == .undefined)
     }
 }
 
 /// Validates the load-and-replicate LD1R forms co-located in the gather region
-/// (`sve_mem_ld_dup`): a single element loaded and broadcast to every lane,
-/// with the immediate scaled by the accessed element size.
+/// (`sve_mem_ld_dup`).
 @Suite("SVE memory / load-and-replicate single element")
 struct SVEReplicateSingleDecodeTests {
     private static let rows: [(UInt32, Mnemonic, String)] = [

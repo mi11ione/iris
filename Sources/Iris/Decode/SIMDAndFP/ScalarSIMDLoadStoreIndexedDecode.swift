@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Scalar SIMD LDR/STR/LDUR/STUR (register-offset, unscaled, pre-
-// indexed, post-indexed; V=1). Encoding shell:
-// `size 11 1 1 0 0 V 00 opc 0 ... Rn Rt` with V=1. Sub-discriminate by
-// bits[11:10]: 00=unscaled, 01=post-index, 10=register-offset, 11=pre-
-// index. (size, opc) selects the destination element width (B/H/S/D/Q).
 
 enum ScalarSIMDLoadStoreIndexedDecode {
     @_optimize(speed)
@@ -19,8 +13,6 @@ enum ScalarSIMDLoadStoreIndexedDecode {
         guard let (elementSize, isLoad) = mapSizeOpc(size: size, opc: opc) else {
             return .undefined(at: address, encoding: encoding)
         }
-        // bit21 = 1 only for the register-offset form (bits[11:10]=10); the
-        // immediate forms (unscaled/post/pre) require bit21 = 0.
         if (bits11_10 == 0b10) != (((encoding >> 21) & 1) == 1) {
             return .undefined(at: address, encoding: encoding)
         }
@@ -33,7 +25,6 @@ enum ScalarSIMDLoadStoreIndexedDecode {
         var basePostUpdate = false
         switch bits11_10 {
         case 0b00:
-            // Unscaled offset: LDUR/STUR with 9-bit signed imm9.
             let imm9 = UInt32((encoding >> 12) & 0x1FF)
             let disp = lsSignExtendImm9Local(imm9)
             mnemonic = isLoad ? .ldur : .stur
@@ -43,7 +34,6 @@ enum ScalarSIMDLoadStoreIndexedDecode {
                 writeback: .none,
             )
         case 0b01:
-            // Post-indexed: LDR/STR with 9-bit signed imm9 and writeback.
             let imm9 = UInt32((encoding >> 12) & 0x1FF)
             let disp = lsSignExtendImm9Local(imm9)
             mnemonic = isLoad ? .ldr : .str
@@ -54,9 +44,6 @@ enum ScalarSIMDLoadStoreIndexedDecode {
             )
             basePostUpdate = true
         case 0b10:
-            // Register offset: LDR/STR with Rm + extend + S-shift.
-            // ARM ARM constrains option ∈ {010, 011, 110, 111}; the
-            // remaining values are reserved.
             let Rm = UInt8((encoding >> 16) & 0x1F)
             let option = UInt8((encoding >> 13) & 0x7)
             let S = UInt8((encoding >> 12) & 0x1)
@@ -64,16 +51,9 @@ enum ScalarSIMDLoadStoreIndexedDecode {
                 return .undefined(at: address, encoding: encoding)
             }
             let optionExtend = extendFromOption(option)
-            // option 011 (UXTX/LSL) and 111 (SXTX) index with a 64-bit Xm;
-            // 010 (UXTW) / 110 (SXTW) with a 32-bit Wm. extendFromOption maps
-            // 011 to .lsl, so key the index width off `option` directly.
             let rmWidth: RegisterWidth = (option == 0b011 || option == 0b111) ? .x64 : .w32
             let rmRef = simdfpGprOperand(encoding: Rm, width: rmWidth, spOrGeneral: false)
             rmRead = rmRef
-            // S=1 always shows #amount (= log2(access size); 0 for byte);
-            // S=0 + LSL/UXTX (option 011) collapses to bare `[Rn, Xm]`;
-            // S=0 + other shows the extend keyword with no #amount (the 0xFF
-            // sentinel) — mirroring LoadStoreRegisterOffsetDecode.
             let extendKind: ExtendKind
             let displayShift: UInt8
             if S == 1 {
@@ -93,8 +73,6 @@ enum ScalarSIMDLoadStoreIndexedDecode {
                 writeback: .none,
             )
         default:
-            // bits11_10 == 0b11 (only remaining 2-bit value after mask).
-            // Pre-indexed: LDR/STR with 9-bit signed imm9 and writeback.
             let imm9 = UInt32((encoding >> 12) & 0x1FF)
             let disp = lsSignExtendImm9Local(imm9)
             mnemonic = isLoad ? .ldr : .str
@@ -151,13 +129,11 @@ enum ScalarSIMDLoadStoreIndexedDecode {
     @inline(__always)
     @_effects(readonly)
     private static func extendFromOption(_ option: UInt8) -> ExtendKind {
-        // Call site filters option ∈ {010, 011, 110, 111}; the default
-        // catches 111 (sxtx) plus any unreachable value as sentinel.
         switch option {
         case 0b010: .uxtw
-        case 0b011: .lsl // LSL alias of UXTX when option=011
+        case 0b011: .lsl
         case 0b110: .sxtw
-        default: .sxtx // option == 0b111 — only remaining filtered value.
+        default: .sxtx
         }
     }
 

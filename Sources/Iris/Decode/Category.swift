@@ -1,17 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Category. Encodes the encoding-family
-// attribution at decode time. Decoder sentinels are 0..2; family
-// categories 3..11 are populated by the family decoders (they all
-// already have a slot here; this file declares the full enum).
 
-/// Encoding-family attribution for a decoded instruction.
-///
-/// `Category` is the decoder core's primary provenance witness.
-/// Sentinel records use one of ``undefined``,
-/// ``dataInCodeMarker``, ``truncatedTail``. Family-emitted records use
-/// one of the remaining cases.
+/// Encoding-family attribution for a decoded instruction — the decoder's
+/// primary provenance witness. Sentinel records take ``undefined``,
+/// ``dataInCodeMarker`` or ``truncatedTail``; family-emitted records take one
+/// of the rest.
 @frozen
 public enum Category: UInt8, Sendable, Hashable {
     /// Reserved/unallocated encoding, or `op0` with no registered family

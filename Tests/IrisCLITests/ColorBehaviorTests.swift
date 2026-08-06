@@ -4,12 +4,9 @@
 import IrisCLICore
 import Testing
 
-/// Validates TTY-aware color: `auto` colors only on a terminal, escapes
-/// never leak into piped output, columns stay aligned because padding is
-/// computed on plain text before colorization.
+/// Validates TTY-aware color.
 @Suite("Color behavior")
 struct ColorBehaviorTests {
-    /// The ANSI escape introducer.
     static let escape = Character("\u{1B}")
 
     @Test func autoWithoutTTYEmitsNoEscapes() {
@@ -80,7 +77,6 @@ struct ColorBehaviorTests {
         #expect(on.mnemonic("").isEmpty)
     }
 
-    /// Remove ANSI SGR sequences (`ESC [ ... m`).
     func stripANSI(_ text: String) -> String {
         var out = ""
         var inEscape = false

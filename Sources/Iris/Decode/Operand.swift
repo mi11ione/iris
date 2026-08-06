@@ -1,17 +1,8 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Operand. The single discriminated union over every operand
-// variant ARM64 produces. Closed for layout. Cases are added when a
-// reality not yet anticipated requires representation; consumers must
-// use exhaustive switches and recompile when cases are added (Iris is
-// source-distributed, no library-evolution mode in Package.swift).
 
-/// One operand of an ``InstructionRecord``.
-///
-/// `Operand` is a single discriminated union over every operand variant
-/// ARM64 produces — the decoder core's one operand type. Consumers
-/// can write a single exhaustive switch over an instruction's operands
+/// One operand of an ``InstructionRecord``: a single discriminated union
+/// over every variant ARM64 produces, so consumers switch exhaustively
 /// without per-family dispatch.
 @frozen
 public enum Operand: Sendable, Hashable {
@@ -33,12 +24,9 @@ public enum Operand: Sendable, Hashable {
     /// at the declared width.
     case floatImmediate(bits: UInt64, kind: FloatImmediateKind)
 
-    /// Pre-scaled PC-relative byte offset to a label. Consumers compute
-    /// the absolute target as `record.address &+ UInt64(bitPattern: byteOffset)`,
-    /// or use the resolved ``Instruction/branchTarget`` /
-    /// ``Instruction/pcRelativeTarget``. Int64 width covers ADRP's ±4 GB
-    /// byte range. Used by `ADR` and PC-relative branches. For `ADRP`'s
-    /// page-relative target, see ``pageLabel(byteOffset:)``.
+    /// Pre-scaled PC-relative byte offset, for `ADR` and PC-relative
+    /// branches. The absolute target is `record.address &+ byteOffset`,
+    /// or use ``Instruction/branchTarget``.
     case label(byteOffset: Int64)
 
     /// Load/store addressing-mode operand.
@@ -73,27 +61,20 @@ public enum Operand: Sendable, Hashable {
     /// opcode-specific interpretation is layered on top.
     case amxField(AMXField)
 
-    /// AMX encoding whose opcode field is outside the documented 0...22
-    /// set, or whose operand subfield is outside the documented values
-    /// for its opcode (e.g. opcode 17 with operand ≥ 2). Carries the raw
-    /// 32-bit encoding so downstream consumers can analyse otherwise-
-    /// unrecognised AMX bytes without losing payload.
+    /// AMX encoding outside the documented opcode 0...22 set, or with an
+    /// operand subfield outside its opcode's documented values. Carries
+    /// the raw 32-bit encoding so no payload is lost.
     case amxUnknown(rawFields: UInt32)
 
-    /// Standalone immediate shift modifier — `LSL #amount` that follows an
-    /// immediate operand and has no associated register (cf.
-    /// ``shiftedRegister(reg:shift:amount:)``). Used by `ADD/SUB (immediate)`
-    /// with `sh=1` (amount=12) and by `MOVN/MOVZ/MOVK` with `hw≠0`
-    /// (amount=16/32/48).
+    /// Standalone shift modifier — `LSL #amount` following an immediate,
+    /// with no associated register. Used by `ADD/SUB (immediate)` at
+    /// `sh=1` and `MOVN/MOVZ/MOVK` at `hw≠0`.
     case shiftAmount(kind: ShiftKind, amount: UInt8)
 
     /// Pre-scaled byte offset to a page-aligned PC-relative target, for
-    /// `ADRP`. Consumers compute the absolute page-base target as
-    /// `(record.address & ~0xFFF) &+ UInt64(bitPattern: byteOffset)` —
-    /// distinct from ``label(byteOffset:)`` whose target is
-    /// `record.address &+ byteOffset` — or use the resolved
-    /// ``Instruction/pcRelativeTarget``, which performs the page math.
-    /// Int64 width covers ADRP's ±4 GB byte range.
+    /// `ADRP`. The absolute target is
+    /// `(record.address & ~0xFFF) &+ byteOffset`, or use
+    /// ``Instruction/pcRelativeTarget``, which does the page math.
     case pageLabel(byteOffset: Int64)
 
     /// SVE scalable-vector register — `Zn` / `Zn.<T>` / `Zn.<T>[i]`.

@@ -4,13 +4,8 @@
 import Iris
 import Testing
 
-/// Validates the v9.x loads/stores extension families that share the
-/// 011001 / 111000 / 001001 shells: FEAT_LSE128 pair atomics,
-/// FEAT_THE RCW atomics (non-pair, pair, CAS, CASP), FEAT_LSUI
-/// unprivileged atomics and exclusive/CAS forms, FEAT_RCPC3 ordered
-/// pairs and writeback LDAPR/STLR, FEAT_GCS stores, and FEAT_LS64
-/// 64-byte transfers — every mnemonic row, ordering slot, ST-alias
-/// collapse, and reserved-field rejection.
+/// Validates the v9.x load/store extension families sharing the 011001 /
+/// 111000 / 001001 shells.
 @Suite("L/S v9 extensions — LSE128 / RCW / LSUI / RCPC3 / GCS / LS64")
 struct LSV9ExtensionsTests {
     @Test func lse128PairAtomicsDecodeAllOpsAndOrderings() {
@@ -38,17 +33,16 @@ struct LSV9ExtensionsTests {
                 && d.semanticReads.contains(.x(3)))
             #expect(d.semanticWrites.contains(.x(1)))
         }
-        // Acquire/release bits project into memoryOrdering.
         #expect(decode(0x19A2_1061).memoryOrdering == [.acquire])
         #expect(decode(0x1962_1061).memoryOrdering == [.release])
         #expect(decode(0x19E2_1061).memoryOrdering == [.acquire, .release])
     }
 
     @Test func lse128ReservedFormsAreUndefined() {
-        #expect(decode(0x1922_107F).isUndefined) // Rt = 31
-        #expect(decode(0x193F_1061).isUndefined) // Rs = 31
-        #expect(decode(0x1922_0061).isUndefined) // op = 0000
-        #expect(decode(0x5922_1061).isUndefined) // size = 01 non-RCW op
+        #expect(decode(0x1922_107F).isUndefined)
+        #expect(decode(0x193F_1061).isUndefined)
+        #expect(decode(0x1922_0061).isUndefined)
+        #expect(decode(0x5922_1061).isUndefined)
     }
 
     @Test func rcwNonPairAtomicsDecodeBothStrengthsAndOrderings() {
@@ -85,7 +79,7 @@ struct LSV9ExtensionsTests {
             #expect(d.semanticWrites.contains(.x(2)))
         }
         #expect(decode(0x1921_0862).text == "rcwcas x1, x2, [x3]")
-        #expect(decode(0x1921_1862).isUndefined) // op != 0000
+        #expect(decode(0x1921_1862).isUndefined)
     }
 
     @Test func rcwCaspDecodesPairsAndRejectsOddRegisters() {
@@ -102,9 +96,9 @@ struct LSV9ExtensionsTests {
         let d = decode(0x1922_0C80)
         #expect(d.text == "rcwcasp x2, x3, x0, x1, [x4]")
         #expect(d.semanticWrites.contains(.x(2)) && d.semanticWrites.contains(.x(3)))
-        #expect(decode(0x1921_0C80).isUndefined) // odd Rs
-        #expect(decode(0x1922_0C81).isUndefined) // odd Rt
-        #expect(decode(0x1922_1C80).isUndefined) // op != 0000
+        #expect(decode(0x1921_0C80).isUndefined)
+        #expect(decode(0x1922_0C81).isUndefined)
+        #expect(decode(0x1922_1C80).isUndefined)
     }
 
     @Test func rcwPairAtomicsDecodeAndRejectZrEncodings() {
@@ -125,8 +119,8 @@ struct LSV9ExtensionsTests {
             #expect(d.memoryAccess == .atomic)
             #expect(d.text == row.text)
         }
-        #expect(decode(0x1922_907F).isUndefined) // Rt = 31
-        #expect(decode(0x193F_9061).isUndefined) // Rs = 31
+        #expect(decode(0x1922_907F).isUndefined)
+        #expect(decode(0x193F_9061).isUndefined)
     }
 
     @Test func lsuiAtomicsDecodeAllOpsWidthsAndStAliases() {
@@ -151,7 +145,6 @@ struct LSV9ExtensionsTests {
             #expect(d.memoryAccess == .atomic)
             #expect(d.text == row.text)
         }
-        // Rt = ZR with A = 0 collapses to the stt* store alias; SWPT never.
         let aliases: [(word: UInt32, mnemonic: Mnemonic, text: String)] = [
             (0x1921_047F, .sttadd, "sttadd w1, [x3]"),
             (0x1961_047F, .sttaddl, "sttaddl w1, [x3]"),
@@ -167,7 +160,7 @@ struct LSV9ExtensionsTests {
             #expect(d.mnemonic == row.mnemonic)
             #expect(d.text == row.text)
         }
-        #expect(decode(0x1921_2462).isUndefined) // op = 0010 reserved
+        #expect(decode(0x1921_2462).isUndefined)
     }
 
     @Test func lsuiExclusiveAndCasFormsDecode() {
@@ -193,12 +186,12 @@ struct LSV9ExtensionsTests {
             #expect(d.memoryAccess == row.access)
             #expect(d.text == row.text)
         }
-        #expect(decode(0x0901_0062).isUndefined) // exclusive at size 00
-        #expect(decode(0x0980_0080).isUndefined) // CAS family at size 00
-        #expect(decode(0x8980_0062).isUndefined) // CAS family at size 10
-        #expect(decode(0x4981_0080).isUndefined) // CASPT odd Rs
-        #expect(decode(0x4982_0081).isUndefined) // CASPT odd Rt
-        #expect(decode(0x8921_0062).isUndefined) // bit 21 set
+        #expect(decode(0x0901_0062).isUndefined)
+        #expect(decode(0x0980_0080).isUndefined)
+        #expect(decode(0x8980_0062).isUndefined)
+        #expect(decode(0x4981_0080).isUndefined)
+        #expect(decode(0x4982_0081).isUndefined)
+        #expect(decode(0x8921_0062).isUndefined)
     }
 
     @Test func rcpc3OrderedPairsDecodeWithAndWithoutWriteback() {
@@ -217,11 +210,10 @@ struct LSV9ExtensionsTests {
             #expect(d.memoryOrdering == row.ordering)
             #expect(d.text == row.text)
         }
-        // Writeback updates the base; the no-offset form does not.
         #expect(decode(0x9902_0861).semanticWrites.contains(.x(3)))
         #expect(!decode(0x9902_1861).semanticWrites.contains(.x(3)))
-        #expect(decode(0x1902_0861).isUndefined) // size 00
-        #expect(decode(0x9902_2861).isUndefined) // bits 15:13 not SBZ
+        #expect(decode(0x1902_0861).isUndefined)
+        #expect(decode(0x9902_2861).isUndefined)
     }
 
     @Test func rcpc3WritebackSinglesDecode() {
@@ -236,11 +228,11 @@ struct LSV9ExtensionsTests {
             #expect(d.mnemonic == row.mnemonic)
             #expect(d.memoryAccess == row.access)
             #expect(d.text == row.text)
-            #expect(d.semanticWrites.contains(.x(3))) // base writeback
+            #expect(d.semanticWrites.contains(.x(3)))
         }
-        #expect(decode(0x1980_0861).isUndefined) // size 00
-        #expect(decode(0x9981_0861).isUndefined) // Rt2 not SBZ
-        #expect(decode(0x9980_1861).isUndefined) // bits 15:12 not SBZ
+        #expect(decode(0x1980_0861).isUndefined)
+        #expect(decode(0x9981_0861).isUndefined)
+        #expect(decode(0x9980_1861).isUndefined)
     }
 
     @Test func unprivilegedNoAllocatePairLoadDecodes() {
@@ -250,10 +242,7 @@ struct LSV9ExtensionsTests {
     }
 
     @Test func orderedAndPrefetchReservedShapesAreUndefined() {
-        // LDAPUR-shaped word with bit10 = 1: matches the MOPS
-        // discriminant and is rejected there (reserved).
         #expect(decode(0xD940_0420).isUndefined)
-        // RPRFM with option<1> = 0 (fixed 1 in the range-prefetch form).
         #expect(decode(0xF8A2_0838).isUndefined)
     }
 
@@ -266,10 +255,10 @@ struct LSV9ExtensionsTests {
         let sttr = decode(0xD91F_1C41)
         #expect(sttr.mnemonic == .gcssttr)
         #expect(sttr.text == "gcssttr x1, [x2]")
-        #expect(decode(0x191F_0C41).isUndefined) // size != 11
-        #expect(decode(0xD95F_0C41).isUndefined) // bits 23:22 != 00
-        #expect(decode(0xD900_0C41).isUndefined) // bits 20:16 != 11111
-        #expect(decode(0xD91F_2C41).isUndefined) // op > 0001
+        #expect(decode(0x191F_0C41).isUndefined)
+        #expect(decode(0xD95F_0C41).isUndefined)
+        #expect(decode(0xD900_0C41).isUndefined)
+        #expect(decode(0xD91F_2C41).isUndefined)
     }
 
     @Test func ls64TransfersDecodeAndEnforceRegisterGroupRules() {
@@ -285,15 +274,15 @@ struct LSV9ExtensionsTests {
         let stv = decode(0xF821_B060)
         #expect(stv.mnemonic == .st64bv)
         #expect(stv.text == "st64bv x1, x0, [x3]")
-        #expect(stv.semanticWrites.contains(.x(1))) // status register
+        #expect(stv.semanticWrites.contains(.x(1)))
         let stv0 = decode(0xF821_A060)
         #expect(stv0.mnemonic == .st64bv0)
         #expect(stv0.text == "st64bv0 x1, x0, [x3]")
-        #expect(decode(0xF83F_D061).isUndefined) // odd Rt
-        #expect(decode(0xF83F_D078).isUndefined) // Rt > 22
-        #expect(decode(0xF821_D060).isUndefined) // ld64b Rs != 11111
-        #expect(decode(0xF821_9060).isUndefined) // st64b Rs != 11111
-        #expect(decode(0xB83F_D060).isUndefined) // size 10 in the op slot
+        #expect(decode(0xF83F_D061).isUndefined)
+        #expect(decode(0xF83F_D078).isUndefined)
+        #expect(decode(0xF821_D060).isUndefined)
+        #expect(decode(0xF821_9060).isUndefined)
+        #expect(decode(0xB83F_D060).isUndefined)
     }
 
     @Test func mopsCopyAndSetDecodeStagesOptionsAndGuards() {
@@ -323,19 +312,17 @@ struct LSV9ExtensionsTests {
             #expect(d.memoryAccess == .atomic)
             #expect(d.text == row.text)
         }
-        // CPY is an RMW of all three working registers.
         let cpy = decode(0x1901_0440)
         #expect(cpy.semanticReads.contains(.x(0)) && cpy.semanticReads.contains(.x(1))
             && cpy.semanticReads.contains(.x(2)))
         #expect(cpy.semanticWrites == cpy.semanticReads)
-        // SET reads the data register but writes only pointer + count.
         let set = decode(0x19C2_0420)
         #expect(set.semanticReads.contains(.x(2)))
         #expect(!set.semanticWrites.contains(.x(2)))
-        #expect(decode(0x5901_0440).isUndefined) // bits 31:30 != 00
-        #expect(decode(0x1901_0420).isUndefined) // overlapping registers
-        #expect(decode(0x1901_045F).isUndefined) // Xd = 31
-        #expect(decode(0x191F_0440).isUndefined) // CPY Xs = 31
-        #expect(decode(0x19C2_C420).isUndefined) // SET stage 11
+        #expect(decode(0x5901_0440).isUndefined)
+        #expect(decode(0x1901_0420).isUndefined)
+        #expect(decode(0x1901_045F).isUndefined)
+        #expect(decode(0x191F_0440).isUndefined)
+        #expect(decode(0x19C2_C420).isUndefined)
     }
 }

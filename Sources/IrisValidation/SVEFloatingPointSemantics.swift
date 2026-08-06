@@ -1,40 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Per-record semantic-attribute verification for SVE-FP — SVE / SVE2
-// floating-point. The text-parity validator proves mnemonic + operands
-// against llvm-mc, but disassembly text does NOT encode `flagEffect`,
-// `scalableEffect` (partialWrite / readsStreamingMode), or the semantic
-// read/write sets — so this checker proves those independently, deriving
-// expectations from the (text-validated) operand list plus the mnemonic as
-// a computation entirely separate from the decode sites.
-//
-// The two rules that carry the weight, both settled against ARM's A64 ISA
-// XML pseudocode (2025-12) and cross-checked against LLVM's register model:
-//
-// * `flagEffect` is `.none` on every SVE-FP form INCLUDING the compares —
-// FCMEQ…FCMUO and FACGE/FACGT write a destination predicate and never
-// PSTATE.NZCV (zero PSTATE references in their ASL), the deliberate
-// contrast with SVE-integer's integer compares. FP exception state (FPSR) and
-// the ambient FPCR/FPMR mode registers are out-of-band, per the SIMD/FP
-// deviation.
-//
-// * `partialWrite` is set exactly when part of the destination's prior
-// value SURVIVES: every merging (`/M`) form, plus the top-half converts
-// FCVTNT/FCVTXNT/BFCVTNT in ALL their forms — the ASL seeds `result`
-// from Z(d) and writes only the odd halves even under the SVE2p2 `/Z`
-// qualifier and in the FP8 pair form. FCVTLT selects INPUT halves and
-// follows the plain `/M` rule. The unpredicated accumulators (indexed
-// FMLA, the widening/dot/matrix families), FCLAMP, FTMAD, and FADDA all
-// read their destination yet rewrite every lane.
-
-// Concrete semantic-field discrepancy between a decoded record and the
-// architectural expectation. Returned by ``SVEFloatingPointSemanticChecker``.
 
 import Iris
 
 public struct SVEFPSemanticIssue: Sendable, Equatable {
-    /// Field that didn't match (e.g. "flagEffect", "scalableEffect", "registerReads").
+    /// Field that didn't match (e.g. "flagEffect", "scalableEffect",
+    /// "registerReads").
     public let field: String
     /// Stringified actual value from the draft.
     public let actual: String
@@ -43,15 +14,11 @@ public struct SVEFPSemanticIssue: Sendable, Equatable {
 }
 
 /// Per-record semantic-field verification for SVE / SVE2 floating-point.
-/// Returns `nil` when the record matches every expected attribute; the first
-/// mismatch otherwise.
 public enum SVEFloatingPointSemanticChecker {
     @_effects(readonly)
     @_optimize(speed)
     public static func verify(draft: Instruction) -> SVEFPSemanticIssue? {
         if draft.mnemonic == .undefined { return nil }
-        // Universal invariants: SVE-FP computes, it never branches, never
-        // touches memory, never touches NZCV, and always classifies as SVE.
         if draft.category != .sve {
             return SVEFPSemanticIssue(field: "category", actual: "\(draft.category)", expected: "sve")
         }
@@ -77,8 +44,6 @@ public enum SVEFloatingPointSemanticChecker {
                 actual: "\(draft.scalableEffect.rawValue)", expected: "\(expEffect.rawValue)",
             )
         }
-        // Predicate reads / writes: comparing the WHOLE scalable set keeps
-        // "no SVE-FP form touches FFR, ZA or ZT0" a checked property.
         let expPredW = SVEFloatingPointSemanticAttributes.expectedPredicateWrites(draft.operands)
         if draft.scalableWrites != ScalableRegisterSet(bits: UInt64(expPredW)) {
             return SVEFPSemanticIssue(
@@ -116,7 +81,6 @@ public enum SVEFloatingPointSemanticChecker {
 }
 
 /// Per-mnemonic / per-operand SVE floating-point semantic-attribute lookups.
-/// Pure functions over the decoded mnemonic and operand list.
 public enum SVEFloatingPointSemanticAttributes {
     /// `readsStreamingMode` on every SVE-FP form (all are vector operations
     /// whose element count comes from `CurrentVL()`); `partialWrite` on the
@@ -132,9 +96,7 @@ public enum SVEFloatingPointSemanticAttributes {
     }
 
     /// Whether the mnemonic leaves part of its destination's prior value
-    /// intact at statically-known positions: the top-half converts, in every
-    /// qualifier and in the FP8 pair form — ARM's ASL seeds `result` from
-    /// the destination and assigns only the odd halves.
+    /// intact at statically-known positions.
     @_effects(readonly)
     public static func preservesDestination(_ m: Mnemonic) -> Bool {
         switch m {
@@ -145,14 +107,8 @@ public enum SVEFloatingPointSemanticAttributes {
         }
     }
 
-    /// Whether the mnemonic reads its destination even though the destination
-    /// does not reappear among its source operands: the unpredicated
-    /// accumulators (indexed FMA, widening/dot/matrix multiply-add) and the
-    /// three-source clamps. The destructive two-address forms (FTMAD, FADDA,
-    /// the predicated binary family) are deliberately absent — their
-    /// destination is already one of the source operands, so the general
-    /// walk picks it up; the predicated `/M` forms are covered by the
-    /// merging rule.
+    /// Whether the mnemonic reads its destination without the destination
+    /// reappearing among its sources.
     @_effects(readonly)
     public static func readsDestination(_ m: Mnemonic) -> Bool {
         if preservesDestination(m) { return true }
@@ -169,10 +125,7 @@ public enum SVEFloatingPointSemanticAttributes {
         }
     }
 
-    // MARK: predicate reads / writes
-
-    /// The result-role predicate operands — only the compares write a
-    /// predicate in SVE-FP.
+    /// The result-role predicate operands.
     @_effects(readonly)
     public static func expectedPredicateWrites(_ ops: Instruction.Operands) -> UInt16 {
         var mask: UInt16 = 0
@@ -184,9 +137,7 @@ public enum SVEFloatingPointSemanticAttributes {
         return mask
     }
 
-    /// The governing predicates — the only predicates SVE-FP reads as such —
-    /// plus the result predicate when a governing predicate is merging (the
-    /// structural invariant; inert here since SVE-FP's compares are all `/Z`).
+    /// The governing predicates.
     @_effects(readonly)
     public static func expectedPredicateReads(_ ops: Instruction.Operands) -> UInt16 {
         var reads: UInt16 = 0
@@ -201,11 +152,7 @@ public enum SVEFloatingPointSemanticAttributes {
         return merging ? reads | results : reads
     }
 
-    // MARK: register (Z/V) reads / writes
-
-    /// The destination operand, when it is a register: operand 0 for
-    /// everything except the compares, whose operand 0 is a predicate and
-    /// which therefore write no register at all.
+    /// The destination operand, when it is a register.
     @_effects(readonly)
     public static func expectedRegisterWrites(for draft: Instruction) -> UInt64 {
         guard let first = draft.operands.first else { return 0 }
@@ -228,11 +175,7 @@ public enum SVEFloatingPointSemanticAttributes {
         return mask
     }
 
-    // MARK: helpers
-
-    /// The canonical-index bitmask of an operand's register(s): Z_n and V_n
-    /// at 32+n (they are the same physical register), a vector-pair group at
-    /// both members. SVE-FP has no GPR operands.
+    /// The canonical-index bitmask of an operand's register(s).
     @_effects(readonly)
     public static func registerMask(_ op: Operand) -> UInt64 {
         switch op {

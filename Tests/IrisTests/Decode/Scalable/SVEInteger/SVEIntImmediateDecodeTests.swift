@@ -16,17 +16,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the 0x25 wide-immediate region: the destructive
-/// add/sub/saturating family with its optional `lsl #8`, the min/max/multiply
-/// family without one, and the unpredicated DUP immediate that renders `mov`.
-/// The two classes interleave in the five-bit opcode space rather than
-/// splitting on any single bit — MUL shares bit 19 with the add/sub block —
-/// and the opcode selects the immediate's signedness along with the form.
-/// Bits 15:14 are a fixed `11` whose b14=0 hole reaches the decoder and is
-/// rejected there.
+/// Validates the 0x25 wide-immediate region.
 @Suite("SVE integer / wide immediate and DUP immediate")
 struct SVEIntImmediateDecodeTests {
-    /// Every allocated wide-immediate opcode at its zero immediate.
     private static let opcodes: [(UInt32, Mnemonic, String)] = [
         (0x2520_C000, .add, "add z0.b, z0.b, #0"),
         (0x2521_C000, .sub, "sub z0.b, z0.b, #0"),
@@ -55,8 +47,6 @@ struct SVEIntImmediateDecodeTests {
     }
 
     @Test func theOpcodeSelectsTheImmediateSignedness() {
-        // SMAX/SMIN/MUL sign-extend their byte; UMAX/UMIN and the add/sub
-        // family read it unsigned.
         #expect(text(0x2528_DFE0) == "smax z0.b, z0.b, #-1")
         #expect(decode(0x2528_DFE0).operands[2] == .immediate(value: -1, width: 8))
         #expect(text(0x2529_DFE0) == "umax z0.b, z0.b, #255")
@@ -67,12 +57,9 @@ struct SVEIntImmediateDecodeTests {
     }
 
     @Test func theShiftFoldsIntoTheValueExceptAtZero() {
-        // `lsl #8` folds into the printed value for every nonzero immediate;
-        // the all-zero immediate keeps the explicit shift (folding would lose
-        // it), producing the only two-operand immediate rendering.
         #expect(text(0x2560_E020) == "add z0.h, z0.h, #256")
         #expect(decode(0x2560_E020).operands[2] == .unsignedImmediate(value: 256, width: 16))
-        let zero = decode(0x2560_E000) // add z0.h, z0.h, #0, lsl #8
+        let zero = decode(0x2560_E000)
         #expect(text(0x2560_E000) == "add z0.h, z0.h, #0, lsl #8")
         #expect(zero.operands[2] == .unsignedImmediate(value: 0, width: 8))
         #expect(zero.operands[3] == .shiftAmount(kind: .lsl, amount: 8))
@@ -110,8 +97,6 @@ struct SVEIntImmediateDecodeTests {
     }
 
     @Test func theAllZeroDupIsMovNotFmov() {
-        // DUP #0 at the FP-capable sizes has an assembler-only `fmov #0.0`
-        // spelling; the disassembler must keep `mov`.
         for encoding: UInt32 in [0x2578_C000, 0x25B8_C000, 0x25F8_C000] {
             let d = decode(encoding)
             #expect(d.mnemonic == .mov, "0x\(String(encoding, radix: 16))")

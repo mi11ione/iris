@@ -1,20 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// the non-ZA multi-vector families in cell 110|1|x (top byte
-// 0xC1): destructive elementwise ops (bits[15:13]=101), clamp/narrow/permute
-// (110), and convert/fmul/frint/unpk (111), plus the SEL exception routed
-// from the 100 group. These target vector-register groups `{Zd...}` rather
-// than the ZA array. SEL, clamp, the destructive elementwise family, the
-// permute (ZIP/UZP/SUNPK/UUNPK) family, the convert/fmul/frint group, the
-// narrow-shifts, and the 0xC1 LUTI6 no-ZT0 form are all decoded here from
-// generated (mask,value) tables; unmatched words are claimed holes (UNDEFINED).
 
 /// SME2 non-ZA multi-vector decoders.
 enum SME2VectorOpsDecode {
-    // MARK: - SEL
-
-    /// `SEL {Zd...}, PNg, {Zn...}, {Zm...}` — predicate-governed select.
+    /// `SEL {Zd...}, PNg, {Zn...}, {Zm...}`.
     @_optimize(speed)
     static func decodeSel(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let fourWay = e & 0x0001_0000 != 0
@@ -37,11 +26,8 @@ enum SME2VectorOpsDecode {
         )
     }
 
-    // MARK: - clamp
-
     /// Decode a clamp word `{Zd...}, Zn, Zm` (SCLAMP/UCLAMP/FCLAMP/BFCLAMP),
-    /// or a 2-way permute (ZIP/UZP), else route onward. Called from the 110
-    /// (clamp/narrow/permute) group.
+    /// or a 2-way permute (ZIP/UZP), else route onward.
     @_optimize(speed)
     static func decodeClampNarrowPermute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if let d = decodeClamp(e, a, &sink) { return d }
@@ -51,22 +37,19 @@ enum SME2VectorOpsDecode {
         return SME2Decode.undefined(e, a)
     }
 
-    /// 4-way saturating rounding shift-right narrow: `Zd.<T>, {Zn×4}, #const`.
-    /// `tsize:imm5` (bits[23:22]:[20:16]) is the 7-bit shift field; `tsize==01`
-    /// gives `.b`←`.s` (const = 64 − field), `tsize>=10` gives `.h`←`.d`
-    /// (const = 128 − field). `op`(bit6)/`U`(bit5)/`N`(bit10) pick the variant.
+    /// 4-way saturating rounding shift-right narrow.
     @inline(__always)
     private static func decodeNarrowShift4(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         guard e & 0xFF20_F800 == 0xC120_D800 else { return nil }
         let tsize = UInt8((e >> 22) & 0x3)
-        guard tsize != 0 else { return nil } // tsize=00 reserved
+        guard tsize != 0 else { return nil }
         let narrow = e & 0x400 != 0
         let mnemonic: Mnemonic
-        switch (e >> 5) & 0x3 { // op(bit6):U(bit5)
+        switch (e >> 5) & 0x3 {
         case 0b00: mnemonic = narrow ? .sqrshrn : .sqrshr
         case 0b01: mnemonic = narrow ? .uqrshrn : .uqrshr
         case 0b10: mnemonic = narrow ? .sqrshrun : .sqrshru
-        default: return nil // op=1,U=1 unallocated
+        default: return nil
         }
         let dst: ScalarSize = tsize == 1 ? .b : .h
         let src: ScalarSize = tsize == 1 ? .s : .d
@@ -84,12 +67,10 @@ enum SME2VectorOpsDecode {
         )
     }
 
-    /// 2-way saturating rounding shift-right narrow: `Zd.h, {Zn.s, Zn+1.s},
-    /// #const` where `const = 16 - imm4` (`imm4 == 0` → `#16`).
+    /// 2-way saturating rounding shift-right narrow.
     @inline(__always)
     private static func decodeNarrowShift2(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         let mnemonic: Mnemonic
-        // Zn is bits[9:6] (a pair), so bit6 must stay free in the match mask.
         switch e & 0xFFF0_FC20 {
         case 0xC1E0_D400: mnemonic = .sqrshr
         case 0xC1E0_D420: mnemonic = .uqrshr
@@ -109,19 +90,10 @@ enum SME2VectorOpsDecode {
         )
     }
 
-    // MARK: - permute (ZIP/UZP/SUNPK/UUNPK)
-
     /// ZIP/UZP (2-way `{Zd}, Zn, Zm`; 4-way `{Zd}, {Zn}`) and SUNPK/UUNPK
-    /// (2-way `{Zd}, Zn`; 4-way `{Zd}, {Zn}`). Shared by the 110 (2-way) and
-    /// 111 (4-way / unpk) groups; returns `nil` for a non-permute word.
+    /// (2-way `{Zd}, Zn`; 4-way `{Zd}, {Zn}`).
     @inline(__always)
     private static func decodePermute(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
-        // The size field (bits[23:22]) is fixed per tblgen record, so the
-        // masks below strip it (and the .q / op selector bits) to match one
-        // opcode across all element sizes.
-        // 2-way ZIP/UZP: `{Zd×2}, Zn, Zm` — two single full-range sources. The
-        // b/h/s/d forms fix bit10=0 (bit10=1 belongs to the narrow-shift
-        // opcode); the `.q` form is size-00-only, so its size bits are fixed.
         if e & 0xFF20_FC00 == 0xC120_D000 || e & 0xFFE0_FC00 == 0xC120_D400 {
             let element: ScalarSize = e & 0x400 != 0 ? .q : sizeElement(e)
             let zd = UInt8(e & 0x1E)
@@ -138,8 +110,6 @@ enum SME2VectorOpsDecode {
                 reads: SME2Decode.vecMask(zn).union(SME2Decode.vecMask(zm)),
             )
         }
-        // 4-way ZIP/UZP: `{Zd×4}, {Zn×4}`. bit16=1 selects `.q`, valid only at
-        // size 00; a bit16=1 word at another size is a reserved hole.
         if e & 0xFF3E_FC61 == 0xC136_E000, e & 0x10000 == 0 || (e >> 22) & 0x3 == 0 {
             let element = permuteQElement(e)
             let zd = UInt8(e & 0x1C)
@@ -153,8 +123,6 @@ enum SME2VectorOpsDecode {
                 reads: SME2Decode.groupMask(zn, 4),
             )
         }
-        // 2-way SUNPK/UUNPK: `{Zd×2}, Zn.<Tb>` (source is the narrower half).
-        // Size 00 (`.b` dest) is reserved — there is no narrower source.
         if e & 0xFF3F_FC00 == 0xC125_E000, (e >> 22) & 0x3 != 0 {
             let dst = sizeElement(e)
             let zd = UInt8(e & 0x1E)
@@ -168,7 +136,6 @@ enum SME2VectorOpsDecode {
                 reads: SME2Decode.vecMask(zn),
             )
         }
-        // 4-way SUNPK/UUNPK: `{Zd×4}, {Zn×2}` (size 00 reserved).
         if e & 0xFF3F_FC22 == 0xC135_E000, (e >> 22) & 0x3 != 0 {
             let dst = sizeElement(e)
             let zd = UInt8(e & 0x1C)
@@ -199,15 +166,13 @@ enum SME2VectorOpsDecode {
         )
     }
 
-    /// Element of a 4-way ZIP/UZP — size 00 is `.b` (bit16=0) or `.q` (bit16=1).
+    /// Element of a 4-way ZIP/UZP.
     @inline(__always)
     private static func permuteQElement(_ e: UInt32) -> ScalarSize {
         (e >> 22) & 0x3 == 0 ? (e & 0x10000 != 0 ? .q : .b) : sizeElement(e)
     }
 
-    /// The narrower half of an unpack destination element. The unpack
-    /// destination is always `.h`/`.s`/`.d` (a `.b` destination is reserved),
-    /// so `.d` and the unreached wider sizes share the `.s` default.
+    /// The narrower half of an unpack destination element.
     @inline(__always)
     private static func halfElement(_ s: ScalarSize) -> ScalarSize {
         switch s { case .h: .b; case .s: .h; default: .s }
@@ -215,8 +180,6 @@ enum SME2VectorOpsDecode {
 
     @inline(__always)
     private static func decodeClamp(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
-        // 2x: (ff20fc01, c120c400 sclamp / c120c401 uclamp / c120c000 fclamp),
-        // 4x: +0x800. bf clamp fixes size=00 with mask ffe0fc0x.
         let fourWay = e & 0x800 != 0
         let count: UInt8 = fourWay ? 4 : 2
         let mnemonic: Mnemonic
@@ -227,7 +190,6 @@ enum SME2VectorOpsDecode {
         case 0xC120_C401, 0xC120_CC01:
             mnemonic = .uclamp; element = sizeElement(e)
         case 0xC120_C000, 0xC120_C800:
-            // FCLAMP (h/s/d) or BFCLAMP (size=00 twin).
             if (e >> 22) & 0x3 == 0 {
                 mnemonic = .bfclamp; element = .h
             } else {
@@ -250,8 +212,6 @@ enum SME2VectorOpsDecode {
         )
     }
 
-    // MARK: - destructive / convert
-
     /// A destructive elementwise record identity (mnemonic, group width,
     /// whether the second source is a multi-vector list, element size).
     private struct DestrSpec {
@@ -264,10 +224,8 @@ enum SME2VectorOpsDecode {
         }
     }
 
-    /// Destructive elementwise ops (bits[15:13]=101): `{Zdn}, {Zdn}, Zm` (zzv,
-    /// single broadcast `Zm`) or `{Zdn}, {Zdn}, {Zm}` (zzw, multi `Zm`). The
-    /// destination is tied to the first source. Decoded from the generated
-    /// (mask,value) table below (transcribed from the investigation records).
+    /// Destructive elementwise ops (bits[15:13]=101), with a single broadcast
+    /// `Zm` or a multi `Zm`.
     @_optimize(speed)
     static func decodeDestructive(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let spec = destructiveSpec(e) else { return SME2Decode.undefined(e, a) }
@@ -540,10 +498,8 @@ enum SME2VectorOpsDecode {
         }
     }
 
-    /// Convert / FMUL / FRINT (bits[15:13]=111), plus the 4-way permute / unpk
-    /// forms. The convert family targets vector groups in four shapes: narrow
-    /// (`Zd, {Zn}`), widen (`{Zd}, Zn`), same-count (`{Zd}, {Zn}`), and FMUL
-    /// (`{Zd}, {Zn}, Zm|{Zm}`). Decoded from the generated table below.
+    /// Convert / FMUL / FRINT (bits[15:13]=111) plus the 4-way permute and
+    /// unpk forms.
     @_optimize(speed)
     static func decodeConvertMisc(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if let d = decodePermute(e, a, &sink) { return d }
@@ -552,10 +508,7 @@ enum SME2VectorOpsDecode {
         return buildConvert(e, a, spec, &sink)
     }
 
-    /// The `0xC1` LUTI6 no-`ZT0` form: `luti6 {Zd×4}.h, {Zn, Zn+1}.h,
-    /// {Zm, Zm+1}[i]` — the table is a `.h` `Zn` pair (mod-32) and the source
-    /// a suffix-less `Zm` pair (mod-32) with a group index (`i1`, bit22).
-    /// Consecutive (`c120f400`) or `.S`-strided (`c120fc00`) destination.
+    /// The `0xC1` LUTI6 no-`ZT0` form.
     @inline(__always)
     private static func decodeLuti6ZmZ2(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft? {
         let strided: Bool
@@ -590,21 +543,19 @@ enum SME2VectorOpsDecode {
         let sd = SME2Decode.zd5(e)
         let sn = UInt8((e >> 5) & 0x1F)
         switch spec.shape {
-        case .narrow: // Zd.<dst>, {Zn x count}
+        case .narrow:
             return convertDraft(e, a, spec.mnemonic,
                                 operandCount: sink.emit(SME2Decode.vec(sd, spec.dst), SME2Decode.group(gn, n, spec.src)),
                                 reads: SME2Decode.groupMask(gn, n), writes: SME2Decode.vecMask(sd))
-        case .widen: // {Zd x count}, Zn.<src>
+        case .widen:
             return convertDraft(e, a, spec.mnemonic,
                                 operandCount: sink.emit(SME2Decode.group(gd, n, spec.dst), SME2Decode.vec(sn, spec.src)),
                                 reads: SME2Decode.vecMask(sn), writes: SME2Decode.groupMask(gd, n))
-        case .same: // {Zd x count}, {Zn x count}
+        case .same:
             return convertDraft(e, a, spec.mnemonic,
                                 operandCount: sink.emit(SME2Decode.group(gd, n, spec.dst), SME2Decode.group(gn, n, spec.src)),
                                 reads: SME2Decode.groupMask(gn, n), writes: SME2Decode.groupMask(gd, n))
-        case .fmul: // {Zd}, {Zn}, Zm | {Zm}
-            // FMUL's broadcast Zm is bits[20:17] (z0-z15), not the bits[19:16]
-            // of the destructive broadcast forms.
+        case .fmul:
             let zmSingle = UInt8((e >> 17) & 0xF)
             let zmGroup = n == 4 ? UInt8((e >> 18) & 0x7) &* 4 : UInt8((e >> 17) & 0xF) &* 2
             let src2: Operand = spec.sub == "zzw" ? SME2Decode.group(zmGroup, n, spec.src) : SME2Decode.vec(zmSingle, spec.src)
@@ -720,8 +671,6 @@ enum SME2VectorOpsDecode {
         }
         return nil
     }
-
-    // MARK: - shared
 
     /// Element size from bits[23:22].
     @inline(__always)

@@ -1,18 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// V=1 SIMD/FP LRCPC2 (FEAT_LRCPC2) load-acquire / store-release
-// unscaled-immediate: STLUR/LDAPUR with a SIMD/FP register operand
-// (Bt/Ht/St/Dt/Qt). Encoding shell bits[29:24]=011101 — the V=0 LRCPC2
-// shell (011001) with bit[26]=V=1. imm9 at bits[20:12], bits[11:10]=00,
-// bit[21]=0. (size, opc) selects the element width and store-vs-load; the
-// mnemonic carries no size suffix (the register letter does).
 
 enum ScalarSIMDLRCPC2Decode {
     @_optimize(speed)
     static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // bits[11:10] must be 10 (the V=1 SIMD LRCPC2 marker — V=0 uses 00);
-        // bit[21] must be 0 (no V=1 MTE form here).
         if (encoding >> 10) & 0x3 != 0b10 { return .undefined(at: address, encoding: encoding) }
         if (encoding >> 21) & 1 != 0 { return .undefined(at: address, encoding: encoding) }
 
@@ -22,8 +13,6 @@ enum ScalarSIMDLRCPC2Decode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rt = UInt8(encoding & 0x1F)
 
-        // (size, opc) → (element, isLoad). size=00 opc=1x is the 128-bit Q
-        // form; size=01/10/11 with opc=1x is reserved.
         let element: ScalarSize
         let isLoad: Bool
         switch (size, opc) {

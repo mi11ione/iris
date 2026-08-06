@@ -1,29 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Canonicalizer for SVE-integer — SVE / SVE2 integer. Renders a decoded
-// record to llvm-mc-compatible disassembly text (the validator's parity
-// oracle over the full op0=2 in-scope space). Because every SVE-integer decoder
-// emits a fully-structured operand list (element sizes, predicate role and
-// qualifier, register widths all captured on the operands), rendering is
-// generic: the mnemonic text followed by the comma-joined operand renderings.
-// The per-operand renderer applies the rules — governing predicate
-// bare, result predicate suffixed, scalar SIMD/GPR widths, ADR bracket form.
 
 /// Canonical llvm-mc-compatible disassembly text for an SVE integer record.
-/// A scalable-tier hole never reaches here: the text router renders it as
-/// `.long` before dispatching.
 enum SVEIntegerCanonicalizer {
-    /// The byte path. Every SVE-integer decoder emits a fully-structured
-    /// operand list, so rendering stays generic: mnemonic, then the
-    /// comma-separated operand renderings, written straight into the
-    /// buffer. The `String` path built a `[String]` of parts, joined it,
-    /// and materialized the operand view into an `Array` three times per
-    /// instruction; none of that exists here.
+    /// The byte path.
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
-        // This family's own table, not the global one: a mnemonic from
-        // outside the group renders the `?<raw>` sentinel rather than the
-        // spelling another family owns.
         if let spelling = name(instruction.mnemonic) {
             out.put(spelling)
         } else {
@@ -38,8 +19,6 @@ enum SVEIntegerCanonicalizer {
             put(ops[i], instruction.mnemonic, into: &out)
         }
     }
-
-    // MARK: per-operand rendering
 
     private static func put(_ op: Operand, _ mnemonic: Mnemonic, into out: inout TextBytes) {
         switch op {
@@ -56,8 +35,6 @@ enum SVEIntegerCanonicalizer {
                 out.put(UInt8(ascii: "]"))
             }
         case let .scalablePredicate(p):
-            // A governing predicate renders bare (`p0/m`); only a result
-            // predicate carries an element suffix (`p0.s`).
             out.put(UInt8(ascii: "p"))
             out.putDecimal(UInt64(p.registerIndex))
             if p.role == .result, let el = p.element {
@@ -70,9 +47,6 @@ enum SVEIntegerCanonicalizer {
             case .none: break
             }
         case let .scalableVectorGroup(g):
-            // llvm-mc pads the braces (`{ z2.s, z3.s }`); normalizeDisassembly
-            // collapses runs of whitespace but does not remove it, so the
-            // spaces are part of the canonical text.
             out.put("{ ")
             for j in 0 ..< g.count {
                 if j > 0 { out.put(", ") }
@@ -87,9 +61,6 @@ enum SVEIntegerCanonicalizer {
         case let .register(r):
             putRegister(r, into: &out)
         case let .vectorRegister(v):
-            // Reductions write either a scalar of the element width
-            // (`smaxv b0`) or, for the quadword forms, a whole NEON vector
-            // (`addqv v0.16b`).
             switch v.view {
             case let .scalar(size):
                 putSuffix(size, into: &out)
@@ -103,9 +74,6 @@ enum SVEIntegerCanonicalizer {
                 out.put("?v")
                 out.putDecimal(UInt64(v.registerIndex))
             }
-        // Signed immediates (compares, DUP/CPY moves, rotations, shift
-        // amounts) always print decimal. The logical-immediate family never
-        // reaches here — it carries its value as `.unsignedImmediate`.
         case let .immediate(value, _):
             out.put(UInt8(ascii: "#"))
             out.putDecimal(value)
@@ -153,7 +121,6 @@ enum SVEIntegerCanonicalizer {
                 out.putDecimal(UInt64(mem.scaleShift))
             }
         case .lsl:
-            // packed lsl #0 is elided
             if mem.scaleShift > 0 {
                 out.put(", lsl #")
                 out.putDecimal(UInt64(mem.scaleShift))
@@ -189,12 +156,11 @@ enum SVEIntegerCanonicalizer {
         m == .and || m == .eor || m == .orr || m == .dupm
     }
 
-    /// Unsigned-immediate text. AND/EOR/ORR/DUPM print the per-element
-    /// value in hex. A DUPM→`mov` follows llvm's `printSVELogicalImm`: the
-    /// value sign-extended from its element width prints as signed decimal
-    /// when it fits int16, else the raw value prints as unsigned decimal
-    /// when it fits uint16, else hex. Every other mnemonic prints plain
-    /// unsigned decimal (compare imm7).
+    /// Unsigned-immediate text. AND/EOR/ORR/DUPM print the per-element value
+    /// in hex. A DUPM→`mov` follows llvm's `printSVELogicalImm`: sign-extended
+    /// from its element width as signed decimal when it fits int16, else the
+    /// raw value as unsigned decimal when it fits uint16, else hex. Everything
+    /// else prints plain unsigned decimal.
     @inline(__always)
     private static func putUnsignedImmediate(
         _ value: UInt64, width: UInt8, mnemonic: Mnemonic, into out: inout TextBytes,
@@ -242,9 +208,7 @@ enum SVEIntegerCanonicalizer {
         }
     }
 
-    /// The element-size letter. Doubles as the scalar-register prefix — a
-    /// reduction's scalar destination is named by its element width, so
-    /// `.scalar(.b)` renders `b0` from the same table.
+    /// The element-size letter.
     @inline(__always)
     private static func putSuffix(_ s: ScalarSize, into out: inout TextBytes) {
         switch s {
@@ -256,8 +220,7 @@ enum SVEIntegerCanonicalizer {
         }
     }
 
-    /// The NEON arrangement suffix. Only the full-width (128-bit) forms are
-    /// reachable from SVE-integer — the quadword reductions' destination.
+    /// The NEON arrangement suffix.
     @inline(__always)
     private static func putArrangement(_ a: VectorArrangement, into out: inout TextBytes) {
         switch a {

@@ -1,4 +1,4 @@
-# encoding_hex_be	expected_text  (-mattr=+v9.6a,+sme,+sme2,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+sve)
+# encoding_hex_be	expected_text  (-mattr=+all,+v9.6a)
 0b000000	add w0, w0, w0
 0b100000	add w0, w0, w16
 0b1f0000	add w0, w0, wzr

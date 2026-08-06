@@ -12,18 +12,9 @@ private func predicates(_ set: ScalableRegisterSet) -> [UInt8] {
     (0 ..< 16).filter { set.containsPredicate(UInt8($0)) }.map(UInt8.init)
 }
 
-/// Validates the loop-predicate group — the eight WHILE conditions, the two
-/// memory-hazard WHILEs, and CTERM. These are the instructions that turn a
-/// scalar loop bound into a lane mask, and they are the most common SVE
-/// instructions Apple actually ships. CTERM is the exception in every
-/// dimension: it writes no register, it writes only two of the four condition
-/// flags while *reading* a third, and it is the only form in the group whose
-/// result does not depend on the vector length — so it must not carry the
-/// streaming-mode effect the rest of the tier does.
+/// Validates the loop-predicate group.
 @Suite("SVE predicate & control / loop predicates")
 struct SVELoopPredicateDecodeTests {
-    /// The eight conditions, in `{unsigned, less-than, equal}` opcode order,
-    /// with a 32-bit and a 64-bit operand form each.
     private static let conditions: [(word32: UInt32, word64: UInt32, mnemonic: Mnemonic)] = [
         (0x2525_00C7, 0x25E5_10C7, .whilege),
         (0x2525_00D7, 0x25E5_10D7, .whilegt),
@@ -76,7 +67,7 @@ struct SVELoopPredicateDecodeTests {
     }
 
     @Test func theLoopPredicateOverTheZeroRegisterKeepsNoDependency() {
-        let d = decode(0x257F_17E0) // whilelt p0.h, xzr, xzr
+        let d = decode(0x257F_17E0)
         #expect(d.mnemonic == .whilelt)
         #expect(Array(d.operands) == [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 0, element: .h, role: .result)),
@@ -107,7 +98,7 @@ struct SVELoopPredicateDecodeTests {
     }
 
     @Test func conditionalTerminateWritesNoRegisterAndOnlyTwoFlags() {
-        let d = decode(0x25A5_20C0) // ctermeq w6, w5
+        let d = decode(0x25A5_20C0)
         #expect(d.mnemonic == .ctermeq)
         #expect(Array(d.operands) == [.register(.w(6)), .register(.w(5))])
         #expect(d.semanticReads == RegisterSet.empty.inserting(.w(6)).inserting(.w(5)))
@@ -125,29 +116,24 @@ struct SVELoopPredicateDecodeTests {
     }
 
     @Test func conditionalTerminateHasBothConditionsAndBothWidths() {
-        let d = decode(0x25E5_20D0) // ctermne x6, x5
+        let d = decode(0x25E5_20D0)
         #expect(d.mnemonic == .ctermne)
         #expect(Array(d.operands) == [.register(.x(6)), .register(.x(5))])
         #expect(d.flagEffect == [.writesN, .writesV, .readsC])
     }
 
     @Test func conditionalTerminateOverTheZeroRegisterKeepsNoDependency() {
-        let d = decode(0x25FF_23E0) // ctermeq xzr, xzr
+        let d = decode(0x25FF_23E0)
         #expect(d.mnemonic == .ctermeq)
         #expect(Array(d.operands) == [.register(.xzr()), .register(.xzr())])
         #expect(d.semanticReads == .empty)
     }
 
     @Test func conditionalTerminateRejectsItsReservedDestinationField() {
-        // CTERM has no destination; the four bits where one would sit are zero.
         #expect(decode(0x25E5_20C1).mnemonic == .undefined)
     }
 
     @Test func theUnallocatedLoopPredicateOpcodesBelongToNoDecoder() {
-        // Two encodings in this neighbourhood look like loop predicates but are
-        // not allocated: the hazard-form opcode with a wrong middle field, and
-        // CTERM with its high opcode bit clear. Neither is claimed, and the
-        // family decoder still produces a well-formed UNDEFINED for them.
         for encoding: UInt32 in [0x2525_28C7, 0x2565_20C0] {
             let d = decode(encoding)
             #expect(d.mnemonic == .undefined)

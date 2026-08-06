@@ -4,9 +4,8 @@
 import Iris
 import Testing
 
-/// Validates MemoryOperand + MemoryBase — the addressing-mode operand
-/// for every ARM64 load and store, including the PC-relative literal
-/// form (`base = .pc`).
+/// Validates `MemoryOperand` and `MemoryBase` for every addressing mode,
+/// including the PC-relative literal form.
 @Suite("MemoryOperand / addressing-mode field preservation")
 struct MemoryOperandTests {
     @Test func defaultedInitProducesRegisterBaseWithNoModifiers() {

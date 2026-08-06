@@ -1,24 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Per-mnemonic semantic-attribute tables + verification
-// helpers for SIMD & FP. Mirrors `DPRSemanticAttributes.swift` shape
-// exactly — same public types (`SIMDFPSemanticIssue`,
-// `SIMDFPExpectedReads`, `SIMDFPSemanticChecker`,
-// `SIMDFPSemanticAttributes`), same `verify(_:)` entry point.
-//
-// Every SIMD/FP record has `branchClass == .none`,
-// `memoryOrdering == []`, `category == .simdAndFP` — universal
-// invariants (UNDEFINED records skip checks). `flagEffect` is `.nzcv`
-// only for FCMP/FCMPE/FCCMP/FCCMPE; `.none` otherwise (including FCSEL).
-// `memoryAccess` is `.load` for LDx/LDxR, `.store` for STx, `.none`
-// otherwise. `semanticReads` / `semanticWrites` are mnemonic-specific
-// per ARM ARM § C7 (per-instruction reference); some mnemonics are
-// destructive/accumulating with destination-as-source.
-
-// Concrete semantic-field discrepancy between a decoded SIMD/FP
-// record and the ARM ARM expectation. Returned by
-// ``SIMDFPSemanticChecker/verify(_:)``.
 
 import Iris
 
@@ -40,8 +21,6 @@ public struct SIMDFPSemanticIssue: Sendable, Equatable {
 }
 
 /// Expected semantic-reads constraint for a SIMD/FP record.
-/// `required` is the minimum bitset; `allowed` is the maximum. Mirrors
-/// ``DPRExpectedReads`` shape.
 @frozen
 public struct SIMDFPExpectedReads: Sendable, Equatable {
     public let required: UInt64
@@ -54,21 +33,14 @@ public struct SIMDFPExpectedReads: Sendable, Equatable {
     }
 }
 
-/// Per-record semantic-field verification against the ARM ARM
-/// per-instruction pages. Returns `nil` when the record matches every
-/// expected attribute; returns the first mismatch otherwise.
+/// Per-record semantic-field verification against the ARM ARM per-instruction
+/// pages.
 public enum SIMDFPSemanticChecker {
     /// Verify the record's classification fields match expectations.
-    /// UNDEFINED records skip checks (already-empty by construction).
     @_effects(readonly)
     @_optimize(speed)
     public static func verify(_ instruction: Instruction) -> SIMDFPSemanticIssue? {
         if instruction.mnemonic == .undefined { return nil }
-        // Crypto (AES/SHA/SM3/SM4) sits in the op0 {7,F} partition but is
-        // crypto-owned: its decoder sets category .crypto and its text
-        // routes to the crypto canonicalizer. Its semantic checks belong
-        // to the crypto checker; SIMD/FP still validates its text parity
-        // via the sweep.
         if instruction.category == .crypto { return nil }
         if instruction.branchClass != .none {
             return SIMDFPSemanticIssue(
@@ -108,10 +80,6 @@ public enum SIMDFPSemanticChecker {
                 expected: "\(expectedAccess)",
             )
         }
-        // Operand-context discipline: `.msl` is valid only inside
-        // `.shiftAmount`, never `.shiftedRegister`. Validate operand shape
-        // BEFORE deriving read/write masks from the operands — a
-        // structurally-invalid operand is not a mask divergence.
         for op in instruction.operands {
             if case let .shiftedRegister(_, kind, _) = op, kind == .msl {
                 return SIMDFPSemanticIssue(
@@ -121,10 +89,6 @@ public enum SIMDFPSemanticChecker {
                 )
             }
         }
-        // semanticReads / semanticWrites, derived independently from the
-        // (text-validated) operand list by architectural rule — a separate
-        // computation from each decoder's own mask logic, so any divergence
-        // surfaces a decoder bug.
         if let expectedReads = SIMDFPSemanticAttributes.expectedReadMask(for: instruction),
            instruction.semanticReads.mask != expectedReads
         {
@@ -148,20 +112,16 @@ public enum SIMDFPSemanticChecker {
     }
 }
 
-/// Per-mnemonic semantic-attribute lookups. Pure functions; constant-
-/// folded at module load.
+/// Per-mnemonic semantic-attribute lookups.
 public enum SIMDFPSemanticAttributes {
     /// The architecturally-correct `FlagEffect` for a SIMD/FP mnemonic.
     @_effects(readonly)
     public static func expectedFlagEffect(for m: Mnemonic) -> FlagEffect {
         switch m {
-        // Plain FP compares write all four flags, read none.
         case .fcmp, .fcmpe:
             .nzcv
-        // FP conditional compares read the condition (NZCV) and write NZCV.
         case .fccmp, .fccmpe:
             [.nzcv, .readsNZCV]
-        // FP conditional select reads the condition (NZCV), writes no flag.
         case .fcsel:
             .readsNZCV
         default:
@@ -169,8 +129,7 @@ public enum SIMDFPSemanticAttributes {
         }
     }
 
-    /// The architecturally-correct `MemoryAccess` for a SIMD/FP
-    /// mnemonic.
+    /// The architecturally-correct `MemoryAccess` for a SIMD/FP mnemonic.
     @_effects(readonly)
     public static func expectedMemoryAccess(for m: Mnemonic) -> MemoryAccess {
         switch m {
@@ -180,28 +139,49 @@ public enum SIMDFPSemanticAttributes {
         case .st1, .st2, .st3, .st4,
              .str, .stur, .stp, .stnp, .sttp, .sttnp, .stlur, .stl1:
             .store
+        case .ldbfadd, .ldbfadda, .ldbfaddl, .ldbfaddal,
+             .ldbfmax, .ldbfmaxa, .ldbfmaxl, .ldbfmaxal,
+             .ldbfmin, .ldbfmina, .ldbfminl, .ldbfminal,
+             .ldbfmaxnm, .ldbfmaxnma, .ldbfmaxnml, .ldbfmaxnmal,
+             .ldbfminnm, .ldbfminnma, .ldbfminnml, .ldbfminnmal,
+             .ldfadd, .ldfadda, .ldfaddl, .ldfaddal,
+             .ldfmax, .ldfmaxa, .ldfmaxl, .ldfmaxal,
+             .ldfmin, .ldfmina, .ldfminl, .ldfminal,
+             .ldfmaxnm, .ldfmaxnma, .ldfmaxnml, .ldfmaxnmal,
+             .ldfminnm, .ldfminnma, .ldfminnml, .ldfminnmal,
+             .stbfadd, .stbfaddl, .stbfmax, .stbfmaxl, .stbfmin, .stbfminl,
+             .stbfmaxnm, .stbfmaxnml, .stbfminnm, .stbfminnml,
+             .stfadd, .stfaddl, .stfmax, .stfmaxl, .stfmin, .stfminl,
+             .stfmaxnm, .stfmaxnml, .stfminnm, .stfminnml:
+            .atomic
         default:
             .none
         }
     }
 
-    /// The architecturally-correct `MemoryOrdering` for a SIMD/FP
-    /// mnemonic. Only the LRCPC2 SIMD forms (STLUR/LDAPUR) carry ordering.
+    /// The architecturally-correct `MemoryOrdering` for a SIMD/FP mnemonic.
     @_effects(readonly)
     public static func expectedMemoryOrdering(for m: Mnemonic) -> MemoryOrdering {
         switch m {
         case .ldapur, .ldap1: [.acquire]
         case .stlur, .stl1: [.release]
+        case .ldbfadda, .ldbfmaxa, .ldbfmina, .ldbfmaxnma, .ldbfminnma,
+             .ldfadda, .ldfmaxa, .ldfmina, .ldfmaxnma, .ldfminnma:
+            [.acquire]
+        case .ldbfaddl, .ldbfmaxl, .ldbfminl, .ldbfmaxnml, .ldbfminnml,
+             .ldfaddl, .ldfmaxl, .ldfminl, .ldfmaxnml, .ldfminnml,
+             .stbfaddl, .stbfmaxl, .stbfminl, .stbfmaxnml, .stbfminnml,
+             .stfaddl, .stfmaxl, .stfminl, .stfmaxnml, .stfminnml:
+            [.release]
+        case .ldbfaddal, .ldbfmaxal, .ldbfminal, .ldbfmaxnmal, .ldbfminnmal,
+             .ldfaddal, .ldfmaxal, .ldfminal, .ldfmaxnmal, .ldfminnmal:
+            [.acquire, .release]
         default: []
         }
     }
 
-    /// Whether the destination operand of a SIMD/FP mnemonic is also a
-    /// source (destructive / accumulating semantics).
-    /// NOTE: FMADD/FMSUB/FNMADD/FNMSUB are 4-operand instructions where
-    /// Va (operand[3]) is the accumulator — Rd (operand[0]) is a pure
-    /// write. They are NOT destination-reads-itself; their accumulator
-    /// is the explicit Ra operand.
+    /// Whether a SIMD/FP mnemonic's destination is also a source (destructive
+    /// or accumulating).
     @_effects(readonly)
     public static func destinationReadsItself(for m: Mnemonic) -> Bool {
         switch m {
@@ -212,7 +192,7 @@ public enum SIMDFPSemanticAttributes {
              .smlal, .smlal2, .smlsl, .smlsl2,
              .umlal, .umlal2, .umlsl, .umlsl2,
              .sdot, .udot, .usdot, .sudot, .bfdot,
-             .bfmlalb, .bfmlalt, .bfmmla,
+             .bfmlalb, .bfmlalt, .bfmmla, .fmmla,
              .smmla, .ummla, .usmmla,
              .sadalp, .uadalp,
              .saba, .uaba, .sabal, .sabal2, .uabal, .uabal2,
@@ -224,11 +204,7 @@ public enum SIMDFPSemanticAttributes {
         }
     }
 
-    /// Whether the destination (operand[0]) is also read as a source —
-    /// the mnemonic-fixed accumulate set plus the two shapes whose
-    /// destructiveness depends on operand form: ORR/BIC vector-immediate
-    /// (read-modify-write; the register forms are not), and MOV-as-INS
-    /// (an element-view destination preserves the unwritten lanes).
+    /// Whether the destination is also read as a source.
     @_effects(readonly)
     private static func destinationIsAlsoSource(_ instruction: Instruction) -> Bool {
         let m = instruction.mnemonic
@@ -240,9 +216,6 @@ public enum SIMDFPSemanticAttributes {
             default: return false
             }
         }
-        // A lane-write destination (element view) preserves the unwritten
-        // lanes, so the register is read as well as written: INS, MOV-as-INS,
-        // FMOV Vd.D[1], Xn.
         if case let .vectorRegister(v)? = ops.first, case .element = v.view {
             return true
         }
@@ -250,7 +223,6 @@ public enum SIMDFPSemanticAttributes {
     }
 
     /// Expected `semanticWrites` mask, derived from the operand list.
-    /// `nil` for shapes too complex to summarize (the checker then skips).
     @_effects(readonly)
     @_optimize(speed)
     public static func expectedWriteMask(for instruction: Instruction) -> UInt64? {
@@ -258,20 +230,18 @@ public enum SIMDFPSemanticAttributes {
         let ops = instruction.operands
         switch expectedMemoryAccess(for: m) {
         case .load:
-            // Loaded register(s) are operand[0 ..< memory]; writeback also
-            // writes the base GPR.
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask = registerMaskOver(ops, 0 ..< found.index)
             mask |= writebackBaseMask(found.memory)
             return mask
         case .store:
-            // A store writes no register except a writeback base.
             guard let found = lastMemoryOperand(ops) else { return nil }
             return writebackBaseMask(found.memory)
+        case .atomic:
+            guard let found = lastMemoryOperand(ops) else { return nil }
+            if found.index < 2 { return 0 }
+            return registerBit(of: ops[1])
         default:
-            // Data-processing. The FP scalar compares (flagEffect == .nzcv)
-            // write no register — their result is NZCV. Everything else
-            // writes its destination, operand[0].
             if expectedFlagEffect(for: m).writtenFlags == .nzcv { return 0 }
             guard let first = ops.first else { return 0 }
             return registerBit(of: first)
@@ -279,7 +249,6 @@ public enum SIMDFPSemanticAttributes {
     }
 
     /// Expected `semanticReads` mask, derived from the operand list.
-    /// `nil` for shapes too complex to summarize (the checker then skips).
     @_effects(readonly)
     @_optimize(speed)
     public static func expectedReadMask(for instruction: Instruction) -> UInt64? {
@@ -287,9 +256,6 @@ public enum SIMDFPSemanticAttributes {
         let ops = instruction.operands
         switch expectedMemoryAccess(for: m) {
         case .load:
-            // A load reads its base + index. A single-structure element load
-            // (LD1..LD4 / LDAP1 {Vt.<T>}[i]) writes one lane and preserves
-            // the rest, so each element-view destination is also read.
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask = memoryBaseAndIndexMask(found.memory)
             for i in 0 ..< found.index {
@@ -299,15 +265,16 @@ public enum SIMDFPSemanticAttributes {
             }
             return mask
         case .store:
-            // A store reads the stored data register(s) + base/index.
             guard let found = lastMemoryOperand(ops) else { return nil }
             var mask = memoryBaseAndIndexMask(found.memory)
             mask |= registerMaskOver(ops, 0 ..< found.index)
             return mask
+        case .atomic:
+            guard let found = lastMemoryOperand(ops) else { return nil }
+            var mask = memoryBaseAndIndexMask(found.memory)
+            mask |= registerMaskOver(ops, 0 ..< min(1, found.index))
+            return mask
         default:
-            // Data-processing: the source operands are operand[1...]; the
-            // destination (operand[0]) is also a source for destructive /
-            // accumulating ops and for the compares (which read operand[0]).
             var mask = ops.count > 1 ? registerMaskOver(ops, 1 ..< ops.count) : 0
             if destinationIsAlsoSource(instruction) || expectedFlagEffect(for: m).writtenFlags == .nzcv,
                let first = ops.first
@@ -318,9 +285,8 @@ public enum SIMDFPSemanticAttributes {
         }
     }
 
-    /// Register-set bit a single operand contributes (GPR canonical index,
-    /// or 32 + index for a SIMD/FP register). ZR/WZR contribute nothing;
-    /// non-register operands (immediates, conditions, …) contribute nothing.
+    /// Register-set bit a single operand contributes (GPR canonical index, or
+    /// 32 + index for a SIMD/FP register).
     @inline(__always)
     @_effects(readonly)
     private static func registerBit(of op: Operand) -> UInt64 {

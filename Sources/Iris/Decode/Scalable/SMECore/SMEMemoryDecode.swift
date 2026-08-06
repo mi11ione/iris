@@ -1,13 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SME ZA load/store decoder (cell 111). LD1B/H/W/D/Q and
-// ST1B/H/W/D/Q move one predicated tile slice to/from memory at a
-// register-offset address `[Xn{, Xm{, lsl #k}}]` (Rm=31 ⇒ no index; the shift
-// is the access-element log2 size, so byte forms carry none). LDR/STR ZA fill
-// and spill one `ZA` array vector at `[Xn{, #imm, mul vl}]`, where the single
-// imm4 field is both the vector-select offset and the memory offset. Records
-// operand structure only — computing the effective address is the caller's.
 
 extension SMECoreDecode {
     /// Decode an SME `ZA` load/store word.
@@ -21,9 +13,7 @@ extension SMECoreDecode {
         }
     }
 
-    // MARK: - LD1 / ST1 tile slices
-
-    /// One LD1/ST1 tile encoding: mnemonic, tile element, and load-vs-store.
+    /// One LD1/ST1 tile encoding.
     struct TileMemoryRow {
         let mnemonic: Mnemonic
         let element: ScalarSize
@@ -33,7 +23,7 @@ extension SMECoreDecode {
     /// The LD1/ST1 tile row for `e`, or `nil` for a hole in the 111 cells.
     @inline(__always)
     static func ld1st1Row(_ e: UInt32) -> TileMemoryRow? {
-        switch e & 0xFFE0_0010 { // Rm (bits[20:16]) and V (bit15) free
+        switch e & 0xFFE0_0010 {
         case 0xE000_0000: TileMemoryRow(mnemonic: .ld1b, element: .b, isLoad: true)
         case 0xE020_0000: TileMemoryRow(mnemonic: .st1b, element: .b, isLoad: false)
         case 0xE040_0000: TileMemoryRow(mnemonic: .ld1h, element: .h, isLoad: true)
@@ -48,9 +38,7 @@ extension SMECoreDecode {
         }
     }
 
-    /// Decode an LD1/ST1 tile-slice access. The register-offset `Rm` (bits
-    /// [20:16]) is a GPR index unless 31 (no index); the shift is the access
-    /// element's log2 byte size (0 for `.b`).
+    /// Decode an LD1/ST1 tile-slice access.
     @inline(__always)
     static func decodeTileMemory(_ e: UInt32, _ a: UInt64, _ row: TileMemoryRow, _ sink: inout OperandSink) -> DecodedDraft {
         let slice = tileSlice(e, row.element, UInt8(e & 0xF))
@@ -62,7 +50,6 @@ extension SMECoreDecode {
             scalarIndex: hasIndex ? .x(rmIndex) : nil,
             scaleShift: row.element.rawValue,
         )
-        // Load: governing predicate is zeroing (`/z`); store: bare (`Pg`).
         let operandCount = sink.emit(.zaTileSlice(slice), govern(pg, row.isLoad ? .zeroing : .none), .scalableMemory(memory))
         let tileMask = slice.zaMask
         var reads = gprMask(rnIndex).union(gprMask(12 &+ rv(e)))
@@ -90,11 +77,7 @@ extension SMECoreDecode {
         )
     }
 
-    // MARK: - LDR / STR ZA (array vector fill / spill)
-
-    /// Decode `LDR`/`STR ZA[Wv, imm], [Xn{, #imm, mul vl}]`. The imm4 field
-    /// (bits[3:0]) is both the vector-select offset and the memory offset;
-    /// non-streaming-safe (no `readsStreamingMode`).
+    /// Decode `LDR`/`STR ZA[Wv, imm], [Xn{, #imm, mul vl}]`.
     @inline(__always)
     static func decodeLdrStrZA(_ e: UInt32, _ a: UInt64, _ mnemonic: Mnemonic, isStore: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         let selectIndex = 12 &+ rv(e)

@@ -1,17 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Shared helpers for SIMD/FP sub-decoders: arrangement and
-// scalar-size decoding from encoding bits, vector-operand factories,
-// register-set semantics, immediate decoding for AdvSIMD modified-
-// immediate, and FP-immediate decoding (the 8-bit "ABCDEFGH" → IEEE
-// 754 bit-pattern mapping shared by FMOV-imm and vector-FMOV-imm).
-//
-// Public extensions on ``VectorArrangement`` and ``ScalarSize`` add the
-// derived properties (element size, lane count, byte width, isFullVector)
-// consumers need without touching the core type declarations.
-
-// MARK: - VectorArrangement / ScalarSize derived properties
 
 public extension VectorArrangement {
     /// Element size of this arrangement: `.b` / `.h` / `.s` / `.d`.
@@ -32,15 +20,7 @@ public extension VectorArrangement {
         }
     }
 
-    /// Number of lanes in this arrangement (8, 16, 4, 8, 2, 4, 1, 2).
-    ///
-    /// For full-vector view operands, this is the operationally meaningful
-    /// lane count. For `.element`-view operands, the arrangement reflects
-    /// the source register's storage shape (always one of the 128-bit
-    /// forms — b16/h8/s4/d2) by convention; the lane count there is
-    /// NOT operationally meaningful as a per-operand attribute (the
-    /// operand references a single element). Consumers must read
-    /// ``VectorView`` to know which context they're in.
+    /// Number of lanes in this arrangement.
     @inlinable
     @inline(__always)
     var laneCount: UInt8 {
@@ -58,9 +38,7 @@ public extension VectorArrangement {
         }
     }
 
-    /// Total byte width of the register at this arrangement: 8 for
-    /// 64-bit (`.b8`, `.h4`, `.s2`, `.d1`), 16 for 128-bit (`.b16`,
-    /// `.h8`, `.s4`, `.d2`).
+    /// Total byte width of the register at this arrangement.
     @inlinable
     @inline(__always)
     var byteWidth: UInt8 {
@@ -109,13 +87,8 @@ public func canonicalElementArrangement(for size: ScalarSize) -> VectorArrangeme
     }
 }
 
-// MARK: - Arrangement / scalar-size decoding from encoding bits
-
-/// Decode the (size, Q) → ``VectorArrangement`` mapping used by AdvSIMD
-/// vector operations (three-same, two-reg-misc, etc.) per ARM ARM tables.
-/// Total over the 2-bit × 1-bit input space; reserved combinations like
-/// `.1D` with multi-reg LD2/3/4 are filtered by per-class predicates on
-/// the returned arrangement value.
+/// Decode the (size, Q) → ``VectorArrangement`` mapping used by AdvSIMD vector
+/// operations (three-same, two-reg-misc, etc.) per ARM ARM tables.
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -129,11 +102,7 @@ let arrangementTable: [VectorArrangement] = [
     .b8, .b16, .h4, .h8, .s2, .s4, .d1, .d2,
 ]
 
-/// Decode the FP `ftype` (2-bit) → ``ScalarSize`` mapping per ARM ARM:
-/// 00 = S, 01 = D, 11 = H (FEAT_FP16), 10 = reserved (returns nil) except
-/// in the X↔V.D[1] FMOV variants — those use ftype=10 sf=1 rmode=01 as a
-/// distinct encoding that the integer-conversion sub-decoder handles
-/// explicitly.
+/// Decode the FP `ftype` (2-bit) → ``ScalarSize`` mapping per ARM ARM.
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -146,9 +115,7 @@ func scalarSizeFromFtype(_ ftype: UInt8) -> ScalarSize? {
     }
 }
 
-/// Variant for callers that have already filtered ftype != 0b10
-/// (reserved). Total over ftype ∈ {0b00, 0b01, 0b11}; the 0b10 input is
-/// unreachable by contract and maps to .h as a sentinel.
+/// Variant for callers that have already filtered ftype != 0b10 (reserved).
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -156,14 +123,12 @@ func scalarSizeFromFtypeNonReserved(_ ftype: UInt8) -> ScalarSize {
     switch ftype & 0x3 {
     case 0b00: .s
     case 0b01: .d
-    default: .h // ftype == 0b11 (callers filter 0b10).
+    default: .h
     }
 }
 
-// MARK: - Vector operand factories
-
 /// Build an ``Operand/vectorRegister(_:)`` operand with the full-vector view
-/// (`Vn.<arrangement>`). The register index is masked to 5 bits.
+/// (`Vn.<arrangement>`).
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -172,8 +137,8 @@ func simdfpVectorOperand(_ n: UInt8, arrangement: VectorArrangement) -> Operand 
                                       view: .full(arrangement: arrangement)))
 }
 
-/// Build an ``Operand/vectorRegister(_:)`` operand with a scalar-view (Bn /
-/// Hn / Sn / Dn / Qn). The register index is masked to 5 bits.
+/// Build an ``Operand/vectorRegister(_:)`` operand with a scalar-view (Bn / Hn
+/// / Sn / Dn / Qn).
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -182,14 +147,9 @@ func simdfpScalarOperand(_ n: UInt8, size: ScalarSize) -> Operand {
                                       view: .scalar(size: size)))
 }
 
-/// Build an ``Operand/vectorRegister(_:)`` operand with the element-indexed
-/// view (`Vn.<size>[i]`). The arrangement stored is the
-/// canonical 128-bit form matching the element size (.b16/.h8/.s4/.d2);
-/// the canonicalizer derives the element-size suffix from the arrangement.
-/// Callers never pass `.q` — element-indexed operands are .b/.h/.s/.d only.
-/// Build an ``Operand/vectorRegister(_:)`` operand with the element-group view
-/// (`Vn.<count><type>[i]`, e.g. `Vn.4B[2]`) used by the dot-product
-/// by-element forms, where the indexed operand is a `count`-element group.
+/// An element-group vector operand (`Vn.<count><type>[i]`, e.g. `Vn.4B[2]`),
+/// used by the dot-product by-element forms where the indexed operand is a
+/// `count`-element group.
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -200,6 +160,7 @@ func simdfpElementGroupOperand(_ n: UInt8, elementSize: ScalarSize, count: UInt8
     ))
 }
 
+/// An element-indexed vector operand (`Vn.<size>[i]`).
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -208,26 +169,21 @@ func simdfpElementOperand(_ n: UInt8, elementSize: ScalarSize, index: UInt8) -> 
     case .b: .b16
     case .h: .h8
     case .s: .s4
-    default: .d2 // .d (or .q sentinel — unreachable).
+    default: .d2
     }
     return .vectorRegister(VectorRegisterRef(registerIndex: n & 0x1F,
                                              view: .element(arrangement: arrangement,
                                                             index: index)))
 }
 
-/// Bare lane-indexed operand `Vn[index]` (no element-size suffix) — the
-/// FEAT_LUT table-index operand.
+/// Bare lane-indexed operand `Vn[index]` (no element-size suffix).
 @inline(__always)
 @_effects(readonly)
 func simdfpLaneOperand(_ n: UInt8, index: UInt8) -> Operand {
     .vectorRegister(VectorRegisterRef(registerIndex: n & 0x1F, view: .lane(index: index)))
 }
 
-// MARK: - Semantic register-set helpers
-
-/// Insert SIMD register `n` (canonical-index 32+n) into the
-/// ``RegisterSet``. SIMD registers are never zero-registers, so this is
-/// unconditional.
+/// Insert SIMD register `n` (canonical-index 32+n) into the ``RegisterSet``.
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -236,7 +192,7 @@ func simdfpInsertingVector(_ n: UInt8, into set: RegisterSet) -> RegisterSet {
 }
 
 /// Insert GPR register `n` into the ``RegisterSet`` if not the zero-register
-/// form. Mirrors the L/S `lsInsertingNonZero` pattern.
+/// form.
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -245,14 +201,8 @@ func simdfpInsertingNonZeroGPR(reg: RegisterRef, into set: RegisterSet) -> Regis
     return set.inserting(reg)
 }
 
-/// Build a `RegisterRef` for a GPR operand at the given 5-bit register
-/// field, with `<Wn|WSP>`/`<Xn|SP>` (sp-or-general) vs `<Wn|WZR>`/`<Xn|XZR>`
-/// (zr-or-general) disambiguation. Mirrors `LSCommon.lsGprOperand`.
-/// Note: callers in this module always pass `.x64` when `spOrGeneral` is
-/// true (only the L/S base register uses SP-or-general semantics, and it
-/// is always 64-bit). The WSP branch (w32 + spOrGeneral) is therefore
-/// unreachable by construction — kept folded into SP via the `.sp()`
-/// return path.
+/// Build a `RegisterRef` for a GPR operand at the given 5-bit field, with
+/// sp-or-general versus zr-or-general disambiguation.
 @inlinable
 @inline(__always)
 @_effects(readonly)
@@ -262,7 +212,6 @@ func simdfpGprOperand(
     let masked = n & 0x1F
     if masked == 31 {
         if spOrGeneral {
-            // Only x64 SP is reached; w32 WSP form has no caller.
             return .sp()
         }
         return width == .x64 ? RegisterRef.xzr() : RegisterRef.wzr()
@@ -270,16 +219,9 @@ func simdfpGprOperand(
     return width == .x64 ? RegisterRef.x(masked) : RegisterRef.w(masked)
 }
 
-// MARK: - SIMD/FP encoding-tier predicate (for corpus-tooling pre-filter)
-
-/// True iff the 4-byte ARM64 word `encoding` belongs to the SIMD &
-/// Floating-Point in-scope encoding surface:
-///   - top-level op0 ∈ {0x7, 0xF} (the SIMD/FP arithmetic/FP/conversion
-///     classes that `SIMDAndFPDecoder.decode(encoding:address:features:)`
-///     dispatches), OR
-///   - top-level op0 ∈ {0x4, 0x6, 0xC, 0xE} with bit[26] (V) = 1 (the
-///     SIMD/FP load/store classes delegated from the integer L/S decoder
-///     via `SIMDAndFPDecoder.decodeVectorLoadStore(encoding:address:)`).
+/// Whether `encoding` belongs to the SIMD & Floating-Point surface: op0 ∈
+/// {0x7, 0xF}, or op0 ∈ {0x4, 0x6, 0xC, 0xE} with bit[26] (V) = 1, the
+/// load/store classes delegated from the integer L/S decoder.
 ///
 /// Lets corpus tooling pre-filter code buffers to SIMD/FP encodings.
 @inlinable

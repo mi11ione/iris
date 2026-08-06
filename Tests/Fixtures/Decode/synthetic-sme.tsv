@@ -1,4 +1,4 @@
-# encoding_hex_be	expected_text  (-mattr=+v9.6a,+nmi,+gcs,+chk,+clrbhb,+hbc,+the,+d128,+ite,+tlbiw,+predres,+specres2,+ssbs,+mte,+xs,+spe,+wfxt,+pauth,+flagm,+cssc,+lse,+lor,+rcpc,+rcpc-immo,+rcpc3,+mops,+ls64,+lse128,+fullfp16,+bf16,+i8mm,+aes,+sha2,+sha3,+sm4,+sve,+sve2,+sme,+sme2,+sme-i16i64,+sme-f64f64,+faminmax,+lut,+fp8,+fp8fma,+fp8dot2,+fp8dot4,+f8f16mm,+f8f32mm,+cpa,+sve2p1,+sve2p2,+sve2p3,+sve-aes,+sve-aes2,+sve2-aes,+sve-bitperm,+sve2-bitperm,+sve-sha3,+sve2-sha3,+sve-sm4,+sve2-sm4,+sve-b16b16,+sve-b16mm,+sve-bfscale,+sve-f16f32mm,+sme2p1,+sme2p2,+sme2p3,+sme-b16b16,+sme-f16f16,+sme-f8f16,+sme-f8f32,+sme-fa64,+sme-lutv2,+sme-mop4,+sme-tmop,+ssve-aes,+ssve-bitperm,+ssve-fexpa,+ssve-fp8dot2,+ssve-fp8dot4,+ssve-fp8fma,+f16mm,+f32mm,+f64mm)
+# encoding_hex_be	expected_text  (-mattr=+all,+v9.6a)
 80800c00	fmopa za0.s, p3/m, p0/m, z0.s, z0.s
 8080fc00	fmopa za0.s, p7/m, p7/m, z0.s, z0.s
 80816c00	fmopa za0.s, p3/m, p3/m, z0.s, z1.s

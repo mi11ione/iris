@@ -4,11 +4,7 @@
 import Iris
 import Testing
 
-/// Validates ScalableRegisterSet's bit layout — predicates P0-P15 at bits
-/// [0..15], the ZA residue mask at [16..31], FFR at [32], ZT0 at [33]. The
-/// layout is load-bearing: the four sub-fields must not collide, because
-/// Piece 4's liveness unions and subtracts whole sets and would otherwise
-/// corrupt one register kind's state while updating another's.
+/// Validates `ScalableRegisterSet`'s bit layout.
 @Suite("ScalableRegisterSet / bit layout of the four register kinds")
 struct ScalableRegisterSetLayoutTests {
     @Test func emptyHasNoBitsSet() {
@@ -52,8 +48,6 @@ struct ScalableRegisterSetLayoutTests {
     }
 
     @Test func theFourRegisterKindsDoNotCollide() {
-        // One set carrying every kind at once: each accessor must read back
-        // exactly its own field and nothing else.
         let set = ScalableRegisterSet.empty
             .insertingPredicate(3)
             .inserting(ZATileMask(tile: 1, element: .s))
@@ -91,10 +85,8 @@ struct ScalableRegisterSetLayoutTests {
     }
 }
 
-/// Validates ScalableRegisterSet's membership and insertion surface — the
-/// predicate file (where the SME2 predicate-as-counter PN aliases the same
-/// bits), the ZA residue, FFR, and ZT0. Insertion is idempotent and index
-/// arguments outside the register file are masked into range, never trapped.
+/// Validates `ScalableRegisterSet`'s membership and insertion across the
+/// predicate file (where the PN counter aliases the same bits), the ZA.
 @Suite("ScalableRegisterSet / membership and insertion")
 struct ScalableRegisterSetMembershipTests {
     @Test func emptySetContainsNothing() {
@@ -128,9 +120,6 @@ struct ScalableRegisterSetMembershipTests {
     }
 
     @Test func predicateIndexAboveFifteenIsMaskedIntoRange() {
-        // The predicate file has 16 registers; a wider index wraps rather
-        // than trapping (the substrate's no-trap rule for encoding-derived
-        // fields).
         #expect(ScalableRegisterSet.empty.insertingPredicate(16) ==
             ScalableRegisterSet.empty.insertingPredicate(0))
         #expect(ScalableRegisterSet.empty.insertingPredicate(255) ==
@@ -146,9 +135,6 @@ struct ScalableRegisterSetMembershipTests {
     }
 
     @Test func predicateAsCounterAliasesTheSamePredicateBit() {
-        // PN8 and P8 are the same physical register (they share a DWARF
-        // register alias):
-        // a counter operand's read must be visible to a mask operand's query.
         let counter = ScalablePredicateRef(registerIndex: 8, isCounter: true)
         let mask = ScalablePredicateRef(registerIndex: 8, isCounter: false)
         let set = ScalableRegisterSet.empty.insertingPredicate(counter.registerIndex)
@@ -205,11 +191,8 @@ struct ScalableRegisterSetMembershipTests {
     }
 }
 
-/// Validates ScalableRegisterSet's set algebra — union, intersection,
-/// subtracting, isEmpty. This is the surface Piece 4's liveness computes
-/// `use ∪ (out − def)` over, in lockstep with the base ``RegisterSet``, so
-/// the two spaces can be treated uniformly. `subtracting` is the full-def
-/// kill (PTRUE Pd, /Z ZA writes, non-predicated predicate writes).
+/// Validates `ScalableRegisterSet`'s set algebra, the surface liveness
+/// computes `use ∪ (out − def)` over in lockstep with ``RegisterSet`` so both.
 @Suite("ScalableRegisterSet / set algebra for dataflow")
 struct ScalableRegisterSetAlgebraTests {
     @Test func unionMergesEveryRegisterKind() {
@@ -261,7 +244,6 @@ struct ScalableRegisterSetAlgebraTests {
     }
 
     @Test func subtractingRemovesTheKilledRegisters() {
-        // A full-def kill: PTRUE P0 kills P0's liveness, leaving P1 live.
         let live = ScalableRegisterSet.empty
             .insertingPredicate(0)
             .insertingPredicate(1)
@@ -287,8 +269,6 @@ struct ScalableRegisterSetAlgebraTests {
     }
 
     @Test func subtractingZAKillsOnlyTheOverlappingPositions() {
-        // A /Z write to ZA0.S kills exactly its four Q positions; ZA1.S's
-        // storage is untouched.
         let live = ScalableRegisterSet.empty
             .inserting(ZATileMask(tile: 0, element: .s))
             .inserting(ZATileMask(tile: 1, element: .s))
@@ -298,9 +278,6 @@ struct ScalableRegisterSetAlgebraTests {
     }
 
     @Test func smstartClobberIsRepresentable() {
-        // Entering streaming mode zeroes P0-P15 and FFR, and enabling ZA
-        // zeroes the whole array. The SME decoder sets this on the record;
-        // this proves the model can express it.
         var clobber = ScalableRegisterSet.empty
         for index: UInt8 in 0 ... 15 {
             clobber = clobber.insertingPredicate(index)
@@ -309,17 +286,12 @@ struct ScalableRegisterSetAlgebraTests {
         #expect(clobber.predicateMask == 0xFFFF)
         #expect(clobber.containsFFR)
         #expect(clobber.zaMask == .whole)
-        // The clobber kills every scalable register it names.
         #expect(clobber.subtracting(clobber).isEmpty)
-        // ZT0 is not part of the SMSTART clobber.
         #expect(!clobber.containsZT0)
     }
 }
 
-/// Pins ScalableRegisterSet's layout — the whole set is exactly its UInt64
-/// payload. Two of these ride inline on every ``InstructionRecord``
-/// (scalableReads + scalableWrites), so a wider set would move the record's
-/// pinned 57/64 size/stride.
+/// Pins `ScalableRegisterSet`'s layout.
 @Suite("ScalableRegisterSet / memory-layout invariant")
 struct ScalableRegisterSetLayoutPinTests {
     @Test func sizeIsExactlyEightBytes() {

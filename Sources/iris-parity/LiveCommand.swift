@@ -1,14 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// `iris-parity live` — seeded random sweep per encoding partition,
-// diffed against a LIVE llvm-mc at the family's maximal mattr.
-//
-// Comparison convention (the documented undefined mapping): llvm-mc's
-// "invalid instruction encoding" reject ↔ Iris UNDEFINED. The compared
-// Iris side is `isUndefined ? "" : text`; the oracle side is "" for a
-// reject and the normalized disassembly line otherwise. Divergences are
-// classified against KNOWN-DEVIATIONS.md; unclassified rows gate.
 
 import Foundation
 import Iris
@@ -75,12 +66,7 @@ func runLiveCommand(_ args: [String]) -> Int32 {
     return exitCode
 }
 
-/// Sweep one family: generate the seeded words grouped by the live
-/// mattr each generation tier requires (crypto/PAC/MTE/AMX tiers carry
-/// their HOST partition's maximal mattr — see `GenerationTier.mattr`),
-/// then diff each group against llvm-mc at that group's mattr. Returns
-/// the gating divergence count, or nil on oracle failure (feature-blind
-/// oracle, launch failure, or timeout — setup errors, never scored).
+/// Sweep one family.
 private func sweepFamily(
     _ family: ParityFamily, llvmMC: String, count: Int, seed: UInt64,
     chunkSize: Int, catalogue: DeviationCatalogue,
@@ -88,9 +74,6 @@ private func sweepFamily(
     let started = Date()
     let groups = family.generateWordGroups(count: count, seed: seed)
 
-    // Fail loud on a feature-blind oracle: llvm-mc only WARNS on an
-    // unknown -mattr feature and proceeds without it, silently
-    // shrinking the oracle's decode surface (the harvest-era lesson).
     for group in groups {
         let missing = LLVMMC.unrecognizedFeatures(llvmMC, mattr: group.mattr)
         guard missing.isEmpty else {

@@ -1,15 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SME2 multi-vector contiguous loads/stores (cells 101|x|0)
-// and the ZT0 fill/spill patterns (cell 111|1|0). The whole 128-iclass
-// memory family shares one parameterized layout:
-// `0xA0000000 | K<<24 | Q<<22 | O<<21 | F<<15 | msz<<13 | N` with K=strided,
-// Q=immediate-offset, O=store, F=4-way, msz=element, N=non-temporal (bit0
-// consecutive / bit3 strided). Register geometry: consecutive pairs start
-// even ({2t, 2t+1}), quads at multiples of 4; strided members step by
-// 16/count from `16·T + t`. `Rm=31` is a real `xzr` index (unlike SME-core's
-// tile loads, where 31 means "no index").
 
 /// SME2 multi-vector load/store decoders.
 extension SME2Decode {
@@ -20,7 +10,6 @@ extension SME2Decode {
         let immediateForm = e & 0x0040_0000 != 0
         let isStore = e & 0x0020_0000 != 0
         let fourWay = e & 0x8000 != 0
-        // Structural zero bits — set means a claimed hole, not an instruction.
         if immediateForm, e & 0x0010_0000 != 0 { return undefined(e, a) }
         if strided {
             if fourWay, e & 0x4 != 0 { return undefined(e, a) }
@@ -75,14 +64,9 @@ extension SME2Decode {
         )
     }
 
-    /// Decode a cell-`111|1|0` word — only the two `ZT0` fill/spill patterns
-    /// are in SME2's claim (`LDR ZT0` / `STR ZT0`); the cell's remainder is
-    /// SME-core's.
+    /// Decode a cell-`111|1|0` word.
     @_optimize(speed)
     static func decodeZT0FillSpill(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // The routing gate (`smeIsZT0FillSpill`) admits exactly these two
-        // patterns, so the fill test decides between them — there is no third
-        // case to reject here.
         let isLoad = e & 0xFFFF_FC1F == 0xE11F_8000
         let rnIndex = UInt8((e >> 5) & 0x1F)
         let memory = ScalableMemoryOperand(base: .gpr(rnIndex == 31 ? .sp() : .x(rnIndex)))
@@ -110,7 +94,7 @@ extension SME2Decode {
         }
     }
 
-    /// The scalar-offset index register — `Xm`, with `31` a real `XZR`.
+    /// The scalar-offset index register.
     @inline(__always)
     private static func rm31IsXZR(_ e: UInt32) -> RegisterRef {
         let rm = UInt8((e >> 16) & 0x1F)

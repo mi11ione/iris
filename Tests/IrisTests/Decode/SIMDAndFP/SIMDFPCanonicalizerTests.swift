@@ -4,10 +4,8 @@
 import Iris
 import Testing
 
-/// Validates SIMD/FP text rendering (via `Instruction.text`) — the
-/// formatter that produces llvm-mc-compatible disassembly text for
-/// SIMD/FP records. Each test crafts an instruction value directly to
-/// exercise the formatter in isolation from the decoder.
+/// Validates SIMD/FP text rendering, crafting instruction values directly so
+/// the formatter is exercised in isolation from the decoder.
 @Suite("Disassembler / SIMDFPCanonicalizer.format")
 struct SIMDFPCanonicalizerFormatTests {
     private func draft(
@@ -28,9 +26,6 @@ struct SIMDFPCanonicalizerFormatTests {
     }
 
     @Test func undefinedRendersLongDirectiveOrFormatterArm() {
-        // Undefined records render the raw word as `.long` (text is
-        // total); the SIMD/FP formatter's own defensive arm (reachable
-        // only via a hand-built family-category record) still yields "".
         let undefined = Instruction(address: 0, encoding: 0x1234, mnemonic: .undefined, category: .undefined)
         #expect(undefined.text == ".long 0x1234")
         let armed = draft(mnemonic: .undefined, operands: [])
@@ -295,7 +290,6 @@ struct SIMDFPCanonicalizerFormatTests {
     }
 
     @Test func tblFormatsListAtPositionOne() {
-        // TBL Vd, {Vn.16B}, Vm.8B — list is operand[1..2], non-leading.
         let d = draft(mnemonic: .tbl, operands: [
             .vectorRegister(VectorRegisterRef(registerIndex: 0, view: .full(arrangement: .b8))),
             .vectorRegister(VectorRegisterRef(registerIndex: 1, view: .full(arrangement: .b16))),
@@ -364,9 +358,6 @@ struct SIMDFPCanonicalizerFormatTests {
 
     @Test func extendNoneRendersEmpty() {
         let d = draft(mnemonic: .add, operands: [.extendedRegister(reg: .x(0), extend: .none, shift: 0)])
-        // The formatter renders `"\(reg.name), \(extendKindName(extend))"`
-        // and extendKindName(.none) is the empty string, so the rendered
-        // text is "add x0, " — pinned as-is.
         #expect(d.text == "add x0, ")
     }
 
@@ -376,19 +367,16 @@ struct SIMDFPCanonicalizerFormatTests {
         ]
         for (kind, expected) in kinds {
             let d = draft(mnemonic: .add, operands: [.shiftedRegister(reg: .x(0), shift: kind, amount: 4)])
-            // LSL with amount=4 ≠ 0, normal render.
             #expect(d.text == "add x0, \(expected) #4")
         }
     }
 
     @Test func unknownMnemonicFormatsAsPlaceholder() {
-        // A Mnemonic outside the SIMD/FP slab renders as "?N".
         let d = draft(mnemonic: Mnemonic(rawValue: 12000), operands: [])
         #expect(d.text == "?12000")
     }
 
     @Test func operandWithUnknownVariantRendersUnsupportedPlaceholder() {
-        // PSTATEField operand is unsupported by the SIMD/FP formatter.
         let d = draft(mnemonic: .fadd, operands: [
             .vectorRegister(VectorRegisterRef(registerIndex: 0, view: .scalar(size: .s))),
             .pstateField(.spSel),
@@ -397,9 +385,6 @@ struct SIMDFPCanonicalizerFormatTests {
     }
 
     @Test func cryptoOwnedMnemonicsRouteToTheCryptoFormatter() {
-        // Crypto-owned mnemonics on a SIMD/FP-category record (hand-built;
-        // real crypto records decode with category .crypto) route to the
-        // crypto/Apple-extensions formatter.
         let aese = Instruction(mnemonic: .aese, category: .simdAndFP)
         #expect(aese.text == "aese")
     }

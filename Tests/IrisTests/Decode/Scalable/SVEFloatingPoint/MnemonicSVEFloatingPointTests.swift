@@ -4,8 +4,6 @@
 import Iris
 import Testing
 
-/// Every mnemonic constant the SVE floating-point tier declares, grouped as
-/// the encoding tables group them.
 private let reductions: [Mnemonic] = [
     .fadda, .faddv, .faddqv, .fmaxqv, .fminqv, .fmaxnmqv, .fminnmqv,
 ]
@@ -33,14 +31,7 @@ private let declaredHere: [Mnemonic] =
         + fusedMultiplicand + clamps + matrix + wideningLong + bf16Arithmetic
         + fp8Converts + fp8IntConverts
 
-/// Validates the mnemonic constants the SVE floating-point tier declares. They
-/// continue the scalable slab directly after 2s.3's allocation, so three things
-/// must hold: every new constant sits inside the reserved scalable range, the
-/// constants are distinct and contiguous (later work must know exactly where it
-/// may begin), and the shared floating-point text tokens — fadd, fmul, fmla,
-/// fmov, fcvt and dozens more that 2.6's SIMD slab or 2s.3 already declared —
-/// are reused rather than redeclared, since a duplicate raw value would
-/// silently collide two different instructions onto one token.
+/// Validates the mnemonic constants the SVE floating-point tier declares.
 @Suite("SVE floating-point / mnemonic allocations")
 struct MnemonicSVEFloatingPointTests {
     private static let scalableRange: ClosedRange<UInt16> = 16384 ... 28671
@@ -58,8 +49,6 @@ struct MnemonicSVEFloatingPointTests {
     }
 
     @Test func theDeclaredMnemonicsAreContiguousAfterTheIntegerSlab() {
-        // 2s.3 ended at 16626; 2s.4 starts at 16627 and leaves no gaps, so the
-        // tier above knows its first free value is 16684.
         let raws = declaredHere.map(\.rawValue).sorted()
         #expect(raws.count == 57)
         #expect(Set(raws).count == raws.count)
@@ -67,9 +56,6 @@ struct MnemonicSVEFloatingPointTests {
     }
 
     @Test func theSharedTextTokensAreReusedNotRedeclared() {
-        // These mnemonics already exist for base-instruction or NEON forms (2.6
-        // SIMD/FP) or 2s.3's vector-integer forms; 2s.4 reuses them, so their
-        // raw values must stay outside this tier's block.
         let shared: [Mnemonic] = [
             .fadd, .fsub, .fmul, .fdiv, .fmax, .fmin, .fmaxnm, .fminnm,
             .fabs, .fneg, .fabd, .fmulx, .fscale, .famax, .famin,
@@ -92,8 +78,6 @@ struct MnemonicSVEFloatingPointTests {
     }
 
     @Test func eachEncodingGroupContributesItsOwnConstants() {
-        // A group that accidentally shared a constant with another would decode
-        // to the wrong text; keep the groups provably disjoint.
         let groups = [
             reductions, reversed, compares, converts, logarithm, trig,
             fusedMultiplicand, clamps, matrix, wideningLong, bf16Arithmetic,

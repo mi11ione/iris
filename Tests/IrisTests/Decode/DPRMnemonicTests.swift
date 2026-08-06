@@ -4,15 +4,10 @@
 import Iris
 import Testing
 
-/// Pins the 58 Mnemonic raw-value constants the DPR family owns, in
-/// the reserved 4096..6143 slab `Mnemonic.allocations` declares. Verifies
-/// uniqueness + range-membership; also pins the 16 mnemonics DPR reuses
-/// from DPI at their existing raw values so a refactor that moves them
-/// is caught.
+/// Pins the 58 DPR mnemonic constants in the reserved 4096...6143 slab, plus
+/// the 16 reused from DPI at their existing values so a refactor that moves.
 @Suite("DPR / Mnemonic constants 4096..4153")
 struct DPRMnemonicConstantsTests {
-    /// The family's allocation table: every DPR-declared mnemonic at
-    /// its locked raw value. Each row is `(constant, expected, name)`.
     private static let allDPRMnemonics: [(Mnemonic, UInt16, String)] = [
         (.bic, 4096, "bic"), (.orn, 4097, "orn"), (.eon, 4098, "eon"), (.bics, 4099, "bics"),
         (.mvn, 4100, "mvn"),
@@ -42,8 +37,6 @@ struct DPRMnemonicConstantsTests {
         (.crc32cw, 4152, "crc32cw"), (.crc32cx, 4153, "crc32cx"),
     ]
 
-    /// DPI-owned mnemonics that the DPR family reuses. Pinned so a DPI
-    /// refactor that drops them is caught at the DPR surface.
     private static let reusedDPIMnemonics: [(Mnemonic, UInt16, String)] = [
         (.add, 256, "add"), (.adds, 257, "adds"), (.sub, 258, "sub"), (.subs, 259, "subs"),
         (.and, 260, "and"), (.orr, 261, "orr"), (.eor, 262, "eor"), (.ands, 263, "ands"),

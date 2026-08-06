@@ -1,16 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// ConditionCode. The 16 condition codes ARM64
-// uses on conditional branches and conditional selects/compares. Raw
-// values match the 4-bit `cond` field in the encoding.
 
-/// ARM64 4-bit condition code.
-///
-/// Carried by ``Operand/conditionCode(_:)``. Values are the canonical
-/// encoded condition (e.g. `B.eq` → ``eq``). ``nv`` is the "never"
-/// encoding (4-bit value `0b1111`); the architecture treats it as `al`
-/// in most contexts but the encoding is distinct.
+/// ARM64 4-bit condition code, as the canonical encoded value (`B.eq` →
+/// ``eq``). ``nv`` is the "never" encoding `0b1111`: the architecture treats it
+/// as `al` in most contexts, but the encoding is distinct.
 @frozen
 public enum ConditionCode: UInt8, Sendable, Hashable {
     /// Equal (`Z == 1`).

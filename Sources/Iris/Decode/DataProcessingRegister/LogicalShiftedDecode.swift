@@ -1,13 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Logical (shifted register) decode.
-// Encoding tier op0=0x5 bit 24=0. (opc, N) selects AND/ORR/EOR/ANDS or
-// BIC/ORN/EON/BICS. Aliases:
-//   MOV (register) = ORR Rd, XZR, Rm, LSL #0
-//   MVN            = ORN Rd, XZR, Rm{,shift}
-//   TST            = ANDS XZR, Rn, Rm{,shift}
-// Reserved: sf=0 with imm6[5]=1.
 
 enum LogicalShiftedDecode {
     @inline(__always)
@@ -22,13 +14,11 @@ enum LogicalShiftedDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // 32-bit imm6[5]=1 reserved.
         if sf == 0, (imm6 & 0x20) != 0 {
             return .undefined(at: address, encoding: encoding)
         }
 
         let width: RegisterWidth = sf == 1 ? .x64 : .w32
-        // Logical-shifted Rd/Rn/Rm are all ZR-form.
         let rdRef = gprOperand(encoding: Rd, width: width, form: .zrOrGeneral)
         let rnRef = gprOperand(encoding: Rn, width: width, form: .zrOrGeneral)
         let rmRef = gprOperand(encoding: Rm, width: width, form: .zrOrGeneral)
@@ -36,13 +26,11 @@ enum LogicalShiftedDecode {
         case 0b00: .lsl
         case 0b01: .lsr
         case 0b10: .asr
-        default: .ror // 0b11 is the only remaining 2-bit value.
+        default: .ror
         }
         let setsFlags = opc == 0b11
         let baseFlagEffect: FlagEffect = setsFlags ? .nzcv : .none
 
-        // MOV (register) alias — opc=01, N=0, Rn=31, shift==LSL, imm6==0.
-        // Operand list: [Rd, Rm], no shift modifier.
         if opc == 0b01, N == 0, Rn == 31, shiftBits == 0b00, imm6 == 0 {
             return DecodedDraft(
                 address: address,
@@ -56,8 +44,6 @@ enum LogicalShiftedDecode {
             )
         }
 
-        // MVN alias — opc=01, N=1, Rn=31, any shift/amount. Operand list:
-        // [Rd, .shiftedRegister(Rm,...) or .register(Rm)].
         if opc == 0b01, N == 1, Rn == 31 {
             return DecodedDraft(
                 address: address,
@@ -71,8 +57,6 @@ enum LogicalShiftedDecode {
             )
         }
 
-        // TST alias — opc=11, N=0, Rd=31. Operand list:
-        // [Rn, .shiftedRegister(Rm,...) or .register(Rm)]. flagEffect=.nzcv.
         if opc == 0b11, N == 0, Rd == 31 {
             return DecodedDraft(
                 address: address,
@@ -86,7 +70,6 @@ enum LogicalShiftedDecode {
             )
         }
 
-        // Base mnemonic from the (opc, N) table.
         let mnemonic: Mnemonic = switch (opc, N) {
         case (0b00, 0): .and
         case (0b00, 1): .bic
@@ -95,7 +78,7 @@ enum LogicalShiftedDecode {
         case (0b10, 0): .eor
         case (0b10, 1): .eon
         case (0b11, 0): .ands
-        default: .bics // (0b11, 1) — only remaining (opc, N) combination.
+        default: .bics
         }
         return DecodedDraft(
             address: address,
@@ -109,7 +92,8 @@ enum LogicalShiftedDecode {
         )
     }
 
-    /// Third operand: plain `.register` when shift is the no-op default, `.shiftedRegister` otherwise.
+    /// Third operand: plain `.register` when shift is the no-op default,
+    /// `.shiftedRegister` otherwise.
     @inline(__always)
     @_effects(readonly)
     private static func shiftedOrPlain(

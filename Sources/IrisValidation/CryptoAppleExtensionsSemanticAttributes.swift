@@ -1,21 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Independent semantic oracle for the Crypto + Apple-extensions
-// records, scattered across op0 partitions: crypto (AES / SHA-1 / SHA-256 /
-// SHA-3 / SHA-512 / SM3 / SM4, in the SIMD/FP partition), PAC standalone +
-// MTE-DPR (the DPR partition), MTE-DPI ADDG/SUBG (the DPI partition),
-// MTE L/S (the L/S partition), and AMX (its own op0-0). Each host
-// partition's verification pass routes its crypto/Apple-extension records
-// here; the AMX pass routes
-// AMX here. Expected reads / writes / flags / memory-access are derived
-// from the text-validated operand list by architectural rule (ARM ARM for
-// crypto+PAC+MTE, corsix/amx for AMX) — a separate computation from the
-// decoders' own attribute logic, so a divergence between the two surfaces a
-// decoder bug (as it historically did for PAC-sign).
-
-// Semantic-field discrepancy for a crypto/Apple-extensions record. Same
-// shape as the other per-family checkers' issue types.
 
 import Iris
 
@@ -37,25 +21,28 @@ public struct CryptoSemanticIssue: Sendable, Equatable {
 /// crypto/Apple-extensions record, across all the op0 partitions those
 /// instructions live in.
 public enum CryptoAppleExtensionsSemanticChecker {
-    // PAC standalone, by how it touches Rd. Sign and auth are both in-place
-    // transforms of the pointer in Rd — `X[d] = AddPAC/Auth(X[d], modifier)` —
-    // so both READ Rd (the pointer) and write it: register-source PAC/AUT read
-    // Rd + modifier Rn; zero-source PAC/AUT and XPAC read+write Rd. PACGA is
-    // the exception — a 3-operand form where Rd is pure output (read Rn + Rm).
     private static let pacSignReg: Set<Mnemonic> = [.pacia, .pacib, .pacda, .pacdb]
     private static let pacAuthReg: Set<Mnemonic> = [.autia, .autib, .autda, .autdb]
     private static let pacSignZero: Set<Mnemonic> = [.paciza, .pacizb, .pacdza, .pacdzb]
     private static let pacAuthZero: Set<Mnemonic> = [.autiza, .autizb, .autdza, .autdzb]
     private static let xpac: Set<Mnemonic> = [.xpaci, .xpacd]
+    /// FEAT_PAuth_LR forms whose modifier is SP (the LR is both source and
+    /// destination), plus the two that take it from an Rn operand and the
+    /// four that use the X15/X16/X17 triple.
+    private static let pacLRStackModifier: Set<Mnemonic> = [
+        .paciasppc, .pacibsppc, .pacnbiasppc, .pacnbibsppc, .autiasppc, .autibsppc,
+    ]
+    private static let pacLRRegisterModifier: Set<Mnemonic> = [.autiasppcr, .autibsppcr]
+    private static let pacLRTripleModifier: Set<Mnemonic> = [
+        .pacia171615, .pacib171615, .autia171615, .autib171615,
+    ]
     private static let mteDPR: Set<Mnemonic> = [.irg, .gmi, .subp, .subps]
     private static let mteLS: Set<Mnemonic> = [
         .ldg, .stg, .st2g, .stzg, .stz2g, .ldgm, .stgm, .stzgm,
     ]
 
     /// Crypto destination-also-source set (the accumulate / round forms whose
-    /// Vd/Qd is both read and written), from the ARM ARM. The complement —
-    /// AESMC, AESIMC, SHA1H, EOR3, BCAX, SM3SS1, RAX1, XAR, SM4EKEY — has Vd as
-    /// pure output.
+    /// Vd/Qd is both read and written), from the ARM ARM.
     private static let cryptoTiedDestination: Set<Mnemonic> = [
         .aese, .aesd, .sha1c, .sha1p, .sha1m, .sha1su0, .sha1su1,
         .sha256su0, .sha256su1, .sha256h, .sha256h2,
@@ -65,15 +52,14 @@ public enum CryptoAppleExtensionsSemanticChecker {
     ]
 
     /// Verify a crypto/Apple-extensions record's semantic attributes.
-    /// Returns nil when it
-    /// matches every expected attribute, or when the mnemonic is not such
-    /// a record (defensive — callers gate on `owns()` / the AMX category).
     @_effects(readonly)
     public static func verify(_ instruction: Instruction) -> CryptoSemanticIssue? {
         let m = instruction.mnemonic
+        let isPACLinkRegister = pacLRStackModifier.contains(m)
+            || pacLRRegisterModifier.contains(m) || pacLRTripleModifier.contains(m)
         let isPAC = pacSignReg.contains(m) || pacAuthReg.contains(m)
             || pacSignZero.contains(m) || pacAuthZero.contains(m)
-            || xpac.contains(m) || m == .pacga
+            || xpac.contains(m) || m == .pacga || isPACLinkRegister
         let isMTEDPR = mteDPR.contains(m)
         let isMTEDPI = m == .addg || m == .subg
         let isMTELS = mteLS.contains(m)
@@ -81,7 +67,6 @@ public enum CryptoAppleExtensionsSemanticChecker {
         let isAMX = instruction.category == .amx
         guard isPAC || isMTEDPR || isMTEDPI || isMTELS || isCrypto || isAMX else { return nil }
 
-        // Universal: none of these records branch or carry memory ordering.
         if instruction.branchClass != .none {
             return CryptoSemanticIssue(field: "branchClass", actual: "\(instruction.branchClass)", expected: "none")
         }
@@ -89,7 +74,6 @@ public enum CryptoAppleExtensionsSemanticChecker {
             return CryptoSemanticIssue(field: "memoryOrdering", actual: "\(instruction.memoryOrdering)", expected: "[]")
         }
 
-        // Category.
         let expectedCategory: Category = if isCrypto {
             .crypto
         } else if isAMX {
@@ -103,13 +87,11 @@ public enum CryptoAppleExtensionsSemanticChecker {
             return CryptoSemanticIssue(field: "category", actual: "\(instruction.category)", expected: "\(expectedCategory)")
         }
 
-        // Flags: only SUBPS sets NZCV; every other record here leaves them.
         let expectedFlag: FlagEffect = m == .subps ? .nzcv : .none
         if instruction.flagEffect != expectedFlag {
             return CryptoSemanticIssue(field: "flagEffect", actual: "\(instruction.flagEffect)", expected: "\(expectedFlag)")
         }
 
-        // Memory access: only the MTE L/S tier touches memory.
         let expectedAccess: MemoryAccess = if m == .ldg || m == .ldgm {
             .load
         } else if isMTELS {
@@ -121,18 +103,17 @@ public enum CryptoAppleExtensionsSemanticChecker {
             return CryptoSemanticIssue(field: "memoryAccess", actual: "\(instruction.memoryAccess)", expected: "\(expectedAccess)")
         }
 
-        // Reads / writes by architectural class.
         let ops = instruction.operands
         let (expectedReads, expectedWrites): (UInt64, UInt64) = if isCrypto {
             cryptoReadsWrites(m: m, ops: ops)
         } else if isMTEDPI {
-            // ADDG / SUBG: Rd = Rn op tags. Write Rd, read Rn (operands 2,3
-            // are immediates).
             (operandRegisterMask(ops, 1), operandRegisterMask(ops, 0))
         } else if isMTELS {
             mteLoadStoreReadsWrites(m: m, ops: ops)
         } else if isAMX {
             (amxReads(ops), 0)
+        } else if isPACLinkRegister {
+            pacLinkRegisterReadsWrites(m: m, ops: ops)
         } else {
             pacMTEDPRReadsWrites(m: m, ops: ops)
         }
@@ -154,12 +135,24 @@ public enum CryptoAppleExtensionsSemanticChecker {
         return nil
     }
 
-    // MARK: - Per-tier reads/writes rules
+    /// FEAT_PAuth_LR: the stack-modifier and register-modifier forms sign or
+    /// authenticate LR; the X15/X16/X17 triple forms target X17.
+    @_effects(readonly)
+    private static func pacLinkRegisterReadsWrites(
+        m: Mnemonic, ops: Instruction.Operands,
+    ) -> (UInt64, UInt64) {
+        let lr = UInt64(1) << 30
+        if pacLRTripleModifier.contains(m) {
+            let triple = (UInt64(1) << 15) | (UInt64(1) << 16) | (UInt64(1) << 17)
+            return (triple, UInt64(1) << 17)
+        }
+        if pacLRRegisterModifier.contains(m) {
+            return (lr | operandRegisterMask(ops, 0), lr)
+        }
+        return (lr | (UInt64(1) << 31), lr)
+    }
 
-    /// PAC standalone + MTE-DPR (IRG / GMI / SUBP / SUBPS). Every form writes
-    /// Rd (operand 0). Reads by class: register-source PAC/AUT read Rd+Rn;
-    /// zero-source PAC/AUT and XPAC read Rd; PACGA and MTE-DPR read Rn+Rm
-    /// (Rd pure output).
+    /// PAC standalone + MTE-DPR (IRG / GMI / SUBP / SUBPS).
     @_effects(readonly)
     private static func pacMTEDPRReadsWrites(m: Mnemonic, ops: Instruction.Operands) -> (UInt64, UInt64) {
         let rd0 = operandRegisterMask(ops, 0)
@@ -170,7 +163,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
         } else if pacSignZero.contains(m) || pacAuthZero.contains(m) || xpac.contains(m) {
             rd0
         } else {
-            rd1 | rd2 // PACGA + MTE-DPR: Rd is pure output; read Rn + Rm.
+            rd1 | rd2
         }
         return (reads, rd0)
     }
@@ -191,12 +184,9 @@ public enum CryptoAppleExtensionsSemanticChecker {
         return (reads, writes)
     }
 
-    /// MTE L/S. Operand 0 is Rt, operand 1 the `[Xn]` memory operand.
-    ///   - LDG: read-modify-write of Rt (the loaded tag is inserted into Rt,
-    ///     preserving Xt's other bits → Rt is read AND written) + read base.
-    ///   - LDGM: bulk load, Rt fully written; read base.
-    ///   - stores (STG/ST2G/STZG/STZ2G/STGM/STZGM): read Rt + base; pre/post
-    ///     writeback updates the base register.
+    /// MTE L/S, with Rt at operand 0 and the `[Xn]` memory operand at 1. LDG is
+    /// a read-modify-write of Rt, LDGM writes it whole, and the stores read it;
+    /// all read the base, and pre/post writeback updates it.
     @_effects(readonly)
     private static func mteLoadStoreReadsWrites(m: Mnemonic, ops: Instruction.Operands) -> (UInt64, UInt64) {
         let rt = operandRegisterMask(ops, 0)
@@ -207,15 +197,14 @@ public enum CryptoAppleExtensionsSemanticChecker {
             return (rt | base, rt | wb)
         case .ldgm:
             return (base, rt | wb)
-        default: // stores
+        default:
             return (rt | base, wb)
         }
     }
 
     /// AMX documented data ops read the X-register named by the 5-bit operand
     /// subfield (X31 = XZR contributes nothing); set/clr (opcode 17) and
-    /// undocumented opcodes name no register. No AMX op writes a GPR (the
-    /// coprocessor state is not in the general register file).
+    /// undocumented opcodes name no register.
     @_effects(readonly)
     private static func amxReads(_ ops: Instruction.Operands) -> UInt64 {
         guard case let .amxField(field) = ops.first else { return 0 }
@@ -224,11 +213,7 @@ public enum CryptoAppleExtensionsSemanticChecker {
         return x == 31 ? 0 : (UInt64(1) << UInt64(x))
     }
 
-    // MARK: - Operand → register-mask helpers
-
-    /// Register mask for a single-register operand (GPR or SIMD). Zero
-    /// register (XZR/WZR) contributes nothing; SIMD registers occupy
-    /// canonical indices 32...63.
+    /// Register mask for a single-register operand (GPR or SIMD).
     @_effects(readonly)
     private static func operandRegisterMask(_ ops: Instruction.Operands, _ index: Int) -> UInt64 {
         guard index >= 0, index < ops.count else { return 0 }
@@ -259,12 +244,8 @@ public enum CryptoAppleExtensionsSemanticChecker {
 }
 
 /// Whether a mnemonic belongs to the crypto / Apple-extensions family, whose
-/// records reach the DPI and DPR family decoders by delegation. Those two
-/// checkers hand such a record to ``CryptoAppleExtensionsSemanticChecker``
-/// rather than verifying it against their own family's expectations.
-///
-/// The family occupies a contiguous mnemonic range; this is the oracle's own
-/// transcription of that range, deliberately not shared with the decoder's.
+/// records reach the DPI and DPR decoders by delegation; those checkers hand
+/// such a record here rather than to their own expectations.
 @_effects(readonly)
 func cryptoAppleExtensionsOwns(_ mnemonic: Mnemonic) -> Bool {
     mnemonic.rawValue >= 12288 && mnemonic.rawValue <= 16383

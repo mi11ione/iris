@@ -8,7 +8,6 @@ private func text(_ encoding: UInt32) -> String {
     Iris.decode(encoding, at: 0).text
 }
 
-/// A draft with a hand-built operand list, for the shape-violation paths.
 private func draft(_ mnemonic: Mnemonic, _ operands: [Operand]) -> Instruction {
     Instruction(
         address: 0, encoding: 0x2400_0000, mnemonic: mnemonic, category: .sve, operands: operands,
@@ -19,28 +18,15 @@ private func format(_ mnemonic: Mnemonic, _ operands: [Operand]) -> String {
     draft(mnemonic, operands).text
 }
 
-/// Validates the disassembly-text rendering rules. The text is what the
-/// corpus runner diffs against the reference assembler, so every rule that
-/// changes a character is pinned here: which predicates carry an element
-/// suffix and which stay bare, scalar and NEON-vector reduction destinations,
-/// the signed/unsigned/hex immediate ladders, the ADR bracket shapes, the
-/// register-pair braces — and, because the renderer must never crash on a
-/// record whose operand list violates its expected shape, the `?` placeholder
-/// arms for every operand kind the integer decoders do not emit.
+/// Validates the disassembly-text rendering rules.
 @Suite("SVE integer / disassembly text")
 struct SVEIntegerCanonicalizerTests {
     @Test func anUndefinedRecordRendersTheDataDirective() {
-        // A rejected encoding has no instruction text; the renderer emits the
-        // raw word as a `.long` data directive, the convention every UNDEFINED
-        // record shares.
         #expect(text(0x2530_8000) == ".long 0x25308000")
         #expect(format(.undefined, []) == ".long 0x24000000")
     }
 
     @Test func aSizelessGroupRendersItsMembersWithoutSuffixes() {
-        // ScalableVectorGroup carries an optional element to share the type with
-        // SME2's size-less table lists; SVE integer decode always supplies a
-        // suffix, but the renderer stays total over a nil element.
         let group = ScalableVectorGroup(firstIndex: 0, count: 2, element: nil, layout: .consecutive)
         #expect(format(.sqcvtn, [.scalableVectorGroup(group)]) == "sqcvtn { z0, z1 }")
     }
@@ -99,25 +85,17 @@ struct SVEIntegerCanonicalizerTests {
     }
 
     @Test func aMnemonicWithoutOperandsRendersBare() {
-        // No integer decoder emits an operand-less named record, but the
-        // renderer's contract is total: the mnemonic text stands alone.
         #expect(format(.add, []) == "add")
         #expect(format(.dupm, []) == "dupm")
     }
 
     @Test func aForeignMnemonicRendersItsRawValuePlaceholder() {
-        // The name table covers exactly the mnemonics the integer decoders
-        // emit; anything else renders a visible placeholder, never a crash.
         let foreign = format(.udf, [])
         #expect(foreign.hasPrefix("?"))
         #expect(foreign.contains("\(Mnemonic.udf.rawValue)"))
     }
 
     @Test func aZeroRegisterOperandRendersItsArchitecturalName() {
-        // The move decoders map register 31 to SP, so a zero register can
-        // only arrive on a malformed record — it still renders faithfully,
-        // and an index-31 register with a plain general role falls through
-        // to its numbered spelling.
         #expect(format(.mov, [.scalableVector(ScalableVectorRef(registerIndex: 0, element: .s)),
                               .register(.xzr())]) == "mov z0.s, xzr")
         #expect(format(.mov, [.scalableVector(ScalableVectorRef(registerIndex: 0, element: .s)),
@@ -128,17 +106,14 @@ struct SVEIntegerCanonicalizerTests {
     }
 
     @Test func shapeViolationsRenderPlaceholdersInsteadOfCrashing() {
-        // A SIMD register smuggled into a GPR slot.
         let simdAsGPR = format(.mov, [
             .register(RegisterRef(canonicalIndex: 40, role: .general, width: .vectorImplied)),
         ])
         #expect(simdAsGPR == "mov ?s40")
-        // A vector register in a view no reduction produces.
         let elementView = format(.mov, [
             .vectorRegister(VectorRegisterRef(registerIndex: 3, view: .element(arrangement: .s4, index: 1))),
         ])
         #expect(elementView == "mov ?v3")
-        // A memory operand with a GPR base or no index at all.
         let gprBase = format(.adr, [
             .scalableMemory(ScalableMemoryOperand(
                 base: .gpr(.x(0)),
@@ -154,14 +129,10 @@ struct SVEIntegerCanonicalizerTests {
             )),
         ])
         #expect(noIndex == "adr ?mem")
-        // An operand kind no integer decoder emits.
         #expect(format(.add, [.label(byteOffset: 8)]) == "add ?op")
     }
 
     @Test func theUnreachableRenderingArmsStillProduceFaithfulText() {
-        // These operand shapes belong to other families (or to no decoder at
-        // all), but the renderer is exhaustive over the frozen operand union,
-        // so each arm has a defined answer.
         #expect(format(.mov, [.shiftAmount(kind: .lsr, amount: 3)]) == "mov lsr #3")
         #expect(format(.mov, [.shiftAmount(kind: .asr, amount: 3)]) == "mov asr #3")
         #expect(format(.mov, [.shiftAmount(kind: .ror, amount: 3)]) == "mov ror #3")
@@ -176,8 +147,6 @@ struct SVEIntegerCanonicalizerTests {
             ])
             #expect(rendered == "mov \(expected)")
         }
-        // A memory operand whose registers carry no element suffix, with an
-        // extend kind the ADR decoder never produces.
         let bare = format(.adr, [
             .scalableMemory(ScalableMemoryOperand(
                 base: .vector(ScalableVectorRef(registerIndex: 1)),
@@ -186,11 +155,7 @@ struct SVEIntegerCanonicalizerTests {
             )),
         ])
         #expect(bare == "adr [z1, z2]")
-        // An element-suffixed vector register that also carries an index but
-        // no element, and a bare Z register.
         #expect(format(.mov, [.scalableVector(ScalableVectorRef(registerIndex: 7))]) == "mov z7")
-        // A result predicate without an element renders bare; a governing
-        // predicate with an element stays bare too.
         #expect(format(.mov, [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 3, role: .result)),
         ]) == "mov p3")
@@ -200,8 +165,6 @@ struct SVEIntegerCanonicalizerTests {
     }
 
     @Test func theMovImmediateLadderCoversItsUnsignedDecimalBand() {
-        // Hand-built unsigned immediates walk the printSVELogicalImm ladder
-        // edges: int16-max, the unsigned band, and the hex fallback.
         let mov = { (value: UInt64, width: UInt8) in
             format(.mov, [.unsignedImmediate(value: value, width: width)])
         }

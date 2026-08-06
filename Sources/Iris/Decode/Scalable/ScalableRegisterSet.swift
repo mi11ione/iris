@@ -1,30 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// scalable register read-or-write set. The peer of RegisterSet for the
-// SVE/SME state NOT covered by the 64-bit GPR/SIMD mask: predicates P0-P15
-// (the SME2 predicate-as-counter PN aliases the same bits), the 16-bit ZA
-// residue mask (see ZATileMask), FFR, and ZT0. Z0-Z31 are NOT here — they
-// alias V0-V31 and ride RegisterSet bits 32-63. Pure register bits only:
-// per-instruction effect flags live in ScalableEffect, never here, so
-// union/intersection/subtracting stay correct for dataflow.
-//
-// Bit layout (UInt64):
-// [0..15] predicate P0-P15 (PN aliases the same 16 bits)
-// [16..31] ZA 16-bit residue mask
-// [32] FFR
-// [33] ZT0
-// [34..63] reserved
 
-/// Bitset over the SVE/SME architectural state outside the GPR/SIMD mask —
-/// predicates P0-P15, the `ZA` residue mask, FFR, and ZT0.
-///
-/// `ScalableRegisterSet` is the per-instruction `scalableReads` /
-/// `scalableWrites` carrier on ``InstructionRecord``, the peer of
-/// ``RegisterSet`` (which covers GPR and SIMD/`Z`). Dataflow analysis
-/// consumes it as O(1) bitwise operations; its set algebra
-/// (``union(_:)`` / ``intersection(_:)`` / ``subtracting(_:)`` /
-/// ``isEmpty``) mirrors ``RegisterSet`` so liveness can treat both uniformly.
+/// Bitset over the SVE/SME state outside the GPR/SIMD mask — predicates,
+/// the `ZA` residue, FFR and ZT0. The peer of ``RegisterSet`` on
+/// ``InstructionRecord``, with matching set algebra so liveness treats both
+/// uniformly.
 @frozen
 public struct ScalableRegisterSet: Sendable, Hashable {
     /// Raw 64-bit packed representation (see the file header for the layout).
@@ -45,9 +25,7 @@ public struct ScalableRegisterSet: Sendable, Hashable {
     @usableFromInline static let ffrBit: UInt64 = 1 << 32
     @usableFromInline static let zt0Bit: UInt64 = 1 << 33
 
-    // MARK: Predicates (P0-P15; predicate-as-counter PN aliases the same bits)
-
-    /// True iff predicate `index` (0..15) is in the set. Indices ≥ 16 are
+    /// Whether predicate `index` (0..15) is in the set. Indices ≥ 16 are
     /// masked into range (no trap).
     @inlinable
     @inline(__always)
@@ -69,8 +47,6 @@ public struct ScalableRegisterSet: Sendable, Hashable {
         UInt16(truncatingIfNeeded: bits & Self.predicateFieldMask)
     }
 
-    // MARK: ZA (16-bit residue mask; see ZATileMask)
-
     /// The `ZA` residue mask in this set.
     @inlinable
     @inline(__always)
@@ -85,9 +61,7 @@ public struct ScalableRegisterSet: Sendable, Hashable {
         ScalableRegisterSet(bits: bits | (UInt64(za.bits) << Self.zaShift))
     }
 
-    // MARK: FFR / ZT0 (single registers → nullary, like RegisterRef.isStackPointer)
-
-    /// True iff FFR (the first-fault register) is in the set.
+    /// Whether FFR (the first-fault register) is in the set.
     @inlinable
     @inline(__always)
     public var containsFFR: Bool {
@@ -101,7 +75,7 @@ public struct ScalableRegisterSet: Sendable, Hashable {
         ScalableRegisterSet(bits: bits | Self.ffrBit)
     }
 
-    /// True iff ZT0 (the SME2 lookup-table register) is in the set.
+    /// Whether ZT0 (the SME2 lookup-table register) is in the set.
     @inlinable
     @inline(__always)
     public var containsZT0: Bool {
@@ -115,9 +89,7 @@ public struct ScalableRegisterSet: Sendable, Hashable {
         ScalableRegisterSet(bits: bits | Self.zt0Bit)
     }
 
-    // MARK: Set algebra (mirrors RegisterSet)
-
-    /// True iff no scalable register is in the set.
+    /// Whether the set is empty.
     @inlinable
     @inline(__always)
     public var isEmpty: Bool {

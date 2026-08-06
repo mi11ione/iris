@@ -5,22 +5,14 @@ import Iris
 import IrisValidation
 import Testing
 
-/// A real decoded record to use as a passing baseline, so each mismatch test
-/// mutates exactly one field.
 private func decoded(_ encoding: UInt32) -> Instruction {
     Iris.decode(encoding, at: 0)
 }
 
-private let faddDraft = decoded(0x6540_8440) // fadd z0.h, p1/m, z0.h, z2.h
-private let fcmgeDraft = decoded(0x6543_4445) // fcmge p5.h, p1/z, z2.h, z3.h
+private let faddDraft = decoded(0x6540_8440)
+private let fcmgeDraft = decoded(0x6543_4445)
 
-/// Validates the independent semantic-attribute re-derivation for 2s.4. The
-/// text validator proves mnemonic + operands, but disassembly does not encode
-/// flagEffect, the scalable effects, or the read/write sets — so the checker
-/// derives those from the (text-validated) operand list plus the mnemonic and
-/// compares. The two rules carrying the weight are `flagEffect == .none` on
-/// every form including the compares, and `partialWrite` set exactly on the
-/// merging forms plus the statically-preserving top-half converts.
+/// Validates the independent semantic-attribute re-derivation.
 @Suite("SVE floating-point / semantic checker mismatch detection")
 struct SVEFloatingPointSemanticCheckerTests {
     @Test func aRealRecordPassesEveryCheck() {
@@ -31,7 +23,6 @@ struct SVEFloatingPointSemanticCheckerTests {
     @Test func anUndefinedRecordIsAcceptedUnconditionally() {
         let d = perturbing(faddDraft) {
             $0.mnemonic = .undefined
-            // Even with otherwise-inconsistent fields, an UNDEFINED short-circuits.
             $0.flagEffect = .nzcv
         }
         #expect(SVEFloatingPointSemanticChecker.verify(draft: d) == nil)
@@ -62,7 +53,6 @@ struct SVEFloatingPointSemanticCheckerTests {
     }
 
     @Test func anyFlagEffectIsCaught() {
-        // The headline invariant: not one form may touch NZCV.
         let d = perturbing(fcmgeDraft) {
             $0.flagEffect = .nzcv
         }
@@ -72,7 +62,6 @@ struct SVEFloatingPointSemanticCheckerTests {
     }
 
     @Test func aWrongScalableEffectIsCaught() {
-        // fadd is merging, so partialWrite is expected; dropping it diverges.
         let d = perturbing(faddDraft) {
             $0.scalableEffect = .readsStreamingMode
         }
@@ -80,7 +69,6 @@ struct SVEFloatingPointSemanticCheckerTests {
     }
 
     @Test func aSpuriousPredicateWriteIsCaught() {
-        // fadd writes no predicate; inventing one must be caught.
         let d = perturbing(faddDraft) {
             $0.scalableWrites = ScalableRegisterSet.empty.insertingPredicate(3)
         }
@@ -89,7 +77,7 @@ struct SVEFloatingPointSemanticCheckerTests {
 
     @Test func aWrongGoverningPredicateReadIsCaught() {
         let d = perturbing(faddDraft) {
-            $0.scalableReads = .empty // the governing Pg read is missing
+            $0.scalableReads = .empty
         }
         #expect(SVEFloatingPointSemanticChecker.verify(draft: d)?.field == "predicateReads")
     }
@@ -108,8 +96,7 @@ struct SVEFloatingPointSemanticCheckerTests {
 }
 
 /// Validates the pure per-mnemonic / per-operand attribute helpers that the
-/// checker composes. They classify partial-write and destination-read
-/// behaviour from the mnemonic identity and operand shape alone.
+/// checker composes.
 @Suite("SVE floating-point / semantic attribute helpers")
 struct SVEFloatingPointSemanticAttributeTests {
     @Test func onlyTopHalfConvertsPreserveTheDestination() {
@@ -131,8 +118,6 @@ struct SVEFloatingPointSemanticAttributeTests {
         for m in reads {
             #expect(SVEFloatingPointSemanticAttributes.readsDestination(m), "\(m.rawValue)")
         }
-        // The two-address destructive forms are picked up by the operand walk,
-        // not this helper, so it must report false for them.
         for m: Mnemonic in [.fadd, .ftmad, .fadda, .faddv, .fexpa, .fmov] {
             #expect(!SVEFloatingPointSemanticAttributes.readsDestination(m), "\(m.rawValue)")
         }
@@ -152,8 +137,6 @@ struct SVEFloatingPointSemanticAttributeTests {
     }
 
     @Test func expectedScalableEffectFollowsMergingAndPreservation() {
-        // A merging record and a top-convert both carry partialWrite; a plain
-        // unpredicated accumulator carries only the streaming flag.
         #expect(SVEFloatingPointSemanticAttributes.expectedScalableEffect(for: faddDraft)
             == [.readsStreamingMode, .partialWrite])
         let fmmla = decoded(0x6422_E020)
@@ -161,8 +144,6 @@ struct SVEFloatingPointSemanticAttributeTests {
     }
 
     @Test func theRegisterHelpersReturnZeroForAnOperandlessRecord() {
-        // An operand-less record has no destination and no sources — the walk
-        // over an empty operand list must fall to zero rather than trap.
         let empty = Instruction(address: 0, encoding: 0, mnemonic: .fadd, category: .sve)
         #expect(SVEFloatingPointSemanticAttributes.expectedRegisterWrites(for: empty) == 0)
         #expect(SVEFloatingPointSemanticAttributes.expectedRegisterReads(for: empty) == 0)

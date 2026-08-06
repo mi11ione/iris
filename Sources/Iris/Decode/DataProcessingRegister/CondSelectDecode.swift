@@ -1,13 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Conditional select decode. Encoding
-// tier op0=0xD bit 24=0 bits 23:21=100. (op, op2) selects CSEL/CSINC/
-// CSINV/CSNEG. Aliases CSET/CSETM/CINC/CINV/CNEG.
-// Reserved fixed-field violations: S != 0, op2 ∈ {10, 11}.
-// The cond-invertable rule `(cond >> 1) != 0b111` excludes AL (1110)
-// and NV (1111) — at those cond values the alias does NOT trigger and
-// the base mnemonic is emitted with the original cond.
 
 enum CondSelectDecode {
     @inline(__always)
@@ -37,14 +29,11 @@ enum CondSelectDecode {
         case (0, 0b00): .csel
         case (0, 0b01): .csinc
         case (1, 0b00): .csinv
-        default: .csneg // (1, 0b01) — only remaining (op, op2).
+        default: .csneg
         }
         let condInvertable = (cond.rawValue >> 1) != 0b111
         let invertedCond = condFromBits(cond.rawValue ^ 1)
 
-        // Alias precedence — most-specific-first.
-
-        // CSET: base CSINC, Rn=Rm=31, condInvertable.
         if baseMnemonic == .csinc, Rn == 31, Rm == 31, condInvertable {
             return DecodedDraft(
                 address: address,
@@ -57,7 +46,6 @@ enum CondSelectDecode {
                 operandCount: sink.emit(.register(rdRef), .conditionCode(invertedCond)),
             )
         }
-        // CSETM: base CSINV, Rn=Rm=31, condInvertable.
         if baseMnemonic == .csinv, Rn == 31, Rm == 31, condInvertable {
             return DecodedDraft(
                 address: address,
@@ -70,7 +58,6 @@ enum CondSelectDecode {
                 operandCount: sink.emit(.register(rdRef), .conditionCode(invertedCond)),
             )
         }
-        // CINC: base CSINC, Rn=Rm, Rn != 31, condInvertable.
         if baseMnemonic == .csinc, Rn == Rm, Rn != 31, condInvertable {
             return DecodedDraft(
                 address: address,
@@ -83,7 +70,6 @@ enum CondSelectDecode {
                 operandCount: sink.emit(.register(rdRef), .register(rnRef), .conditionCode(invertedCond)),
             )
         }
-        // CINV: base CSINV, Rn=Rm, Rn != 31, condInvertable.
         if baseMnemonic == .csinv, Rn == Rm, Rn != 31, condInvertable {
             return DecodedDraft(
                 address: address,
@@ -96,9 +82,6 @@ enum CondSelectDecode {
                 operandCount: sink.emit(.register(rdRef), .register(rnRef), .conditionCode(invertedCond)),
             )
         }
-        // CNEG: base CSNEG, Rn=Rm, condInvertable. NO Rn != 31 restriction
-        // — CNEG allows Rn=XZR. Verified empirically:
-        // `0xDA9F07E0` (CSNEG x0, xzr, xzr, EQ) → `cneg x0, xzr, ne`.
         if baseMnemonic == .csneg, Rn == Rm, condInvertable {
             return DecodedDraft(
                 address: address,
@@ -112,7 +95,6 @@ enum CondSelectDecode {
             )
         }
 
-        // Base mnemonic — no alias.
         return DecodedDraft(
             address: address,
             encoding: encoding,

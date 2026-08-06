@@ -16,14 +16,8 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the bitwise-immediate group — the highest-risk rendering in the
-/// subpiece. The thirteen-bit N:immr:imms field decodes through the shared
-/// `DecodeBitMasks` to a 64-bit value whose smallest replication period picks
-/// the element size. AND/EOR/ORR always render their own mnemonic with the
-/// per-element value in hex; only the DUPM slot collapses — to `mov` when the
-/// value is a preferred logical immediate (not expressible as a signed byte
-/// optionally shifted), staying `dupm` otherwise. A reserved bitmask is
-/// UNDEFINED.
+/// Validates the bitwise-immediate group, the highest-risk rendering in the
+/// subpiece.
 @Suite("SVE integer / bitwise immediate and DUPM")
 struct SVEIntLogicalImmTests {
     @Test func theLogicalSlotsAlwaysRenderTheirOwnMnemonicInHex() {
@@ -46,8 +40,6 @@ struct SVEIntLogicalImmTests {
     }
 
     @Test func dupmKeepsItsNameForByteExpressibleValues() {
-        // A value the CPY/DUP immediate could also materialize is not a
-        // "preferred logical immediate", so the DUPM slot keeps `dupm`.
         let rows: [(UInt32, String)] = [
             (0x05C0_0620, "dupm z0.b, #0x3"),
             (0x05C0_0420, "dupm z0.h, #0x3"),
@@ -64,9 +56,6 @@ struct SVEIntLogicalImmTests {
     }
 
     @Test func dupmCollapsesToMovForPreferredValuesAcrossTheDecimalLadder() {
-        // llvm's printSVELogicalImm ladder: the sign-extended value prints as
-        // signed decimal when it fits int16, else unsigned decimal when the
-        // raw value fits uint16, else hex.
         let rows: [(UInt32, String)] = [
             (0x05C0_64E0, "mov z0.h, #4080"),
             (0x05C0_24E0, "mov z0.h, #-4081"),
@@ -82,16 +71,12 @@ struct SVEIntLogicalImmTests {
     }
 
     @Test func aReservedBitmaskImmediateIsUndefinedInEverySlot() {
-        // imms all-ones with N clear encodes no valid element; each of the
-        // four slots must reject it identically.
         for encoding: UInt32 in [0x0500_07E0, 0x0540_07E0, 0x0580_07E0, 0x05C0_07E0] {
             #expect(decode(encoding).mnemonic == .undefined, "0x\(String(encoding, radix: 16))")
         }
     }
 
     @Test func theElementSizeIsTheSmallestReplicationPeriod() {
-        // The same 0x3 payload lands at .b/.h/.s/.d purely from how the
-        // bitmask replicates; the operand carries the per-element width.
         #expect(decode(0x0580_0620).operands[2] == .unsignedImmediate(value: 3, width: 8))
         #expect(decode(0x0540_0420).operands[2] == .unsignedImmediate(value: 3, width: 16))
         #expect(decode(0x0580_0020).operands[2] == .unsignedImmediate(value: 3, width: 32))

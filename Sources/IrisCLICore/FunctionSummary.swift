@@ -3,25 +3,7 @@
 
 import Iris
 
-/// Renders the human-mode `functions` verb output: one aligned row per
-/// function with the rollups computed from its already-decoded
-/// instructions.
-///
-/// Layout (a header line, then one row per function in emission order):
-///
-///     <path> (<arch>):
-///
-///     address      symbol   instructions  calls  pac
-///     0x100000328  _add42              6      0   no
-///     0x100000398  _helper            14      2  yes
-///
-/// Columns. `address` is the function start in `0x` hex, left-aligned to
-/// the widest address. `symbol` is the function name, left-aligned to the
-/// widest name. `instructions` and `calls` are right-aligned counts. `pac`
-/// is `yes` or `no` for whether the function uses pointer authentication.
-/// Alignment is measured on plain text and color is applied after padding,
-/// so escapes never disturb the columns. A binary with no functions prints
-/// only the path header and a `(no functions)` note.
+/// Renders the human-mode `functions` output.
 public enum FunctionSummary {
     /// Right-pad `text` to `width` plain characters (no truncation).
     static func padLeft(_ text: String, to width: Int) -> String {
@@ -33,10 +15,7 @@ public enum FunctionSummary {
         String(repeating: " ", count: max(width - text.count, 0)) + text
     }
 
-    /// Width of a column: the widest of its header and every value. Folds
-    /// over `values` from the header's length, so it needs no empty-list
-    /// fallback (the caller only forms columns for a non-empty function
-    /// list, but the reduce is correct for any length).
+    /// Width of a column.
     static func columnWidth(_ header: String, _ values: [String]) -> Int {
         values.reduce(header.count) { max($0, $1.count) }
     }

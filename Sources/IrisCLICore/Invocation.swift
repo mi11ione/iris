@@ -3,13 +3,8 @@
 
 import Iris
 
-/// The four things `iris` does, selected by the verb word (or inferred
-/// from the input shape when the verb is omitted).
-///
-/// Each verb owns the set of flags it accepts, so a flag that does not
-/// belong to a verb is one usage error from one code path rather than a
-/// matrix of pairwise combination checks. `disasm`, `stats`, and
-/// `functions` take a Mach-O file; `decode` takes raw words.
+/// The four things `iris` does, selected by the verb word or inferred from the
+/// input shape.
 @frozen
 public enum Verb: String, Sendable, Hashable, CaseIterable {
     /// Disassemble a Mach-O file's code sections (the default verb).
@@ -28,27 +23,13 @@ public enum Verb: String, Sendable, Hashable, CaseIterable {
         self != .decode
     }
 
-    /// Whether `flag` (the long-option spelling, e.g. `--semantics`) is in
-    /// this verb's accepted set. The globals `--help`/`-h`/`--version` are
-    /// handled before per-verb parsing and are not listed here.
-    ///
-    /// - `disasm`: `--arch --semantics --json --slim --color --quiet --function --range`
-    /// - `decode`: `--features --semantics --json --slim --color --bytes`
-    /// - `stats`: `--arch --json --color --quiet`
-    /// - `functions`: `--arch --json --slim --color --quiet`
-    ///
-    /// `--bytes` is the decode input carrier (decode-only), so it is in
-    /// decode's set and absent from the file verbs. `--slim` shapes the
-    /// JSON, so it rides wherever `--json` is accepted; `--function` and
-    /// `--range` scope the disasm listing/stream.
+    /// Whether `flag` is in this verb's accepted set.
     @inlinable
     public func accepts(_ flag: String) -> Bool {
         switch flag {
         case "--json", "--color":
             true
         case "--slim":
-            // --slim only shapes --json, so it is accepted exactly where
-            // --json is (every verb), and rejected without --json below.
             true
         case "--quiet":
             self != .decode
@@ -56,7 +37,7 @@ public enum Verb: String, Sendable, Hashable, CaseIterable {
             self == .disasm || self == .decode
         case "--arch":
             readsFile
-        case "--features", "--bytes":
+        case "--features", "--bytes", "--at":
             self == .decode
         case "--function", "--range":
             self == .disasm
@@ -66,8 +47,7 @@ public enum Verb: String, Sendable, Hashable, CaseIterable {
     }
 }
 
-/// One parsed `iris` invocation: the verb, the input, and the flags the
-/// verb accepts.
+/// One parsed `iris` invocation.
 @frozen
 public struct Invocation: Sendable, Equatable {
     /// What to decode.
@@ -88,8 +68,7 @@ public struct Invocation: Sendable, Equatable {
         }
     }
 
-    /// A `--range start:end` half-open VM-address window: instructions
-    /// with `start <= address < end` survive the `disasm` scope.
+    /// A `--range start:end` half-open VM-address window.
     @frozen
     public struct AddressRange: Sendable, Equatable {
         /// Inclusive low bound.
@@ -111,10 +90,14 @@ public struct Invocation: Sendable, Equatable {
     public var arch: ArchSelection?
     /// `--features`: explicit decode features for `decode`.
     public var features: Features?
+    /// `--at`: the VM base address the raw words are decoded at, so relative
+    /// branches and PC-relative addressing resolve against the window's real
+    /// place in memory.
+    public var address: UInt64
     /// `--json`: NDJSON output.
     public var json: Bool
-    /// `--slim`: the compact `--json` projection (drops zero-signal
-    /// constants and empty/false fields). Only meaningful with `--json`.
+    /// `--slim`: the compact `--json` projection (drops zero-signal constants
+    /// and empty/false fields). Only meaningful with `--json`.
     public var slim: Bool
     /// `--semantics`: per-line semantic annotations (`disasm` / `decode`).
     public var semantics: Bool
@@ -132,6 +115,7 @@ public struct Invocation: Sendable, Equatable {
         input: Input,
         arch: ArchSelection? = nil,
         features: Features? = nil,
+        address: UInt64 = 0,
         json: Bool = false,
         slim: Bool = false,
         semantics: Bool = false,
@@ -144,6 +128,7 @@ public struct Invocation: Sendable, Equatable {
         self.input = input
         self.arch = arch
         self.features = features
+        self.address = address
         self.json = json
         self.slim = slim
         self.semantics = semantics
@@ -153,9 +138,7 @@ public struct Invocation: Sendable, Equatable {
         self.range = range
     }
 
-    /// The features `decode` uses: explicit `--features` first, then plain
-    /// ARM64 (the file verbs take their features from the selected slice,
-    /// not this).
+    /// The features `decode` uses.
     @inlinable
     public var directDecodeFeatures: Features {
         features ?? []
@@ -167,8 +150,7 @@ public struct Invocation: Sendable, Equatable {
 public enum ParsedCommandLine: Sendable, Equatable {
     /// A well-formed invocation.
     case run(Invocation)
-    /// `--help` / `-h`: the top-level help when `verb` is `nil`, that
-    /// verb's help otherwise.
+    /// `--help` / `-h`.
     case help(Verb?)
     /// `--version`.
     case version
@@ -178,30 +160,18 @@ public enum ParsedCommandLine: Sendable, Equatable {
 
 public extension ParsedCommandLine {
     /// Parse argv. The grammar is `iris [verb] [flags] [input]`: a leading
-    /// verb word (`disasm`/`decode`/`stats`/`functions`) is consumed if
-    /// present, otherwise the verb is inferred from the input shape (a
-    /// `0x`-prefixed token or `--bytes` is `decode`, a path is `disasm`).
-    /// Flags may appear in any order around the single positional input
-    /// and value flags repeat last-wins. The globals `--help`/`-h` and
-    /// `--version` win wherever they appear.
+    /// verb word is consumed if present, otherwise inferred from the input
+    /// shape (a `0x` token or `--bytes` is `decode`, a path is `disasm`).
+    /// Flags may appear in any order and value flags are last-wins;
+    /// `--help`/`-h` and `--version` win wherever they appear.
     static func parse(_ arguments: [String]) -> ParsedCommandLine {
-        // Bare `iris` prints the top-level help.
         if arguments.isEmpty {
             return .help(nil)
         }
-        // The globals win regardless of position. --version short circuits
-        // unconditionally; --help renders the named verb's help, so the
-        // verb is resolved before deciding which help to show.
         if arguments.contains("--version") {
             return .version
         }
 
-        // Resolve the verb: the first bare (non-flag) token, if it is a
-        // verb word, is the verb and is dropped from the input stream;
-        // value-flag values are stepped over so a leading flag does not
-        // hide the verb behind it ('iris --color never functions X').
-        // Any other first bare token is the input, and the verb is then
-        // inferred from its shape.
         let explicitVerb: Verb?
         var rest = arguments
         if let position = firstBareTokenIndex(arguments), let known = Verb(rawValue: arguments[position]) {
@@ -221,7 +191,6 @@ public extension ParsedCommandLine {
 
     /// Index of the first bare (non-`-`) token, stepping over the value of
     /// each value-flag so a flag's argument is never mistaken for it.
-    /// `nil` when argv is all flags (or empty).
     static func firstBareTokenIndex(_ arguments: [String]) -> Int? {
         var index = 0
         while index < arguments.count {
@@ -239,10 +208,7 @@ public extension ParsedCommandLine {
         return nil
     }
 
-    /// Infer the verb from argv with no verb word: `--bytes` anywhere, or a
-    /// leading-`0x` positional, means `decode`; otherwise `disasm`. Empty
-    /// argv resolves to `disasm` (its "no input" error is the one a bare
-    /// path would hit, and bare `iris` is intercepted as help before this).
+    /// Infer the verb from argv with no verb word.
     static func inferVerb(_ arguments: [String]) -> Verb {
         var index = 0
         while index < arguments.count {
@@ -263,18 +229,17 @@ public extension ParsedCommandLine {
         return .disasm
     }
 
-    /// Whether `argument` is a flag that consumes the following token as
-    /// its value (used to step over values during verb inference).
+    /// Whether `argument` is a flag that consumes the following token as its
+    /// value (used to step over values during verb inference).
     static func isValueFlag(_ argument: String) -> Bool {
         argument == "--arch" || argument == "--features"
             || argument == "--color" || argument == "--bytes"
             || argument == "--function" || argument == "--range"
+            || argument == "--at"
     }
 
     /// Parse `arguments` (the tokens after any verb word) against `verb`'s
-    /// accepted flag set. `verbWasExplicit` scopes the verb in error
-    /// messages: an explicit `iris stats …` reports `iris stats: error: …`,
-    /// an inferred one reports `iris: error: …`.
+    /// accepted flag set.
     static func parseFor(_ verb: Verb, _ arguments: [String], verbWasExplicit: Bool) -> ParsedCommandLine {
         let label = verbWasExplicit ? "iris \(verb.rawValue): error:" : "iris: error:"
 
@@ -282,6 +247,7 @@ public extension ParsedCommandLine {
         var bytesArgument: String?
         var arch: ArchSelection?
         var features: Features?
+        var addressArgument: String?
         var json = false
         var slim = false
         var semantics = false
@@ -290,9 +256,6 @@ public extension ParsedCommandLine {
         var function: String?
         var rangeArgument: String?
 
-        // A flag this verb does not accept falls through every `where`
-        // clause to the `default` unknown-option arm, the single rule that
-        // replaces every old pairwise flag-combination check.
         var index = 0
         while index < arguments.count {
             let argument = arguments[index]
@@ -336,6 +299,12 @@ public extension ParsedCommandLine {
                 }
                 features = .arm64e
                 index += 1
+            case "--at" where verb.accepts("--at"):
+                guard index < arguments.count else {
+                    return .usageError("\(label) --at needs a value (a base address, 0x-hex or decimal, e.g. 0xfffffe0007b3c000)")
+                }
+                addressArgument = arguments[index]
+                index += 1
             case "--color" where verb.accepts("--color"):
                 guard index < arguments.count else {
                     return .usageError("\(label) --color needs a value (auto, always, or never)")
@@ -352,11 +321,9 @@ public extension ParsedCommandLine {
                 bytesArgument = arguments[index]
                 index += 1
             case "--bytes" where verb.readsFile:
-                // A file verb reads a Mach-O; --bytes carries raw words, the
-                // same confusion as a leading 0x positional below, so it
-                // redirects to decode rather than dead-ending at "unknown
-                // option".
                 return .usageError("\(label) --bytes carries raw words; use 'iris decode --bytes …'")
+            case "--at" where verb.readsFile:
+                return .usageError("\(label) --at bases raw words; a Mach-O file carries its own addresses")
             default:
                 if argument.hasPrefix("-") {
                     return .usageError("\(label) unknown option '\(argument)'")
@@ -370,14 +337,15 @@ public extension ParsedCommandLine {
 
         return resolveInput(
             verb: verb, label: label, positional: positional, bytesArgument: bytesArgument,
-            arch: arch, features: features, json: json, slim: slim, semantics: semantics,
+            arch: arch, features: features, addressArgument: addressArgument,
+            json: json, slim: slim, semantics: semantics,
             color: color, quiet: quiet, function: function, rangeArgument: rangeArgument,
         )
     }
 
-    /// Turn the parsed positional / `--bytes` into the verb's input,
-    /// rejecting an input shape the verb cannot take (a `decode` word for a
-    /// file verb, a file path for `decode`).
+    /// Turn the parsed positional / `--bytes` into the verb's input, rejecting
+    /// an input shape the verb cannot take (a `decode` word for a file verb, a
+    /// file path for `decode`).
     private static func resolveInput(
         verb: Verb,
         label: String,
@@ -385,6 +353,7 @@ public extension ParsedCommandLine {
         bytesArgument: String?,
         arch: ArchSelection?,
         features: Features?,
+        addressArgument: String?,
         json: Bool,
         slim: Bool,
         semantics: Bool,
@@ -393,21 +362,19 @@ public extension ParsedCommandLine {
         function: String?,
         rangeArgument: String?,
     ) -> ParsedCommandLine {
-        // --slim only shapes the JSON projection; without --json it has no
-        // output to act on, so it is a usage error rather than a silent
-        // no-op (the same per-verb scoping the other flags get).
         if slim, !json {
             return .usageError("\(label) --slim shapes --json output; add --json (or drop --slim)")
         }
-        // --function and --range are two ways to scope one disasm; asking
-        // for both at once is ambiguous, so it is a usage error rather than
-        // a silent precedence rule.
         if function != nil, rangeArgument != nil {
             return .usageError("\(label) --function and --range both scope the output; use one")
         }
-        // --range start:end → a half-open VM window, validated at parse
-        // time (an empty or malformed value is a usage error here, before
-        // the file is even opened).
+        var address: UInt64 = 0
+        if let addressArgument {
+            guard let parsed = parseAddress(addressArgument) else {
+                return .usageError("\(label) --at wants a base address as 0x-hex or decimal, got '\(addressArgument)'")
+            }
+            address = parsed
+        }
         var range: Invocation.AddressRange?
         if let rangeArgument {
             guard let parsed = parseAddressRange(rangeArgument) else {
@@ -424,8 +391,6 @@ public extension ParsedCommandLine {
                 ? "\(label) no input (a Mach-O file path)"
                 : "\(label) no input (a 0x-prefixed word, or --bytes)")
         case let (nil, .some(hexBytes)):
-            // --bytes is decode-only (the file verbs do not accept it), so
-            // reaching here means verb == .decode.
             guard let bytes = parseByteString(hexBytes) else {
                 return .usageError("\(label) --bytes wants pairs of hex digits separated by spaces or commas, got '\(hexBytes)'")
             }
@@ -433,14 +398,11 @@ public extension ParsedCommandLine {
         case let (.some(argument), nil):
             let looksLikeWord = argument.hasPrefix("0x") || argument.hasPrefix("0X")
             if verb.readsFile {
-                // A file verb takes a path. A 0x token here is a decode
-                // input the user routed to the wrong verb.
                 if looksLikeWord {
                     return .usageError("\(label) '\(argument)' is a raw word; use 'iris decode \(argument)'")
                 }
                 input = .file(path: argument)
             } else {
-                // decode takes a word; a non-0x positional is not one.
                 guard looksLikeWord else {
                     return .usageError("\(label) '\(argument)' is not a 0x-prefixed word; use 'iris disasm \(argument)' for a file")
                 }
@@ -456,6 +418,7 @@ public extension ParsedCommandLine {
             input: input,
             arch: arch,
             features: features,
+            address: address,
             json: json,
             slim: slim,
             semantics: semantics,
@@ -467,10 +430,7 @@ public extension ParsedCommandLine {
     }
 
     /// Parse a `--range` value `start:end` into a half-open
-    /// ``Invocation/AddressRange``. Each side is a `0x`-prefixed hex or a
-    /// plain decimal `UInt64`. `nil` for an empty value, a missing or
-    /// extra `:`, an unparseable side, or `start >= end` (an empty or
-    /// inverted window is a user error, not a silent no-output run).
+    /// ``Invocation/AddressRange``.
     static func parseAddressRange(_ argument: String) -> Invocation.AddressRange? {
         let parts = argument.split(separator: ":", omittingEmptySubsequences: false)
         guard parts.count == 2 else { return nil }
@@ -478,8 +438,7 @@ public extension ParsedCommandLine {
         return Invocation.AddressRange(start: start, end: end)
     }
 
-    /// A single `--range` bound: `0x`-prefixed hex, or plain decimal.
-    /// `nil` when empty or not a `UInt64` in the indicated base.
+    /// A single `--range` bound.
     static func parseAddress(_ token: some StringProtocol) -> UInt64? {
         if token.hasPrefix("0x") || token.hasPrefix("0X") {
             let digits = token.dropFirst(2)
@@ -495,10 +454,7 @@ public extension ParsedCommandLine {
         return UInt32(digits, radix: 16)
     }
 
-    /// Hex byte string: pairs of hex digits, optionally separated by
-    /// spaces and/or commas (`"1f 20 03 d5"`, `"1f,20,03,d5"`, `"1f2003d5"`).
-    /// Digits map to values in one total pass, so no conversion can fail
-    /// after validation.
+    /// Hex byte string.
     static func parseByteString(_ argument: String) -> [UInt8]? {
         var nibbles: [UInt8] = []
         nibbles.reserveCapacity(argument.utf8.count)

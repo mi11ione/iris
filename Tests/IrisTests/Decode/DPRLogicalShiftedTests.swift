@@ -9,7 +9,6 @@ import Testing
 @Suite("DPR / Logical shifted-register")
 struct DPRLogicalShiftedTests {
     @Test func baseAnd64Bit() {
-        // AND x0, x1, x2 — opc=00, N=0.
         let d = decode(0x8A02_0020, at: 0)
         #expect(d.mnemonic == .and)
         #expect(d.flagEffect == .none)
@@ -33,7 +32,6 @@ struct DPRLogicalShiftedTests {
     }
 
     @Test func baseBic() {
-        // AND with N=1 → BIC. Encoding bit 21 set.
         let d = decode(0x8A22_0020, at: 0)
         #expect(d.mnemonic == .bic)
     }
@@ -66,20 +64,17 @@ struct DPRLogicalShiftedTests {
     }
 
     @Test func andWithRorShiftEmitsShiftedRegister() {
-        // ROR is a valid shift kind for logical ops (unlike arithmetic).
         let d = decode(0x8AC2_1420, at: 0)
         #expect(d.mnemonic == .and)
         #expect(d.operands[2] == .shiftedRegister(reg: .x(2), shift: .ror, amount: 5))
     }
 
     @Test func and32BitImm6High5SetReturnsUndefined() {
-        // sf=0 + imm6[5]=1 is reserved (here with ROR shift kind).
         let d = decode(0x0AC2_8020, at: 0)
         #expect(d.mnemonic == .undefined)
     }
 
     @Test func movRegisterAliasOnZeroShiftRnXZR() {
-        // ORR Rd, XZR, Rm, LSL #0 → MOV Rd, Rm.
         let d = decode(0xAA02_03E0, at: 0)
         #expect(d.mnemonic == .mov)
         #expect(Array(d.operands) == [.register(.x(0)), .register(.x(2))])
@@ -87,39 +82,33 @@ struct DPRLogicalShiftedTests {
     }
 
     @Test func movRegisterDoesNotAliasWithRorShift() {
-        // ORR Rd, XZR, Rm, ROR #5 stays as ORR (MOV needs LSL #0).
         let d = decode(0xAAC2_17E0, at: 0)
         #expect(d.mnemonic == .orr)
     }
 
     @Test func movRegisterDoesNotAliasWithNonzeroShift() {
-        // ORR Rd, XZR, Rm, LSL #3 stays as ORR (alias predicate requires amount=0).
         let d = decode(0xAA02_0FE0, at: 0)
         #expect(d.mnemonic == .orr)
     }
 
     @Test func movRegisterDoesNotAliasWhenRnIsNonZero() {
-        // ORR x0, x1, x2 — Rn != 31 → no MOV alias.
         let d = decode(0xAA02_0020, at: 0)
         #expect(d.mnemonic == .orr)
     }
 
     @Test func mvnAliasFromOrnRnXZR() {
-        // ORN Rd, XZR, Rm → MVN Rd, Rm.
         let d = decode(0xAA22_03E0, at: 0)
         #expect(d.mnemonic == .mvn)
         #expect(Array(d.operands) == [.register(.x(0)), .register(.x(2))])
     }
 
     @Test func mvnAliasKeepsShiftAtNonzeroAmount() {
-        // ORN Rd, XZR, Rm, LSL #3 → MVN Rd, Rm, LSL #3.
         let d = decode(0xAA22_0FE0, at: 0)
         #expect(d.mnemonic == .mvn)
         #expect(d.operands[1] == .shiftedRegister(reg: .x(2), shift: .lsl, amount: 3))
     }
 
     @Test func tstAliasFromAndsRdXZR() {
-        // ANDS xzr, Rn, Rm → TST Rn, Rm.
         let d = decode(0xEA02_003F, at: 0)
         #expect(d.mnemonic == .tst)
         #expect(Array(d.operands) == [.register(.x(1)), .register(.x(2))])
@@ -128,14 +117,12 @@ struct DPRLogicalShiftedTests {
     }
 
     @Test func tstAliasKeepsShift() {
-        // ANDS xzr, x1, x2, ROR #5 → TST x1, x2, ROR #5.
         let d = decode(0xEAC2_143F, at: 0)
         #expect(d.mnemonic == .tst)
         #expect(d.operands[1] == .shiftedRegister(reg: .x(2), shift: .ror, amount: 5))
     }
 
     @Test func andsWithRdNonZeroStaysAsAnds() {
-        // ANDS x1, x2, x3 — Rd != 31 → no TST alias.
         let d = decode(0xEA03_0041, at: 0)
         #expect(d.mnemonic == .ands)
     }

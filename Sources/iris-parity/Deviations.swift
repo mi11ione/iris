@@ -1,24 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Known-deviations catalogue: KNOWN-DEVIATIONS.md at the repository
-// root is both human documentation and the machine-readable
-// classification table the parity subcommands consult. A divergence matching a catalogue entry
-// is reported under the entry's id and does not gate; everything else
-// gates. Two statuses exist — `expected` (a by-design oracle gap, e.g.
-// AMX) and `open-defect` (a recorded library bug awaiting a fix leg);
-// both are non-gating but defects are reported loudly so they cannot
-// fade into the background.
 
 import Foundation
 import Iris
 import IrisValidation
 
-/// Which parity instrument an entry classifies for: text-parity
-/// divergences (`tsv`/`live`) or semantic-checker issues (`semantic`).
-/// A text deviation and a semantic deviation are different claims, so
-/// an entry never crosses instruments — `check=semantic` opts in, the
-/// default is text.
+/// Which parity instrument an entry classifies for.
 enum DeviationCheck: String, Sendable {
     case text
     case semantic
@@ -30,14 +17,7 @@ struct DeviationEntry: Sendable {
     let check: DeviationCheck
     let constraints: [(key: String, value: String)]
 
-    /// Match one divergence. Constraint keys:
-    /// `iris.category=<name>` · `iris.mnemonic=<name>` ·
-    /// `oracle=invalid` · `oracle.prefix=<token>` ·
-    /// `encoding.mask=0xM:0xV` (encoding & M == V) ·
-    /// `field=<name>` (the semantic checker's issue field; text
-    /// divergences carry no field, so the clause never matches them).
-    /// All must hold. (`check=` is instrument routing, consumed at
-    /// load, not a per-divergence constraint.)
+    /// Match one divergence.
     func matches(instruction: Instruction, oracleText: String, field: String? = nil) -> Bool {
         for constraint in constraints {
             switch constraint.key {
@@ -70,10 +50,7 @@ struct DeviationCatalogue: Sendable {
     let entries: [DeviationEntry]
     let path: String
 
-    /// Load `KNOWN-DEVIATIONS.md`, parsing rows of the entry table:
-    /// `| id | status | matcher | ... |` where matcher is a
-    /// backtick-quoted `;`-separated `key=value` list. A missing file
-    /// yields an empty catalogue (every divergence gates).
+    /// Load `KNOWN-DEVIATIONS.md`, parsing rows of the entry table.
     static func load() -> DeviationCatalogue {
         let path = repositoryRoot().appendingPathComponent("KNOWN-DEVIATIONS.md").path
         guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else {
@@ -113,11 +90,6 @@ struct DeviationCatalogue: Sendable {
     }
 
     /// The first matching entry for a divergence, or nil (gating).
-    /// `check` routes by instrument: `tsv`/`live` classify text
-    /// divergences, `semantic` classifies checker issues (with no
-    /// oracle text — semantic entries must not carry oracle clauses —
-    /// and the issue's `field`, so a `field=` entry catalogues exactly
-    /// the recorded defect, not every future issue on the mnemonic).
     func classify(
         instruction: Instruction, oracleText: String, check: DeviationCheck = .text,
         field: String? = nil,

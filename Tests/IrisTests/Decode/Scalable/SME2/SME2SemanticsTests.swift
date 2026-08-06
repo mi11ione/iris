@@ -13,9 +13,6 @@ private func decodePred(_ e: UInt32) -> Instruction {
     Iris.decode(e, at: 0)
 }
 
-/// Decode, perturb exactly one field, and report which check fires. Starting
-/// from a record the decoder really produced keeps every other attribute
-/// self-consistent, so the reported field pins the perturbation.
 private func perturbedSME(_ e: UInt32, _ body: (inout InstructionImage) -> Void) -> SME2SemanticChecker.Issue? {
     SME2SemanticChecker.verify(draft: perturbing(decodeSME(e), body))
 }
@@ -24,7 +21,6 @@ private func perturbedPred(_ e: UInt32, _ body: (inout InstructionImage) -> Void
     SME2SemanticChecker.verify(draft: perturbing(decodePred(e), body))
 }
 
-/// One representative encoding per family the checker classifies.
 private let smeRepresentatives: [(UInt32, String)] = [
     (0xC1A1_1C00, "fadd — ZA-accumulate"),
     (0x80C0_0008, "fmop4a — MOP4"),
@@ -49,11 +45,7 @@ private let smeRepresentatives: [(UInt32, String)] = [
 ]
 
 /// Validates that the independently-derived semantic model agrees with every
-/// record the decoder produces. The checker re-derives category, the
-/// branch/flag/memory classification, the streaming/partial/non-temporal effect
-/// flags, and the ZA/ZT0 touch consistency from the mnemonic and operand shape
-/// alone — so a record that renders perfect text but mis-tags any of them is
-/// still caught.
+/// record the decoder produces.
 @Suite("SME2 semantics / consistent records pass")
 struct SME2SemanticsPassTests {
     @Test func everyFamilyRepresentativePassesTheChecker() {
@@ -72,8 +64,6 @@ struct SME2SemanticsPassTests {
     }
 
     @Test func anUndefinedSMEHoleIsVacuouslyValid() {
-        // Category is checked even for a hole (it must match the region), but
-        // there is no other semantic content to contradict.
         #expect(SME2SemanticChecker.verify(draft: decodeSME(0xC100_2000)) == nil)
         let manual = Instruction(address: 0, encoding: 0xC100_2000, mnemonic: .undefined, category: .sme)
         #expect(SME2SemanticChecker.verify(draft: manual) == nil)
@@ -84,7 +74,6 @@ struct SME2SemanticsPassTests {
     }
 
     @Test func theStreamingSafeTrioIsNotStreamingGated() {
-        // LDR/STR ZT0 and ZERO {zt0} are the only IsNonStreamingSafe records.
         for encoding: UInt32 in [0xE11F_8000, 0xE13F_8000, 0xC048_0001] {
             let d = decodeSME(encoding)
             #expect(!d.scalableEffect.contains(.readsStreamingMode), "0x\(String(encoding, radix: 16))")
@@ -93,8 +82,6 @@ struct SME2SemanticsPassTests {
     }
 
     @Test func theMovtInsertIsPartialWhileTheMovtExtractIsNot() {
-        // Only the MOVT that writes a ZT0 slice is partial; the MOVT reading
-        // ZT0 into a GPR is a full GPR write.
         #expect(decodeSME(0xC04E_03E0).scalableEffect.contains(.partialWrite))
         #expect(!decodeSME(0xC04C_03E0).scalableEffect.contains(.partialWrite))
         #expect(SME2SemanticChecker.verify(draft: decodeSME(0xC04E_03E0)) == nil)
@@ -102,16 +89,13 @@ struct SME2SemanticsPassTests {
     }
 }
 
-/// Validates that the checker reports a record that renders plausibly but
-/// mis-tags its semantics. Each case starts from a real decode and perturbs one
-/// attribute, so the reported field pins which invariant fired — a checker that
-/// silently accepted any of these would let the validator's semantic sweep pass
-/// over a real classification bug.
+/// Validates that the checker reports a record rendering plausibly but
+/// mis-tagging its semantics; each case perturbs one attribute so the
+/// reported.
 @Suite("SME2 semantics / mismatches are reported")
 struct SME2SemanticsMismatchTests {
     @Test func aForeignCategoryIsReported() {
         #expect(perturbedSME(0xC1A1_1C00) { $0.category = .simdAndFP }?.field == "category")
-        // The carve must stay `.sve`; retagging it `.sme` is caught too.
         #expect(perturbedPred(0x2520_4010) { $0.category = .sme }?.field == "category")
     }
 
@@ -124,7 +108,6 @@ struct SME2SemanticsMismatchTests {
     }
 
     @Test func aFlagEffectIsReportedBothWays() {
-        // No SME-region 2s.7 record touches NZCV; every WHILE carve record does.
         #expect(perturbedSME(0xC1A1_1C00) { $0.flagEffect = .nzcv }?.field == "flagEffect")
         #expect(perturbedPred(0x2520_4010) { $0.flagEffect = .none }?.field == "flagEffect")
     }
@@ -135,7 +118,6 @@ struct SME2SemanticsMismatchTests {
     }
 
     @Test func aMismatchedZATouchIsReported() {
-        // Drop the ZA touch off a ZA record, and add one to a non-ZA record.
         #expect(perturbedSME(0xC1A1_1C00) {
             $0.scalableReads = .empty
             $0.scalableWrites = .empty
@@ -181,14 +163,12 @@ struct SME2SemanticsMismatchTests {
     }
 
     @Test func aModeTransitionEffectIsReported() {
-        // 2s.7 never toggles streaming mode or ZA-enable (those are 2.3's).
         #expect(perturbedSME(0xC1A1_1C00) { $0.scalableEffect.insert(.writesStreamingMode) }?.field == "writesMode")
         #expect(perturbedSME(0xC1A1_1C00) { $0.scalableEffect.insert(.writesZAEnable) }?.field == "writesMode")
     }
 }
 
-/// Validates the `SME2SemanticChecker.Issue` value the checker hands back — the
-/// three fields carry the mismatch report to the validator's log.
+/// Validates the `SME2SemanticChecker.Issue` value the checker hands back.
 @Suite("SME2 semantics / issue value")
 struct SME2SemanticIssueTests {
     @Test func theReportedIssueCarriesItsThreeFields() {

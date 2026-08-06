@@ -1,16 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD vector three-same (and FP-family same-shape)
-// per ARM ARM § C4.1.96.29 + .23 merged on opcode-range.
-// Encoding: `0 Q U 0 1110 size 1 Rm opcode 1 Rn Rd`. Opcode is bits
-// [15:11] (5 bits). Bit[10] is the class discriminator (== 1 here).
-// FP-family opcodes are 11000..11111 with size[1] selecting variant
-// (FMAXNM/FMINNM, FMLA/FMLS, FADD/FSUB, FMULX/(reserved), FCMEQ/
-// FCMGE-FACGE-FCMGT-FACGT, FMAX/FMIN, FRECPS/FRSQRTS, FMUL/FDIV).
-//
-// MOV (vector, register) alias of `ORR Vd.T, Vn.T, Vm.T` when Rm == Rn.
-// Mnemonic .mov is reused from DPI's slab.
 
 enum AdvSIMDThreeSameDecode {
     @_optimize(speed)
@@ -23,9 +12,6 @@ enum AdvSIMDThreeSameDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // FP-family opcodes (24..31) live in this same class but use the
-        // sz=size[0] bit (bit[22]) for precision and size[1]=bit[23] for
-        // FMAXNM/FMINNM-style variant disambiguation.
         if opcode >= 0b11000 {
             return decodeFPFamily(
                 encoding: encoding, address: address,
@@ -46,18 +32,9 @@ enum AdvSIMDThreeSameDecode {
         Rm: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let arrangement = arrangementFromSizeQ(size: size, Q: Q)
-        // Bitwise logical opcodes (16..23 in U=0; bit-select in U=1).
-        // These have a unique arrangement constraint: only .8B/.16B
-        // (size=00). Higher size combinations are reserved.
         if opcode == 0b00011 {
-            // Logical (AND/BIC/ORR/ORN by size). The "size" field selects
-            // which logical op: 00=AND, 01=BIC, 10=ORR, 11=ORN (U=0); or
-            // EOR/BSL/BIT/BIF (U=1). Arrangement is always .8B/.16B
-            // (B-element); the size field is repurposed as op-selector
-            // here per ARM ARM § C7.2 .
             let actualArrangement: VectorArrangement = Q == 1 ? .b16 : .b8
             let m = logicalMnemonicByteVec(U: U, size: size)
-            // MOV (vector, register) = ORR Vd.T, Vn.T, Vn.T (Rm == Rn).
             let isOrr = (U == 0 && size == 0b10)
             if isOrr, Rm == Rn {
                 return makeTwoOperandRecord(
@@ -73,17 +50,10 @@ enum AdvSIMDThreeSameDecode {
                 destReadsItself: U == 1 && (size == 0b01 || size == 0b10 || size == 0b11), &sink,
             )
         }
-        // Int three-same proper. (U, opcode) determines mnemonic;
-        // arrangement constraint by size+Q.
         let mnemonic = intMnemonic(U: U, opcode: opcode)
         guard let m = mnemonic else {
             return .undefined(at: address, encoding: encoding)
         }
-        // Some opcodes don't accept all element sizes (e.g. .SHL family is
-        // size != 11). ARM ARM enumerates per opcode; we apply a small
-        // set of well-known constraints. The U bit further refines the
-        // check — opcode=10011 is MUL (U=0, all non-.1D/.2D sizes) vs
-        // PMUL (U=1, only .8B/.16B).
         if !arrangementValidForIntOpcode(U: U, opcode: opcode, arrangement: arrangement) {
             return .undefined(at: address, encoding: encoding)
         }
@@ -107,7 +77,7 @@ enum AdvSIMDThreeSameDecode {
         case (1, 0b00): .eor
         case (1, 0b01): .bsl
         case (1, 0b10): .bit
-        default: .bif // (U, size) = (1, 0b11) — only remaining combination.
+        default: .bif
         }
     }
 
@@ -164,22 +134,17 @@ enum AdvSIMDThreeSameDecode {
         }
     }
 
-    /// Per-opcode arrangement-validity check. Returns false for the
-    /// architecturally-reserved (U, opcode, arrangement) combinations.
+    /// Per-opcode arrangement-validity check.
     @inline(__always)
     @_effects(readonly)
     private static func arrangementValidForIntOpcode(
         U: UInt8, opcode: UInt8, arrangement: VectorArrangement,
     ) -> Bool {
-        // .1D (size=11, Q=0) is architecturally reserved for every integer
-        // three-same opcode.
         if arrangement == .d1 { return false }
-        // SQDMULH / SQRDMULH (opcode 10110): H and S elements only.
         if opcode == 0b10110 {
             return arrangement == .h4 || arrangement == .h8
                 || arrangement == .s2 || arrangement == .s4
         }
-        // PMUL (U=1, opcode=10011): .8B/.16B only. MUL (U=0): no D element.
         if opcode == 0b10011 {
             if U == 1 {
                 return arrangement == .b8 || arrangement == .b16
@@ -190,11 +155,8 @@ enum AdvSIMDThreeSameDecode {
         case 0b10010, 0b00000, 0b00010, 0b00100,
              0b10101, 0b10100, 0b01100, 0b01101,
              0b01110, 0b01111:
-            // SHADD/SRHADD/SHSUB/MLA/MLS/MAX/MIN/SABD/SABA — reserved at .2D.
             return arrangement != .d2
         default:
-            // SQADD/SQSUB/SSHL/SQSHL/SRSHL/SQRSHL/CMGT/CMGE/ADD/CMTST/SUB/
-            // CMEQ/ADDP accept all sizes (.2D allowed; .1D rejected above).
             return true
         }
     }
@@ -206,16 +168,22 @@ enum AdvSIMDThreeSameDecode {
         Q: UInt8, U: UInt8, size: UInt8, opcode: UInt8,
         Rm: UInt8, Rn: UInt8, Rd: UInt8, _ sink: inout OperandSink,
     ) -> DecodedDraft {
-        // sz = size[0] (bit[22]): 0 = S, 1 = D.
+        if let widening = wideningHalfProductMnemonic(U: U, size: size, opcode: opcode) {
+            return makeWideningRecord(
+                address: address, encoding: encoding, mnemonic: widening,
+                Rd: Rd, Rn: Rn, Rm: Rm,
+                dstArrangement: Q == 1 ? .s4 : .s2,
+                srcArrangement: Q == 1 ? .h4 : .h2, &sink,
+            )
+        }
         let sz = (size & 0b01)
-        // bit[23] = size[1] discriminates the FMAXNM/FMINNM-style pairs.
         let altBit = (size >> 1) & 1
         let arrangement: VectorArrangement
         switch (sz, Q) {
         case (0, 0): arrangement = .s2
         case (0, 1): arrangement = .s4
         case (1, 1): arrangement = .d2
-        default: return .undefined(at: address, encoding: encoding) // (1,0) = 1D reserved here
+        default: return .undefined(at: address, encoding: encoding)
         }
         let m: Mnemonic
         switch (U, opcode, altBit) {
@@ -243,7 +211,6 @@ enum AdvSIMDThreeSameDecode {
         case (1, 0b11110, 1): m = .fminp
         case (1, 0b11111, 0): m = .fdiv
         case (1, 0b11010, 1): m = .fabd
-        // FEAT_FAMINMAX (altBit=1 of 11011) and FEAT_FP8 FSCALE (altBit=1 of 11111).
         case (0, 0b11011, 1): m = .famax
         case (1, 0b11011, 1): m = .famin
         case (1, 0b11111, 1): m = .fscale
@@ -255,6 +222,42 @@ enum AdvSIMDThreeSameDecode {
             mnemonic: m, Rd: Rd, Rn: Rn, Rm: Rm,
             arrangement: arrangement,
             destReadsItself: destReadsItself, &sink,
+        )
+    }
+
+    /// FEAT_FHM widening half-precision products, whose destination is twice
+    /// the element width of both sources.
+    @inline(__always)
+    @_effects(readonly)
+    private static func wideningHalfProductMnemonic(
+        U: UInt8, size: UInt8, opcode: UInt8,
+    ) -> Mnemonic? {
+        if size & 0b01 != 0 { return nil }
+        let subtracting = (size >> 1) & 1 == 1
+        if U == 0, opcode == 0b11101 { return subtracting ? .fmlsl : .fmlal }
+        if U == 1, opcode == 0b11001 { return subtracting ? .fmlsl2 : .fmlal2 }
+        return nil
+    }
+
+    @inline(__always)
+    @_effects(readonly)
+    private static func makeWideningRecord(
+        address: UInt64, encoding: UInt32, mnemonic: Mnemonic,
+        Rd: UInt8, Rn: UInt8, Rm: UInt8,
+        dstArrangement: VectorArrangement, srcArrangement: VectorArrangement,
+        _ sink: inout OperandSink,
+    ) -> DecodedDraft {
+        var reads = simdfpInsertingVector(Rn, into: .empty)
+        reads = simdfpInsertingVector(Rm, into: reads)
+        reads = simdfpInsertingVector(Rd, into: reads)
+        return DecodedDraft(
+            address: address, encoding: encoding,
+            mnemonic: mnemonic,
+            semanticReads: reads,
+            semanticWrites: simdfpInsertingVector(Rd, into: .empty),
+            branchClass: .none, memoryAccess: .none, memoryOrdering: [],
+            flagEffect: .none, category: .simdAndFP,
+            operandCount: sink.emit(simdfpVectorOperand(Rd, arrangement: dstArrangement), simdfpVectorOperand(Rn, arrangement: srcArrangement), simdfpVectorOperand(Rm, arrangement: srcArrangement)),
         )
     }
 

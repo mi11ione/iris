@@ -4,8 +4,7 @@
 import Iris
 import Testing
 
-/// Validates RegisterRef factories — every named register form, role
-/// disambiguation at canonical-index 31, and width selection.
+/// Validates RegisterRef factories.
 @Suite("RegisterRef / factory constructors")
 struct RegisterRefFactoryTests {
     @Test func wFactoryProducesGeneralW32() {
@@ -107,8 +106,7 @@ struct RegisterRefFactoryTests {
     }
 }
 
-/// Validates RegisterRole / RegisterWidth — closed-set enums backing
-/// the operand-level register identity.
+/// Validates RegisterRole / RegisterWidth.
 @Suite("RegisterRole and RegisterWidth / raw values")
 struct RegisterRoleWidthTests {
     @Test func roleRawValuesStable() {
@@ -144,8 +142,8 @@ struct RegisterRoleWidthTests {
     }
 }
 
-/// Validates RegisterSet — the 64-bit semantic-reads / -writes bitmask
-/// over canonical GPR (0..31) and SIMD (32..63) indices.
+/// Validates RegisterSet — the 64-bit semantic-reads / -writes bitmask over
+/// canonical GPR (0..31) and SIMD (32..63) indices.
 @Suite("RegisterSet / bitmask operations")
 struct RegisterSetTests {
     @Test func emptyHasZeroMask() {

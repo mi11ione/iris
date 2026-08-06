@@ -1,10 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD scalar pairwise per ARM ARM § C4.1.96.14.
-// Encoding: `0 1 U 1 1110 size 11000 opcode 10 Rn Rd`. Reduce a 64-bit
-// pair within a vector register to a scalar result. Mnemonics:
-// ADDP (Dd ← Vn.2D pairwise), FMAXNMP/FADDP/FMAXP/FMINNMP/FMINP (FP).
 
 enum AdvSIMDScalarPairwiseDecode {
     @_optimize(speed)
@@ -15,7 +10,6 @@ enum AdvSIMDScalarPairwiseDecode {
         let Rn = UInt8((encoding >> 5) & 0x1F)
         let Rd = UInt8(encoding & 0x1F)
 
-        // ADDP scalar (U=0, opcode=11011): operates on a 2D pair (size=11).
         if U == 0, opcode == 0b11011 {
             if size != 0b11 {
                 return .undefined(at: address, encoding: encoding)
@@ -30,8 +24,6 @@ enum AdvSIMDScalarPairwiseDecode {
                 operandCount: sink.emit(simdfpScalarOperand(Rd, size: .d), simdfpVectorOperand(Rn, arrangement: .d2)),
             )
         }
-        // FP16 scalar pairwise (U=0, sz22=0): result .h, src .2h. opcode
-        // 01100 (NM, max/min via bit23), 01101 (faddp), 01111 (max/min).
         if U == 0, size & 1 == 0 {
             let altBit = (size >> 1) & 1
             let m: Mnemonic? = switch (opcode, altBit) {
@@ -53,8 +45,6 @@ enum AdvSIMDScalarPairwiseDecode {
                 )
             }
         }
-        // FP-family pairwise (U=1; opcode at bits[16:12]; size[1] selects
-        // double precision; size[0] selects single).
         if U == 1 {
             let sz = size & 1
             let altBit = (size >> 1) & 1

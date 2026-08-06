@@ -24,17 +24,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the predicated integer groups at top byte 0x04: arithmetic and
-/// logical (G1, with the size-gated divides and the FEAT_CPA ADDPT/SUBPT),
-/// shifts by register, wide element and immediate (G2, with the tsz joint
-/// element-and-amount scheme), the unary family in both merging and zeroing
-/// forms (G3, with the size-gated extends), and multiply-add in both its
-/// accumulate (MLA/MLS) and multiplicand (MAD/MSB) orders (G4). All the `/M`
-/// forms read their destination and set partialWrite; every form reads
-/// streaming mode.
+/// Validates the predicated integer groups at 0x04.
 @Suite("SVE integer / predicated arithmetic, shifts, unary, multiply-add")
 struct SVEIntPredicatedDecodeTests {
-    /// Every allocated G1 opcode at a legal size, with Pg=1, Zm=2, Zdn=3.
     private static let arithLogical: [(UInt32, Mnemonic, String)] = [
         (0x0400_0443, .add, "add z3.b, p1/m, z3.b, z2.b"),
         (0x0401_0443, .sub, "sub z3.b, p1/m, z3.b, z2.b"),
@@ -75,21 +67,17 @@ struct SVEIntPredicatedDecodeTests {
     }
 
     @Test func theSizeGatedArithmeticOpcodesRejectTheirIllegalSizes() {
-        // The divides need a word or doubleword element; ADDPT/SUBPT are
-        // doubleword-only; and the four unallocated opcodes reject everywhere.
         for encoding: UInt32 in [
-            0x0414_0443, // sdiv .b
-            0x0455_0443, // udiv .h
-            0x0404_0443, // addpt .b
-            0x0402_0443, 0x0406_0443, 0x0407_0443, // reserved opc 0x02/0x06/0x07
-            0x040E_0443, 0x040F_0443, 0x0411_0443, // reserved opc 0x0E/0x0F/0x11
+            0x0414_0443,
+            0x0455_0443,
+            0x0404_0443,
+            0x0402_0443, 0x0406_0443, 0x0407_0443,
+            0x040E_0443, 0x040F_0443, 0x0411_0443,
         ] {
             #expect(decode(encoding).mnemonic == .undefined, "0x\(String(encoding, radix: 16))")
         }
     }
 
-    /// Every allocated G3 opcode in the merging form at a legal size,
-    /// with Pg=2, Zn=1, Zd=0.
     private static let unary: [(UInt32, Mnemonic, String)] = [
         (0x0450_A820, .sxtb, "sxtb z0.h, p2/m, z1.h"),
         (0x0451_A820, .uxtb, "uxtb z0.h, p2/m, z1.h"),
@@ -118,7 +106,7 @@ struct SVEIntPredicatedDecodeTests {
     }
 
     @Test func theZeroingUnaryFormWritesFreshAndSkipsTheDestinationRead() {
-        let d = decode(0x0446_A820) // abs z0.h, p2/z, z1.h (SVE2p2)
+        let d = decode(0x0446_A820)
         #expect(d.mnemonic == .abs)
         #expect(text(0x0446_A820) == "abs z0.h, p2/z, z1.h")
         #expect(d.scalableEffect == .readsStreamingMode)
@@ -128,20 +116,18 @@ struct SVEIntPredicatedDecodeTests {
     }
 
     @Test func theExtendOpcodesRejectElementsTheyCannotWiden() {
-        // SXTB/UXTB need at least a halfword, SXTH/UXTH at least a word, and
-        // SXTW/UXTW exactly a doubleword; below that there is nothing to widen.
         for encoding: UInt32 in [
-            0x0410_A020, // sxtb .b
-            0x0452_A820, // sxth .h
-            0x0494_A820, // sxtw .s
-            0x045F_A820, // reserved opcode 0xF
+            0x0410_A020,
+            0x0452_A820,
+            0x0494_A820,
+            0x045F_A820,
         ] {
             #expect(decode(encoding).mnemonic == .undefined, "0x\(String(encoding, radix: 16))")
         }
     }
 
     @Test func multiplyAccumulateOrdersItsOperandsAccumulatorFirst() {
-        let d = decode(0x0482_4020) // mla z0.s, p0/m, z1.s, z2.s
+        let d = decode(0x0482_4020)
         #expect(d.mnemonic == .mla)
         #expect(text(0x0482_4020) == "mla z0.s, p0/m, z1.s, z2.s")
         #expect(Array(d.operands) == [z(0, .s), governing(0, .merging), z(1, .s), z(2, .s)])
@@ -153,9 +139,6 @@ struct SVEIntPredicatedDecodeTests {
     }
 
     @Test func multiplyAddOrdersItsOperandsMultiplicandFirst() {
-        // MAD's second render slot is Zm (bits 20:16) and its third is Za
-        // (bits 9:5) — the reverse field order from MLA, pinned by encoding
-        // 0x0442D420 → `mad z0.h, p5/m, z2.h, z1.h` under the reference.
         let d = decode(0x0442_D420)
         #expect(d.mnemonic == .mad)
         #expect(text(0x0442_D420) == "mad z0.h, p5/m, z2.h, z1.h")
@@ -167,7 +150,6 @@ struct SVEIntPredicatedDecodeTests {
         #expect(text(0x0481_E040) == "msb z0.s, p0/m, z1.s, z2.s")
     }
 
-    /// Every allocated scalar reduction with Pg=1, Zn=2, Vd=3.
     private static let reductions: [(UInt32, Mnemonic, String)] = [
         (0x0400_2443, .saddv, "saddv d3, p1, z2.b"),
         (0x04C1_2443, .uaddv, "uaddv d3, p1, z2.d"),
@@ -193,16 +175,11 @@ struct SVEIntPredicatedDecodeTests {
     }
 
     @Test func theAdditiveReductionsAreAsymmetricAtDoubleword() {
-        // SADDV sign-extends into a 64-bit accumulator, which a doubleword
-        // source has nothing to widen into; UADDV at doubleword is a plain
-        // 64-bit sum. The two are deliberately not symmetric.
         #expect(decode(0x04C0_2443).mnemonic == .undefined)
         #expect(decode(0x04C1_2443).mnemonic == .uaddv)
-        #expect(decode(0x0402_2443).mnemonic == .undefined) // reserved opcode
+        #expect(decode(0x0402_2443).mnemonic == .undefined)
     }
 
-    /// Every quadword (SVE2p1) reduction with Pg=1, Zn=2, Vd=3, plus the
-    /// element ladder on ADDQV.
     private static let quadwordReductions: [(UInt32, Mnemonic, String)] = [
         (0x0405_2443, .addqv, "addqv v3.16b, p1, z2.b"),
         (0x0445_2443, .addqv, "addqv v3.8h, p1, z2.h"),
@@ -228,9 +205,6 @@ struct SVEIntPredicatedDecodeTests {
         #expect(decode(0x0404_2443).mnemonic == .undefined, "reserved quadword opcode")
     }
 
-    /// The predicated shift immediate joint scheme: the tsz high bit position
-    /// picks the element, the residue is the amount; right shifts count down
-    /// from 2·esize, left shifts up from tsz−esize.
     private static let shiftImmediates: [(UInt32, Mnemonic, String)] = [
         (0x0400_8100, .asr, "asr z0.b, p0/m, z0.b, #8"),
         (0x0401_8100, .lsr, "lsr z0.b, p0/m, z0.b, #8"),
@@ -259,9 +233,9 @@ struct SVEIntPredicatedDecodeTests {
 
     @Test func theShiftImmediateRejectsItsReservedSlots() {
         for encoding: UInt32 in [
-            0x0400_8000, // tsz = 0
-            0x0402_8100, 0x0405_8100, // reserved selectors 0010 / 0101
-            0x0408_8100, 0x040E_8100, // reserved selectors 1000 / 1110
+            0x0400_8000,
+            0x0402_8100, 0x0405_8100,
+            0x0408_8100, 0x040E_8100,
         ] {
             #expect(decode(encoding).mnemonic == .undefined, "0x\(String(encoding, radix: 16))")
         }

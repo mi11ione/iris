@@ -1,19 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AMXField. Raw-bits wrapper for Apple AMX
-// matrix coprocessor operand payloads. AMX is Apple-private and its
-// operand grammar is incomplete in public references; opcode-specific
-// interpretation is layered on top. The decoder preserves the raw
-// 32-bit field for round-trip.
 
 /// Operand payload for Apple AMX coprocessor instructions.
 ///
-/// AMX instructions occupy the formally-unallocated encoding space and
-/// their operand grammar is opcode-dependent. The decoder carries the
-/// raw 32-bit encoding bits as the operand's payload. Opcode-specific
-/// sub-fields are interpreted when emitting an `.amxField` operand on
-/// a decoded record.
+/// AMX occupies formally-unallocated encoding space and its operand grammar
+/// is opcode-dependent, so the decoder carries the raw 32-bit encoding as the
+/// payload and interprets sub-fields per opcode.
 @frozen
 public struct AMXField: Sendable, Hashable {
     /// Raw 32-bit field bits, preserved verbatim.
@@ -41,28 +33,20 @@ public extension AMXField {
         UInt8((rawBits >> 5) & 0x1F)
     }
 
-    /// AMX operand field — bits[4:0] of the raw 32-bit encoding.
-    /// Interpreted as a 5-bit immediate when ``opcode`` == 17 (0 = `set`,
-    /// 1 = `clr`); for every other documented opcode it is a 5-bit
-    /// GPR index (X0…X30, X31 = XZR).
+    /// AMX operand field.
     @inlinable
     var operandField: UInt8 {
         UInt8(rawBits & 0x1F)
     }
 
-    /// True iff ``opcode`` is the opcode-17 (`set`/`clr`) encoding,
-    /// whose operand field is a 5-bit immediate rather than a GPR
-    /// index.
+    /// Whether ``opcode`` is the opcode-17 (`set`/`clr`) encoding, whose
+    /// operand field is a 5-bit immediate rather than a GPR index.
     @inlinable
     var operandIsImmediate: Bool {
         opcode == 17
     }
 
-    /// True iff ``opcode`` is outside the documented 0…22 range.
-    /// The decoder emits ``Mnemonic/amxUnknownOp`` with an
-    /// ``Operand/amxUnknown(rawFields:)`` payload for these encodings;
-    /// the rawFields preserve the full 32-bit word for downstream
-    /// analysis.
+    /// Whether ``opcode`` is outside the documented 0…22 range.
     @inlinable
     var isUnknownOpcode: Bool {
         opcode > 22

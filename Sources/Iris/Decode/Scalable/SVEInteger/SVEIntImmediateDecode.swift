@@ -1,35 +1,18 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// 0x25 immediate region: G7 signed-immediate compare
-// (`sve_int_scmp_vi`), G10 wide-immediate arithmetic (`sve_int_arith_imm0`
-// add/sub/…, `sve_int_arith_imm` mul/smax/smin/umax/umin), and G8 DUP-
-// immediate (`sve_int_dup_imm`, rendered `mov`). Field layout: Zdn/Zd [4:0],
-// imm8 [12:5], sh (LSL #8) [13] for add-family and DUP; the arith_imm
-// (smax/…) forms have no shift. Per the wide-immediate and DUP
-// forms are unpredicated destructive full writes (Zdn read, partialWrite
-// clear); DUP is a fresh full write.
 
 extension SVEIntegerDecode {
     @inline(__always)
     static func decodeImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        if (e & 0xFF20_4000) == 0x2500_0000 { return decodeCompareSignedImmediate(e, a, &sink) } // G7
-        if (e & 0xFF3F_C000) == 0x2538_C000 { return decodeDupImmediate(e, a, &sink) } // G8
-        return decodeWideImmediate(e, a, &sink) // G10
+        if (e & 0xFF20_4000) == 0x2500_0000 { return decodeCompareSignedImmediate(e, a, &sink) }
+        if (e & 0xFF3F_C000) == 0x2538_C000 { return decodeDupImmediate(e, a, &sink) }
+        return decodeWideImmediate(e, a, &sink)
     }
 
-    // MARK: G10 wide immediate — `<mn> <Zdn>.<T>, <Zdn>.<T>, #<imm8>{, LSL #8}`
-
-    /// The two wide-immediate classes (`sve_int_arith_imm0` add/sub/saturating,
-    /// `sve_int_arith_imm` min/max/mul) interleave in the opcode space rather than
-    /// splitting on any single bit — MUL sits at opc 10000, above the min/max
-    /// block but sharing b19 with the add/sub block — so the whole 5-bit opc
-    /// [20:16] selects the form, and with it the immediate's signedness and
-    /// whether the `LSL #8` shift bit is available at all.
+    /// The two wide-immediate classes interleave in the opcode space rather
+    /// than splitting on a single bit.
     @inline(__always)
     static func decodeWideImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // Both classes fix b15:14 = 11. The scope gate only pins b15 in the MUL
-        // sub-region, so the b14=0 hole arrives here and must be rejected.
         guard (e >> 14) & 1 == 1 else { return undefined(e, a) }
         let mnemonic: Mnemonic
         let signed: Bool
@@ -49,19 +32,17 @@ extension SVEIntegerDecode {
         case 0b10000: (mnemonic, signed, hasShift) = (.mul, true, false)
         default: return undefined(e, a)
         }
-        // The shift-less forms have no b13 field; b13=1 there is reserved.
         if !hasShift, (e >> 13) & 1 != 0 { return undefined(e, a) }
         return wideImmediateDraft(e, a, mnemonic: mnemonic, signed: signed, hasShift: hasShift, &sink)
     }
 
-    /// Shared wide-immediate destructive draft: `<mn> Zdn.T, Zdn.T, #imm{, lsl #8}`.
+    /// Shared wide-immediate destructive draft.
     @inline(__always)
     static func wideImmediateDraft(
         _ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, signed: Bool, hasShift: Bool, _ sink: inout OperandSink,
     ) -> DecodedDraft {
         let dn = zd(e), size = sz(e)
         let raw = (e >> 5) & 0xFF
-        // LSL #8 requires an element ≥ 16 bits; sh=1 with sz=.b is UNDEFINED.
         if hasShift, (e >> 13) & 1 == 1, size == .b { return undefined(e, a) }
         let shift: UInt32 = hasShift && (e >> 13) & 1 == 1 ? 8 : 0
         let operandMark = sink.mark
@@ -75,13 +56,11 @@ extension SVEIntegerDecode {
         )
     }
 
-    // MARK: G8 DUP immediate (rendered `mov`; imm8 signed, optional LSL #8)
-
     @inline(__always)
     static func decodeDupImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let d = zd(e), size = sz(e)
         let raw = (e >> 5) & 0xFF
-        if (e >> 13) & 1 == 1, size == .b { return undefined(e, a) } // LSL #8 illegal for .b
+        if (e >> 13) & 1 == 1, size == .b { return undefined(e, a) }
         let shift: UInt32 = (e >> 13) & 1 == 1 ? 8 : 0
         let operandMark = sink.mark
         sink.append(vec(d, size))

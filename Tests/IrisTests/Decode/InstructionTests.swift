@@ -4,9 +4,7 @@
 import Iris
 import Testing
 
-/// Validates the Instruction materializing initializer — defaults,
-/// full-argument field preservation, and the explicit truncated-tail
-/// operand-window rule.
+/// Validates the materializing initializer.
 @Suite("Instruction / materializing init defaults and field preservation")
 struct InstructionMaterializingInitTests {
     @Test func initWithDefaultsPopulatesMandatoryFields() {
@@ -57,10 +55,6 @@ struct InstructionMaterializingInitTests {
     }
 
     @Test func truncatedTailCategoryFormsEmptyOperandWindow() {
-        // The truncated-tail contract: tail records carry no operands,
-        // so the operand view forms empty even for hand-supplied lists; the
-        // record's operandCount still reflects the argument (it carries
-        // the residual-byte meaning on tails).
         let tail = Instruction(
             address: 0,
             encoding: 0xAB,
@@ -74,9 +68,8 @@ struct InstructionMaterializingInitTests {
     }
 }
 
-/// Validates that the decoder's sentinel shapes (UNDEFINED,
-/// data-marker, truncated-tail, UDF) are reproducible through the public
-/// surface with their documented field contents.
+/// Validates that the sentinel shapes (UNDEFINED, data-marker, tail, UDF)
+/// reproduce through the public surface with their documented contents.
 @Suite("Instruction / sentinel production through public decode paths")
 struct InstructionSentinelProductionTests {
     @Test func undefinedPreservesEncodingAndEmptiesSemantics() {
@@ -108,8 +101,6 @@ struct InstructionSentinelProductionTests {
     }
 
     @Test func truncatedTailPacksResidualBytesLittleEndianLow() {
-        // One, two, and three residual bytes pack at the low bits with
-        // high bits zero; operandCount carries the residual length.
         let one = InstructionStream(bytes: [0xAB], at: 0x300).records[0]
         #expect(one.encoding == 0x0000_00AB)
         #expect(one.mnemonic == .truncatedTail)
@@ -134,13 +125,9 @@ struct InstructionSentinelProductionTests {
     }
 }
 
-/// Validates Instruction's semantic equality and hashing: side-buffer
-/// indices are excluded, operand content participates, and equal values
-/// hash equal — including across differently-laid-out streams.
+/// Validates semantic equality and hashing.
 @Suite("Instruction / semantic equality and hashing")
 struct InstructionEqualityTests {
-    /// Operand lists of equal length are compared element-wise, so a difference
-    /// in content is reported and not masked by the count check passing.
     @Test func operandListsOfEqualLengthAreComparedElementWise() {
         func add(_ immediate: UInt64) -> Instruction {
             Instruction(
@@ -154,12 +141,8 @@ struct InstructionEqualityTests {
     }
 
     @Test func equalInstructionsFromDifferentStreamsCompareEqual() throws {
-        // The same ADD word sits at different operand-buffer offsets in
-        // the two streams (stream B has a NOP-free prefix instruction
-        // with operands), so the records' operandStart differ while the
-        // instructions are semantically identical.
-        let wordBytes: [UInt8] = [0x00, 0x04, 0x00, 0x91] // add x0, x0, #1
-        let prefix: [UInt8] = [0x41, 0x08, 0x00, 0xB1] //    adds x1, x2, #2
+        let wordBytes: [UInt8] = [0x00, 0x04, 0x00, 0x91]
+        let prefix: [UInt8] = [0x41, 0x08, 0x00, 0xB1]
         let a = InstructionStream(bytes: wordBytes, at: 0x1000)
         let b = InstructionStream(bytes: prefix + wordBytes, at: 0xFFC)
         let lhs = try #require(a.instruction(at: 0x1000)?.record)
@@ -181,12 +164,11 @@ struct InstructionEqualityTests {
         )
         #expect(lhsInstruction == rhsInstruction)
         #expect(lhsInstruction.hashValue == rhsInstruction.hashValue)
-        // The raw records keep index-sensitive equality by design.
         #expect(lhs != rhs)
     }
 
     @Test func operandContentParticipatesInEquality() {
-        let base = decode(0x9100_0400) // add x0, x0, #1
+        let base = decode(0x9100_0400)
         let differentOperands = Instruction(
             address: base.address, encoding: base.encoding, mnemonic: base.mnemonic,
             semanticReads: base.semanticReads, semanticWrites: base.semanticWrites,
@@ -206,16 +188,13 @@ struct InstructionEqualityTests {
     }
 }
 
-/// Validates the zero-based Operands view: indexing, iteration,
-/// collection conformance, and content-wise equality across windows.
+/// Validates the zero-based Operands view.
 @Suite("Instruction / Operands view")
 struct InstructionOperandsViewTests {
     @Test func operandsAreZeroBasedRegardlessOfBufferPosition() {
-        // Second instruction in the stream: its operands live at a
-        // non-zero side-buffer offset, but the view indexes from 0.
         let bytes: [UInt8] = [
-            0x00, 0x04, 0x00, 0x91, // add x0, x0, #1
-            0x41, 0x08, 0x00, 0xB1, // adds x1, x2, #2
+            0x00, 0x04, 0x00, 0x91,
+            0x41, 0x08, 0x00, 0xB1,
         ]
         let stream = InstructionStream(bytes: bytes, at: 0)
         let adds = stream.records[1]
@@ -226,7 +205,7 @@ struct InstructionOperandsViewTests {
     }
 
     @Test func viewConformsToRandomAccessCollection() {
-        let instruction = decode(0x9100_0400) // add x0, x0, #1
+        let instruction = decode(0x9100_0400)
         let ops = instruction.operands
         #expect(ops.startIndex == 0)
         #expect(ops.endIndex == ops.count)
@@ -242,7 +221,7 @@ struct InstructionOperandsViewTests {
     }
 
     @Test func equalWindowsFromDifferentBackingBuffersCompareEqual() {
-        let standalone = decode(0x9100_0400) // own buffer
+        let standalone = decode(0x9100_0400)
         let stream = InstructionStream(bytes: [0x00, 0x04, 0x00, 0x91], at: 0)
         let windowed = stream.operands(for: stream.records[0])
         #expect(standalone.operands.count == windowed.count)
@@ -258,11 +237,7 @@ struct InstructionOperandsViewTests {
     }
 }
 
-/// Pins the custom-equality contract: semantically identical
-/// instructions from streams with different side-buffer layouts compare
-/// equal and hash equal, while their raw records — which carry the
-/// side-buffer indices — compare unequal. A synthesized conformance
-/// would fail every assertion in this suite.
+/// Pins the custom-equality contract.
 @Suite("Instruction / cross-stream value semantics")
 struct InstructionCrossStreamEqualityTests {
     private static func word(_ w: UInt32) -> [UInt8] {
@@ -275,9 +250,6 @@ struct InstructionCrossStreamEqualityTests {
     }
 
     @Test func sameInstructionAtDifferentOperandStartComparesAndHashesEqual() {
-        // add x0, x0, #1 alone vs preceded by add x0, x1, x2 (three
-        // operands), bases aligned so both decoded adds carry address
-        // 0x1000 — identical semantics, different operandStart.
         let a = InstructionStream(bytes: Self.word(0x9100_0400), at: 0x1000)
         let b = InstructionStream(
             bytes: Self.word(0x8B02_0020) + Self.word(0x9100_0400),

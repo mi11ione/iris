@@ -1,24 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Text canonicalizer for SIMD/FP instructions.
-// Produces lowercase llvm-mc-style text suitable for the golden-corpus
-// parity diff. Element-subscript operands render as `Vn.<size>[i]` with
-// the element-size suffix derived from `arrangement.elementSize` (never
-// `Vn.<arrangement>[i]`). Leading runs of `.vectorRegister` operands are
-// grouped into curly-brace lists for NEON LD/ST (LD1-4 / ST1-4 / LDxR /
-// TBL / TBX).
 
 enum SIMDFPCanonicalizer {
-    /// The byte path — rendered straight into a UTF-8 buffer. The float
-    /// immediate text stays a `String`: it is a pure numeric computation
-    /// (`fixedEightFractionText`) whose result is appended once, not a
-    /// per-token assembly.
+    /// The byte path.
     @_optimize(speed)
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
         if instruction.mnemonic == .undefined { return }
-        // Crypto encodings flow through SIMDAndFPDecoder's delegation and
-        // produce crypto-range mnemonics; route them to their canonicalizer.
         if CryptoAppleExtensionsCanonicalizer.owns(instruction.mnemonic) {
             CryptoAppleExtensionsCanonicalizer.format(instruction, into: &out)
             return
@@ -39,8 +26,6 @@ enum SIMDFPCanonicalizer {
         while index < ops.count {
             if !first { out.put(", ") }
             first = false
-            // For TBL/TBX the list is at operands[1..1+listSize-1]; render
-            // it as a group.
             if !listIsLeading, listSize > 0, index == 1 {
                 putVectorList(ops, start: 1, count: listSize, into: &out)
                 index += listSize
@@ -51,24 +36,18 @@ enum SIMDFPCanonicalizer {
         }
     }
 
-    /// Number of leading `.vectorRegister` operands that should be
-    /// rendered as a single curly-brace list. Returns 0 when the mnemonic
-    /// has no list operand, per the table below.
+    /// Number of leading `.vectorRegister` operands that should be rendered as
+    /// a single curly-brace list.
     @_effects(readonly)
     private static func vectorListSize(
         mnemonic: Mnemonic, operandCount: Int,
     ) -> Int {
         switch mnemonic {
         case .ld1, .st1, .ld2, .st2, .ld3, .st3, .ld4, .st4, .ldap1, .stl1:
-            // Multi-structure / single-structure: operandCount - 1 vector
-            // registers + 1 memory operand. The list-size depends on the
-            // (selem, rpt) — derivable as operandCount minus the trailing
-            // memory operand minus any post-index extra operand.
             max(0, operandCount - 1)
         case .ld1r, .ld2r, .ld3r, .ld4r:
             max(0, operandCount - 1)
         case .tbl, .tbx, .luti2, .luti4:
-            // List is non-leading: operandCount = 1 (Vd) + N (list) + 1 (index).
             max(0, operandCount - 2)
         default:
             0
@@ -86,9 +65,6 @@ enum SIMDFPCanonicalizer {
     private static func putVectorList(
         _ operands: Instruction.Operands, start: Int, count: Int, into out: inout TextBytes,
     ) {
-        // Single-structure single-element lists (LD1/ST1 .. LD4/ST4
-        // single-element) render the lane index once *after* the closing
-        // brace — `{ v0.b, v1.b }[i]` — not per-element.
         var trailingIndex: UInt8?
         out.put("{ ")
         for i in 0 ..< count {
@@ -121,11 +97,6 @@ enum SIMDFPCanonicalizer {
         case let .floatImmediate(bits, kind):
             out.putString(floatImmediateText(bits: bits, kind: kind))
         case let .unsignedImmediate(value, width):
-            // The 64-bit MOVI replicated-byte immediate (the only width-64
-            // SIMD immediate). llvm-mc renders a zero value as 16 plain hex
-            // digits with no `0x`; a nonzero value as `0x` + hex zero-padded
-            // to 14 digits (16 when bits[63:56] are set). Everything else
-            // is decimal.
             if width == 64 {
                 if value == 0 {
                     out.put("#0000000000000000")
@@ -207,9 +178,6 @@ enum SIMDFPCanonicalizer {
     }
 
     private static func putMemory(_ mem: MemoryOperand, into out: inout TextBytes) {
-        // PC-base literal loads (SIMD LDR (literal)) render as
-        // `#<displacement>` with no brackets, matching llvm-mc and the
-        // integer LSCanonicalizer.
         let baseReg: RegisterRef
         switch mem.base {
         case .pc:
@@ -259,10 +227,6 @@ enum SIMDFPCanonicalizer {
     }
 
     private static func floatImmediateText(bits: UInt64, kind: FloatImmediateKind) -> String {
-        // FCMP/FCMPE compare-with-zero encodes a fixed `#0.0` (bits == 0);
-        // FMOV-immediate never encodes zero. Non-zero values render as
-        // llvm-mc does — signed fixed 8-fraction-digit decimal
-        // (`#1.50000000`, `#-13.00000000`).
         if bits == 0 { return "#0.0" }
         let value = switch kind {
         case .half: halfBitsToDouble(UInt16(truncatingIfNeeded: bits))
@@ -272,20 +236,15 @@ enum SIMDFPCanonicalizer {
         return "#" + fixedEightFractionText(value)
     }
 
-    /// IEEE 754 binary16 → binary64 by pure bit manipulation — the
-    /// stdlib-only equivalent of `Double(Float16(bitPattern:))`, proven
-    /// byte-identical over all 2^16 half patterns (subnormals, ±0, ±inf,
-    /// NaN payload + quiet-bit behavior) by the format-parity tests.
-    /// Replaces `Float16`, whose platform availability would otherwise
-    /// set the package's deployment floors and exclude Intel macOS.
+    /// IEEE 754 binary16 → binary64 by pure bit manipulation, the stdlib-only
+    /// equivalent of `Double(Float16(bitPattern:))`, proven byte-identical
+    /// over all 2^16 half patterns by the format-parity tests.
     static func halfBitsToDouble(_ halfBits: UInt16) -> Double {
         let sign = UInt64(halfBits >> 15) << 63
         let exponent = Int((halfBits >> 10) & 0x1F)
         let mantissa = UInt64(halfBits & 0x3FF)
         if exponent == 0 {
-            if mantissa == 0 { return Double(bitPattern: sign) } // ±0
-            // Subnormal: value = mantissa × 2^-24. Normalize into the
-            // double's implicit-leading-1 form.
+            if mantissa == 0 { return Double(bitPattern: sign) }
             var m = mantissa
             var e = 1
             while m & 0x400 == 0 {
@@ -296,10 +255,7 @@ enum SIMDFPCanonicalizer {
             return Double(bitPattern: sign | (doubleExponent << 52) | ((m & 0x3FF) << 42))
         }
         if exponent == 0x1F {
-            if mantissa == 0 { return Double(bitPattern: sign | 0x7FF0_0000_0000_0000) } // ±inf
-            // NaN: payload shifts to the double's high mantissa bits;
-            // the quiet bit is forced, matching the conversion's
-            // quieting of signaling NaNs (payload preserved).
+            if mantissa == 0 { return Double(bitPattern: sign | 0x7FF0_0000_0000_0000) }
             let payload = (mantissa << 42) | 0x0008_0000_0000_0000
             return Double(bitPattern: sign | 0x7FF0_0000_0000_0000 | payload)
         }
@@ -307,20 +263,15 @@ enum SIMDFPCanonicalizer {
         return Double(bitPattern: sign | (doubleExponent << 52) | (mantissa << 42))
     }
 
-    /// Lowercase hex, zero-padded to `digits` — the pure-Swift
-    /// equivalent of C `"%0<digits>llx"`.
+    /// Lowercase hex, zero-padded to `digits`.
     private static func hexZeroPadded(_ value: UInt64, digits: Int) -> String {
         let hex = String(value, radix: 16)
         if hex.count >= digits { return hex }
         return String(repeating: "0", count: digits - hex.count) + hex
     }
 
-    /// Fixed 8-fraction-digit decimal rendering of `value` — the
-    /// pure-Swift equivalent of C `"%.8f"`: the exact binary value,
-    /// rounded half-to-even at the 8th fraction digit. Negative finite
-    /// values (including -0.0) keep their sign; infinities render
-    /// `inf`/`-inf`; NaNs render unsigned `nan` — all matching Darwin
-    /// libc, verified exhaustively by the format-parity tests.
+    /// Fixed 8-fraction-digit decimal rendering of `value`, the pure-Swift
+    /// equivalent of C `"%.8f"`.
     static func fixedEightFractionText(_ value: Double) -> String {
         let bits = value.bitPattern
         let negative = (bits >> 63) != 0
@@ -330,23 +281,17 @@ enum SIMDFPCanonicalizer {
             if fraction != 0 { return "nan" }
             return negative ? "-inf" : "inf"
         }
-        // Magnitude = significand × 2^exponent with significand < 2^53.
         let significand = biasedExponent == 0 ? fraction : fraction | (1 << 52)
         let exponent = (biasedExponent == 0 ? 1 : biasedExponent) - 1075
         let sign = negative ? "-" : ""
         if exponent >= 0 {
             return sign + decimalTextShiftedLeft(significand, by: exponent) + ".00000000"
         }
-        // Magnitude × 10^8 = (significand × 5^8) / 2^(-exponent - 8):
-        // a < 2^72 numerator over a power of two.
         let numerator = significand.multipliedFullWidth(by: 390_625)
         var high = numerator.high
         var low = numerator.low
         let denominatorShift = -exponent - 8
         if denominatorShift <= 0 {
-            // exponent ∈ -8...-1: the power of two scales the numerator
-            // up instead (by 0...7 bits) — exact, no rounding. Swift's
-            // smart shift makes `low >> 64` zero when the up-shift is 0.
             let up = -denominatorShift
             high = (high << up) | (low >> (64 - up))
             low = low << up
@@ -356,8 +301,8 @@ enum SIMDFPCanonicalizer {
         return sign + fractionPointInserted(decimalText(high: high, low: low))
     }
 
-    /// `high:low >> shift` (`shift >= 1`) with round-half-to-even on
-    /// the dropped remainder.
+    /// `high:low >> shift` (`shift >= 1`) with round-half-to-even on the
+    /// dropped remainder.
     private static func shiftRightRoundingHalfToEven(
         high: UInt64, low: UInt64, by shift: Int,
     ) -> (high: UInt64, low: UInt64) {
@@ -383,7 +328,6 @@ enum SIMDFPCanonicalizer {
         }
         let roundsUp: Bool
         if shift >= 129 {
-            // half = 2^(shift-1) exceeds 128 bits; no remainder reaches it.
             roundsUp = false
         } else {
             let halfHigh: UInt64 = shift > 64 ? 1 << (shift - 65) : 0
@@ -397,11 +341,6 @@ enum SIMDFPCanonicalizer {
             }
         }
         if roundsUp {
-            // The increment cannot wrap the low word: the only caller
-            // divides significand × 5^8 < 2^72 by 2^shift, and no IEEE-754
-            // double yields a quotient whose low 64 bits are all-ones
-            // (exhaustively: shift ≤ 8 from the 2^72 bound, and none of
-            // the candidate windows contains a multiple of 5^8).
             quotientLow &+= 1
         }
         return (quotientHigh, quotientLow)
@@ -415,7 +354,6 @@ enum SIMDFPCanonicalizer {
         var groups: [UInt64] = []
         groups.reserveCapacity(3)
         while hi != 0 {
-            // 128-by-64 long division by 10^9, one base-10^9 group per pass.
             let headQuotient = hi / 1_000_000_000
             let headRemainder = hi % 1_000_000_000
             let (tailQuotient, group) = UInt64(1_000_000_000)
@@ -431,8 +369,8 @@ enum SIMDFPCanonicalizer {
         return text
     }
 
-    /// Decimal digits of `value × 2^shift`, arbitrary precision over
-    /// base-10^9 limbs (a double's integer part spans up to 309 digits).
+    /// Decimal digits of `value × 2^shift`, arbitrary precision over base-10^9
+    /// limbs (a double's integer part spans up to 309 digits).
     private static func decimalTextShiftedLeft(_ value: UInt64, by shift: Int) -> String {
         var limbs: [UInt64] = []
         limbs.reserveCapacity(1 &+ (shift &+ 83) / 29)
@@ -443,8 +381,6 @@ enum SIMDFPCanonicalizer {
         } while seed != 0
         var remaining = shift
         while remaining > 0 {
-            // A limb (< 2^30) shifted 29 bits plus a carry (≤ 2^29)
-            // stays below 2^60: no per-limb overflow.
             let step = min(remaining, 29)
             var carry: UInt64 = 0
             for i in limbs.indices {
@@ -471,8 +407,8 @@ enum SIMDFPCanonicalizer {
         return String(repeating: "0", count: 9 - digits.count) + digits
     }
 
-    /// Insert the decimal point 8 digits from the right, zero-filling
-    /// the integer part when the value has fewer than 9 digits.
+    /// Insert the decimal point 8 digits from the right, zero-filling the
+    /// integer part when the value has fewer than 9 digits.
     private static func fractionPointInserted(_ digits: String) -> String {
         if digits.count <= 8 {
             return "0." + String(repeating: "0", count: 8 - digits.count) + digits
@@ -510,14 +446,11 @@ enum SIMDFPCanonicalizer {
 
     @inline(__always)
     private static func putScalarSuffix(_ s: ScalarSize, into out: inout TextBytes) {
-        // Element-view operands use .b/.h/.s/.d only — .q never reaches
-        // here (element-indexed operand format excludes Q-form). The
-        // default arm absorbs the unreachable .q case.
         switch s {
         case .b: out.put("b")
         case .h: out.put("h")
         case .s: out.put("s")
-        default: out.put("d") // .d (or .q sentinel — unreachable).
+        default: out.put("d")
         }
     }
 

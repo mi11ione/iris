@@ -1,15 +1,8 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// MemoryAccess. Mutually exclusive by design: `.atomic` means RMW
-// (both load and store, with atomic ordering); `.exclusiveLoad` is
-// read-only with monitor; `.exclusiveStore` is write-only with monitor.
 
-/// Memory-effect classification of an instruction.
-///
-/// Every ``InstructionRecord`` carries exactly one of these values.
-/// Memory-ordering bits (acquire / release) are tracked separately via
-/// ``MemoryOrdering``.
+/// Memory-effect classification of an instruction; every record carries exactly
+/// one. Acquire and release bits are tracked separately in ``MemoryOrdering``.
 @frozen
 public enum MemoryAccess: UInt8, Sendable, Hashable {
     /// Instruction does not access memory.

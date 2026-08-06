@@ -1,22 +1,14 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 
-/// The function-boundary labels a binary groups its listing under, in
-/// ascending address order: every `LC_FUNCTION_STARTS` address (named by
-/// its symbol, or `sub_<hex>` when the symbol table is stripped) and
-/// every defined symbol address. This is the same label set
-/// ``ListingRenderer`` prints as `_name:` / `sub_<hex>:` lines, lifted
-/// into a reusable lookup so `--json` can name each instruction's
-/// containing function identically.
+/// The function-boundary labels a binary groups its listing under, ascending.
 @frozen
 public struct FunctionLabels: Sendable {
     @usableFromInline let addresses: [UInt64]
     @usableFromInline let names: [String]
 
     /// Build the boundary list from a walked binary's function starts and
-    /// symbol index. Function starts win over a same-address symbol-only
-    /// boundary (they mark the function's true entry), matching the
-    /// listing's label precedence.
+    /// symbol index.
     public init(functionStarts: [UInt64], symbols: SymbolIndex) {
         var labels: [UInt64: String] = [:]
         for start in functionStarts {
@@ -34,9 +26,7 @@ public struct FunctionLabels: Sendable {
     /// function starts nor symbols).
     public static let empty = FunctionLabels(functionStarts: [], symbols: .empty)
 
-    /// Name of the function containing `address` — the label of the
-    /// largest boundary at-or-before it, or `nil` when `address` precedes
-    /// every boundary (no function owns it).
+    /// Name of the function containing `address`.
     @inlinable
     public func containing(_ address: UInt64) -> String? {
         var lo = 0

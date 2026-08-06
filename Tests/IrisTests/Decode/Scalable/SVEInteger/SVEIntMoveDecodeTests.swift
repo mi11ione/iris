@@ -16,13 +16,7 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the move/copy group at top byte 0x05 — DUP from a scalar
-/// register, DUP broadcast of one indexed element, and the predicated CPY
-/// forms from a scalar, a SIMD scalar or an immediate — every one of which
-/// disassembles as `mov`. The scalar source is a W register below doubleword
-/// and an X register at it, and register 31 is the stack pointer (a real
-/// read, kept in the mask). The `/M` copies read their destination and mark
-/// the write partial; `/Z` and the unpredicated DUPs write fresh.
+/// Validates the move/copy group at 0x05.
 @Suite("SVE integer / move and copy")
 struct SVEIntMoveDecodeTests {
     @Test func dupFromAScalarBroadcastsWRegistersBelowDoubleword() {
@@ -43,19 +37,17 @@ struct SVEIntMoveDecodeTests {
     }
 
     @Test func registerThirtyOneIsTheStackPointerAndStaysInTheMask() {
-        let wsp = decode(0x0520_3BE0) // mov z0.b, wsp
+        let wsp = decode(0x0520_3BE0)
         #expect(text(0x0520_3BE0) == "mov z0.b, wsp")
         #expect(wsp.operands[1] == .register(.wsp()))
         #expect(canonicalIndices(wsp.semanticReads) == [31], "the stack pointer is a real read")
-        let sp = decode(0x05E0_3BE0) // mov z0.d, sp
+        let sp = decode(0x05E0_3BE0)
         #expect(text(0x05E0_3BE0) == "mov z0.d, sp")
         #expect(sp.operands[1] == .register(.sp()))
         #expect(canonicalIndices(sp.semanticReads) == [31])
     }
 
     @Test func dupIndexedUsesTheLowestSetBitSchemeThroughQuadword() {
-        // The broadcast tsz scheme takes the LOWEST set bit for the element —
-        // the opposite end from the shift scheme — and reaches `.q`.
         let rows: [(UInt32, String)] = [
             (0x0523_2000, "mov z0.b, z0.b[1]"),
             (0x057F_2000, "mov z0.b, z0.b[31]"),
@@ -76,8 +68,6 @@ struct SVEIntMoveDecodeTests {
     }
 
     @Test func dupIndexedAtIndexZeroIsTheScalarBroadcast() {
-        // Index 0 renders the SIMD-scalar spelling (`mov z0.b, b0`), one per
-        // element size up to quadword.
         let rows: [(UInt32, ScalarSize, String)] = [
             (0x0521_2000, .b, "mov z0.b, b0"),
             (0x0522_2000, .h, "mov z0.h, h0"),
@@ -139,18 +129,15 @@ struct SVEIntMoveDecodeTests {
     }
 
     @Test func cpyImmediateSplitsOnTheMergingBit() {
-        // Bit 14 selects the qualifier: set is `/M` (destination read, partial
-        // write), clear is `/Z` (fresh full write). The immediate is signed,
-        // with the four-bit governing predicate above the usual field.
-        let zeroing = decode(0x0510_0000) // mov z0.b, p0/z, #0
+        let zeroing = decode(0x0510_0000)
         #expect(text(0x0510_0000) == "mov z0.b, p0/z, #0")
         #expect(zeroing.scalableEffect == .readsStreamingMode)
         #expect(canonicalIndices(zeroing.semanticReads) == [])
-        let merging = decode(0x0510_4000) // mov z0.b, p0/m, #0
+        let merging = decode(0x0510_4000)
         #expect(text(0x0510_4000) == "mov z0.b, p0/m, #0")
         #expect(merging.scalableEffect == [.readsStreamingMode, .partialWrite])
         #expect(canonicalIndices(merging.semanticReads) == [32])
-        let high = decode(0x051F_0000) // mov z0.b, p15/z, #0
+        let high = decode(0x051F_0000)
         #expect(text(0x051F_0000) == "mov z0.b, p15/z, #0")
         #expect(high.scalableReads.containsPredicate(15))
     }

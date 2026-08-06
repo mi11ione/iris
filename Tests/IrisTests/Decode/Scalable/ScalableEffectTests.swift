@@ -4,12 +4,8 @@
 import Iris
 import Testing
 
-/// Validates ScalableEffect — the per-instruction flags that carry the
-/// SVE/SME properties which are not register reads or writes. The bit
-/// positions are pinned: the flags ride on every ``InstructionRecord`` as a
-/// one-byte field that Piece 4 reads directly, so a renumbering would
-/// silently re-interpret every record. Bits 0-3 are the 2s.1 flags, bits 4-6
-/// the 2s.5 SVE-load fault/temporal flags, and bit 7 stays reserved.
+/// Validates `ScalableEffect`, the per-instruction flags carrying the SVE/SME
+/// properties that are not register reads or writes.
 @Suite("ScalableEffect / flag bit positions and defaults")
 struct ScalableEffectFlagTests {
     @Test func noneIsTheEmptySet() {
@@ -37,8 +33,6 @@ struct ScalableEffectFlagTests {
     }
 
     @Test func theSevenFlagsFillBitsZeroThroughSixLeavingBitSevenReserved() {
-        // 2s.1 owns bits 0-3; 2s.5's fault/temporal markers own bits 4-6. Bit 7
-        // is the one remaining reserved slot for a later streaming-legality flag.
         let all: ScalableEffect = [
             .partialWrite, .readsStreamingMode, .writesStreamingMode, .writesZAEnable,
             .firstFaulting, .nonFaulting, .nonTemporal,
@@ -48,8 +42,6 @@ struct ScalableEffectFlagTests {
     }
 
     @Test func theFaultAndTemporalFlagsAreMutuallyExclusiveInPractice() {
-        // A given load is first-fault, non-fault, non-temporal, or none — the
-        // decoder sets at most one, but the type permits querying each.
         let firstFault = ScalableEffect.firstFaulting
         #expect(firstFault.contains(.firstFaulting))
         #expect(!firstFault.contains(.nonFaulting))
@@ -64,8 +56,6 @@ struct ScalableEffectFlagTests {
     }
 
     @Test func theReservedHighBitSurvivesRoundTrip() {
-        // Bit 7 is the only reserved slot; a raw value there is preserved, not
-        // masked away — the type is a plain OptionSet over the byte.
         let reserved = ScalableEffect(rawValue: 1 << 7)
         #expect(reserved.rawValue == 0b1000_0000)
         #expect(!reserved.contains(.partialWrite))
@@ -73,10 +63,7 @@ struct ScalableEffectFlagTests {
     }
 }
 
-/// Validates ScalableEffect's OptionSet algebra — the composition a decoder
-/// performs when classifying an instruction (a predicated ZA-slice write is
-/// both a partial write and streaming-mode dependent) and the queries Piece 4
-/// performs on the result.
+/// Validates ScalableEffect's OptionSet algebra.
 @Suite("ScalableEffect / OptionSet composition and queries")
 struct ScalableEffectCompositionTests {
     @Test func emptyEffectContainsNoFlag() {
@@ -124,9 +111,6 @@ struct ScalableEffectCompositionTests {
     }
 
     @Test func streamingTransitionIsDistinctFromStreamingDependence() {
-        // The channel deliberately separates "my semantics depend on
-        // PSTATE.SM" from "I change PSTATE.SM" — a single boolean would
-        // conflate them and Piece 4 could not find the mode boundaries.
         let dependent = ScalableEffect.readsStreamingMode
         let transition = ScalableEffect.writesStreamingMode
         #expect(dependent != transition)
@@ -135,8 +119,6 @@ struct ScalableEffectCompositionTests {
     }
 
     @Test func smstartZAEffectSetsBothTransitionFlags() {
-        // SMSTART (no field qualifier) enters streaming mode AND enables ZA;
-        // the SME decoder sets both bits on that record.
         let smstart: ScalableEffect = [.writesStreamingMode, .writesZAEnable]
         #expect(smstart.contains(.writesStreamingMode))
         #expect(smstart.contains(.writesZAEnable))
@@ -151,9 +133,7 @@ struct ScalableEffectCompositionTests {
     }
 }
 
-/// Pins ScalableEffect's layout — one byte, matching FlagEffect's shape. The
-/// field is the last byte of ``InstructionRecord``'s 57 meaningful bytes, so
-/// a wider effect set would move the record's pinned size.
+/// Pins ScalableEffect's layout.
 @Suite("ScalableEffect / memory-layout invariant")
 struct ScalableEffectLayoutTests {
     @Test func sizeIsExactlyOneByte() {

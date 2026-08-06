@@ -1,22 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Per-mnemonic semantic attribute tables + verification
-// helpers: the canonical encoding of the family's architectural
-// expectations (branchClass,
-// memoryAccess/Ordering, flagEffect, category, semanticReads/Writes
-// per BES mnemonic). Any caller that wants to verify a decoded record
-// against those expectations — parity tooling, test suites,
-// downstream consumers — uses ``BESSemanticChecker/verify(_:)``.
-//
-// The register-mask helpers (`firstRegisterMask`, `lastRegisterMask`,
-// `firstTwoRegistersMask`) are general-purpose operand-list utilities;
-// they live here because they pair with the semantic check, but could
-// reasonably migrate to a future `Operand+RegisterMasks` extension if a
-// non-BES caller wants them too.
-
-// Concrete semantic-field discrepancy between a decoded record and the
-// expected-attribute table. Returned by ``BESSemanticChecker/verify(_:)``.
 
 import Iris
 
@@ -38,17 +21,10 @@ public struct BESSemanticIssue: Sendable, Equatable {
     }
 }
 
-/// Per-record semantic-field verification against the family's
-/// per-mnemonic table. Returns `nil` when the record matches every
-/// expected attribute; returns the first mismatch otherwise.
+/// Per-record semantic-field verification against the family's per-mnemonic
+/// table.
 public enum BESSemanticChecker {
-    /// Verify the record's classification fields. Every BES mnemonic has
-    /// `memoryAccess == .none`, `memoryOrdering == []`, and
-    /// `category == .branchesExceptionSystem` — universal invariants.
-    /// `flagEffect`, `branchClass`, `semanticReads`, and `semanticWrites`
-    /// are mnemonic-specific (the condition consumers B.cond/BC.cond read
-    /// NZCV; CFINV / XAFLAG / AXFLAG read and write flags). UNDEFINED records
-    /// are skipped (their semantic fields are empty by construction).
+    /// Verify the record's classification fields.
     @_effects(readonly)
     public static func verify(_ instruction: Instruction) -> BESSemanticIssue? {
         if instruction.mnemonic == .undefined { return nil }
@@ -66,7 +42,7 @@ public enum BESSemanticChecker {
                 expected: "[]",
             )
         }
-        let expectedFlags = BESSemanticAttributes.expectedFlagEffect(for: instruction.mnemonic)
+        let expectedFlags = BESSemanticAttributes.expectedFlagEffect(for: instruction)
         if instruction.flagEffect != expectedFlags {
             return BESSemanticIssue(
                 field: "flagEffect",
@@ -118,13 +94,7 @@ public enum BESSemanticChecker {
     }
 }
 
-/// Expected semantic-reads constraint per mnemonic. `required` is the
-/// minimum bitset (must be a subset of `instruction.semanticReads.mask`);
-/// `allowed` is the maximum (the actual mask must be a subset).
-///
-/// For variable-Rn instructions (BR, CBZ, etc.) the helpers use this
-/// loose pair so callers don't need to extract Rn for every encoding —
-/// they verify "Rn is in the reads, no extraneous regs."
+/// Expected semantic-reads constraint per mnemonic.
 @frozen
 public struct BESExpectedReads: Sendable, Equatable {
     public let required: UInt64
@@ -138,31 +108,39 @@ public struct BESExpectedReads: Sendable, Equatable {
 }
 
 /// Per-mnemonic semantic-attribute lookups encoding the family's
-/// expected-attribute table. Pure functions; constant-folded at module load.
+/// expected-attribute table.
 public enum BESSemanticAttributes {
-    /// PSTATE.NZCV read/write effect for a BES mnemonic. Most BES
-    /// instructions touch no flags; the exceptions are the condition
-    /// consumers and the flag-format manipulators: B.cond / BC.cond read the
-    /// condition; CFINV inverts (reads + writes) carry; XAFLAG / AXFLAG
-    /// transform (read + write) all four flags.
+    /// PSTATE.NZCV read/write effect for a BES record. `NZCV` is the one
+    /// system register whose MRS/MSR transfer is a condition-flag transfer,
+    /// so the two moves are classified from the encoding rather than the
+    /// mnemonic alone.
     @_effects(readonly)
-    public static func expectedFlagEffect(for m: Mnemonic) -> FlagEffect {
-        switch m {
+    public static func expectedFlagEffect(for instruction: Instruction) -> FlagEffect {
+        switch instruction.mnemonic {
         case .bCond, .bcCond:
             .readsNZCV
         case .cfinv:
             [.writesC, .readsC]
         case .xaflag, .axflag:
             [.nzcv, .readsNZCV]
+        case .msr:
+            BESSemanticAttributes.namesNZCV(instruction.encoding) ? .nzcv : .none
+        case .mrs:
+            BESSemanticAttributes.namesNZCV(instruction.encoding) ? .readsNZCV : .none
         default:
             .none
         }
     }
 
-    /// The architecturally-correct `BranchClass` for a BES mnemonic
-    /// (per ARM ARM § C4.1.5 + Apple ARM64E PAuth supplement). Returns
-    /// `.none` for non-branch BES mnemonics (HINT / barrier / MSR /
-    /// MRS / SYS / SYSL / WFET / WFIT / CFINV / XAFLAG / AXFLAG).
+    /// Whether an MRS/MSR encoding names PSTATE's `NZCV` (op0 3, op1 3,
+    /// CRn 4, CRm 2, op2 0).
+    @_effects(readonly)
+    public static func namesNZCV(_ encoding: UInt32) -> Bool {
+        (encoding & 0x001F_FFE0) == 0x001B_4200
+    }
+
+    /// The architecturally-correct `BranchClass` for a BES mnemonic (per ARM
+    /// ARM § C4.1.5 + Apple ARM64E PAuth supplement).
     @_effects(readonly)
     public static func expectedBranchClass(for m: Mnemonic) -> BranchClass {
         switch m {
@@ -170,22 +148,20 @@ public enum BESSemanticAttributes {
         case .bl, .blr, .blraa, .blrab, .blraaz, .blrabz: .call
         case .br, .braa, .brab, .braaz, .brabz: .indirect
         case .ret, .retaa, .retab, .eret, .eretaa, .eretab, .drps: .return
+        case .retaasppc, .retabsppc, .retaasppcr, .retabsppcr: .return
+        case .texit, .texitNb: .return
+        case .tenter, .tenterNb: .exception
         case .bCond, .bcCond, .cbz, .cbnz, .tbz, .tbnz: .conditional
         case .cbgt, .cbge, .cbhi, .cbhs, .cbeq, .cbne, .cblt, .cblo,
              .cbbgt, .cbbge, .cbbhi, .cbbhs, .cbbeq, .cbbne,
              .cbhgt, .cbhge, .cbhhi, .cbhhs, .cbheq, .cbhne: .conditional
         case .svc, .hvc, .smc, .brk, .hlt, .dcps1, .dcps2, .dcps3: .exception
-        // UDF (dispatcher-owned, routed to BES) generates an Undefined
-        // Instruction exception — same class as BRK/HLT.
         case .udf: .exception
         default: .none
         }
     }
 
-    /// Expected semantic-reads constraint for a decoded
-    /// record. Returns `nil` for mnemonics whose reads are alias- or
-    /// encoding-dependent (currently SYS / SYSL — the decoder gates
-    /// reads on the alias table's `touchesRt(_:)`).
+    /// Expected semantic-reads constraint for a decoded record.
     @_effects(readonly)
     public static func expectedReadMask(for instruction: Instruction) -> BESExpectedReads? {
         let m = instruction.mnemonic
@@ -200,21 +176,29 @@ public enum BESSemanticAttributes {
              .clrex, .dsb, .dmb, .isb, .sb, .ssbb, .pssbb,
              .cfinv, .xaflag, .axflag, .msrImm,
              .smstart, .smstop,
-             .mrs:
+             .mrs,
+             .pacm, .stshh, .shuh, .stcph, .dfb,
+             .tenter, .tenterNb, .texit, .texitNb:
             return BESExpectedReads(required: 0, allowed: 0)
-        // HINT-space PAC: the modifier register and signing target are
-        // fixed in the encoding (never operands) but are read. Exact masks,
-        // ARM ARM K1: *SP forms sign/auth X30 using SP (read {x30, sp});
-        // *Z forms use a zero modifier (read {x30}); *1716 forms sign/auth
-        // X17 using X16 (read {x17, x16}); XPACLRI strips X30 (read {x30}).
+        case .tchangef, .tchangefNb, .tchangeb, .tchangebNb:
+            let source = BESSemanticAttributes.tchangeSourceMask(instruction.operands)
+            return BESExpectedReads(required: source, allowed: source)
+        case .retaasppc, .retabsppc:
+            let lrBit = UInt64(1) << 30
+            let spBit = UInt64(1) << 31
+            return BESExpectedReads(required: lrBit | spBit, allowed: lrBit | spBit)
+        case .retaasppcr, .retabsppcr:
+            let regs = (UInt64(1) << 30)
+                | (BESSemanticAttributes.firstRegisterMask(instruction.operands) ?? 0)
+            return BESExpectedReads(required: regs, allowed: regs)
         case .paciasp, .pacibsp, .autiasp, .autibsp:
-            let mask = (UInt64(1) << 30) | (UInt64(1) << 31) // {x30, sp}
+            let mask = (UInt64(1) << 30) | (UInt64(1) << 31)
             return BESExpectedReads(required: mask, allowed: mask)
         case .paciaz, .pacibz, .autiaz, .autibz, .xpaclri:
-            let mask = UInt64(1) << 30 // {x30}
+            let mask = UInt64(1) << 30
             return BESExpectedReads(required: mask, allowed: mask)
         case .pacia1716, .pacib1716, .autia1716, .autib1716:
-            let mask = (UInt64(1) << 17) | (UInt64(1) << 16) // {x17, x16}
+            let mask = (UInt64(1) << 17) | (UInt64(1) << 16)
             return BESExpectedReads(required: mask, allowed: mask)
         case .cbz, .cbnz, .tbz, .tbnz,
              .br, .blr, .ret,
@@ -230,9 +214,6 @@ public enum BESSemanticAttributes {
         case .cbgt, .cbge, .cbhi, .cbhs, .cbeq, .cbne, .cblt, .cblo,
              .cbbgt, .cbbge, .cbbhi, .cbbhs, .cbbeq, .cbbne,
              .cbhgt, .cbhge, .cbhhi, .cbhhs, .cbheq, .cbhne:
-            // Register/byte/halfword forms read Rt + Rm; immediate forms
-            // read only Rt. Derive from the operand shape (the shared
-            // mnemonics span both forms).
             let regs = BESSemanticAttributes.firstTwoRegistersMask(instruction.operands)
             return BESExpectedReads(required: regs, allowed: regs)
         case .retaa, .retab:
@@ -245,31 +226,29 @@ public enum BESSemanticAttributes {
             }
             return BESExpectedReads(required: 0, allowed: 0xFFFF_FFFF_FFFF_FFFF)
         case .sys:
-            // Alias-dependent: SYS reads Rt only when the alias touches
-            // it. The checker mirrors the decoder's alias-table lookup
-            // so mutations to the decoder's gating are caught.
             return sysExpectedReads(instruction)
         case .sysl:
-            // SYSL never reads Rt (it WRITES Rt — handled in expectedWriteMask).
             return BESExpectedReads(required: 0, allowed: 0)
         case .mrrs:
-            // MRRS reads the system register only (writes the GP pair).
             return BESExpectedReads(required: 0, allowed: 0)
         case .msrr:
-            // MSRR reads the (Rt, Rt+1) GP pair.
             let regs = BESSemanticAttributes.firstTwoRegistersMask(instruction.operands)
             return BESExpectedReads(required: regs, allowed: regs)
         case .sysp:
-            // SYSP reads the (Rt, Rt+1) pair when present (alias or Rt != 31).
             return syspExpectedReads(instruction)
         default:
             return nil
         }
     }
 
-    /// SYSP-specific expected reads: the (Rt, Rt+1) pair is read when a
-    /// TLBIP alias matches (always) or when Rt != 31 (generic form renders
-    /// the pair); a generic SYSP with Rt == 31 reads nothing.
+    /// Mask of TCHANGE's `Xn` source, or 0 for the immediate form.
+    @_effects(readonly)
+    private static func tchangeSourceMask(_ operands: Instruction.Operands) -> UInt64 {
+        guard operands.count >= 2, case let .register(reg) = operands[1] else { return 0 }
+        return UInt64(1) << UInt64(reg.canonicalIndex)
+    }
+
+    /// SYSP-specific expected reads.
     @_effects(readonly)
     private static func syspExpectedReads(_ instruction: Instruction) -> BESExpectedReads {
         let enc = instruction.encoding
@@ -287,11 +266,7 @@ public enum BESSemanticAttributes {
         return BESExpectedReads(required: 0, allowed: 0)
     }
 
-    /// SYS-specific expected reads: extracts the (op1, CRn, CRm, op2)
-    /// tuple from the encoding, looks it up in the SYS alias table, and
-    /// derives the Rt-read mask from the alias's `touchesRt(_:)`.
-    /// Without a matching alias, falls back to Rt != 31 heuristic
-    /// (matching the decoder's behavior).
+    /// SYS-specific expected reads.
     @_effects(readonly)
     private static func sysExpectedReads(_ instruction: Instruction) -> BESExpectedReads {
         let enc = instruction.encoding
@@ -310,8 +285,6 @@ public enum BESSemanticAttributes {
     }
 
     /// Expected semantic-writes mask for a decoded record.
-    /// Returns `nil` for mnemonics whose writes are encoding-dependent
-    /// (currently SYSL — its Rt write depends on the encoded Rt field).
     @_effects(readonly)
     public static func expectedWriteMask(for instruction: Instruction) -> UInt64? {
         let m = instruction.mnemonic
@@ -322,12 +295,8 @@ public enum BESSemanticAttributes {
         case .mrs:
             return BESSemanticAttributes.firstRegisterMask(instruction.operands) ?? 0
         case .mrrs:
-            // MRRS writes the (Rt, Rt+1) GP pair.
             return BESSemanticAttributes.firstTwoRegistersMask(instruction.operands)
         case .sysl:
-            // SYSL writes Rt. An aliased SYSL gates Rt on its kind (e.g.
-            // `gcspopm` doesn't write when Rt == 31); generic SYSL always
-            // writes Rt (rendered verbatim, including xzr).
             let enc = instruction.encoding
             let op1 = UInt8((enc >> 16) & 0x7)
             let CRn = UInt8((enc >> 12) & 0xF)
@@ -337,15 +306,12 @@ public enum BESSemanticAttributes {
             let alias = BESSyslAliasTable.lookup(op1: op1, CRn: CRn, CRm: CRm, op2: op2)
             let writesRt = alias.map { $0.touchesRt(Rt) } ?? true
             return writesRt ? (UInt64(1) << UInt64(Rt)) : 0
-        // HINT-space PAC writes back the signed/authed/stripped register:
-        // X30 for the *SP / *Z forms and XPACLRI, X17 for the *1716 forms
-        // (ARM ARM K1, in-place X[d] = AddPAC/Auth/Strip(...)).
         case .paciasp, .pacibsp, .autiasp, .autibsp,
              .paciaz, .pacibz, .autiaz, .autibz,
              .xpaclri:
-            return lrBit // {x30}
+            return lrBit
         case .pacia1716, .pacib1716, .autia1716, .autib1716:
-            return UInt64(1) << 17 // {x17}
+            return UInt64(1) << 17
         case .b, .bCond, .bcCond,
              .cbz, .cbnz, .tbz, .tbnz,
              .cbgt, .cbge, .cbhi, .cbhs, .cbeq, .cbne, .cblt, .cblo,
@@ -363,16 +329,20 @@ public enum BESSemanticAttributes {
              .cfinv, .xaflag, .axflag, .msrImm,
              .msr, .sys, .wfet, .wfit,
              .msrr, .sysp,
-             .smstart, .smstop:
+             .smstart, .smstop,
+             .pacm, .stshh, .shuh, .stcph, .dfb,
+             .tenter, .tenterNb, .texit, .texitNb,
+             .retaasppc, .retabsppc, .retaasppcr, .retabsppcr:
             return 0
+        case .tchangef, .tchangefNb, .tchangeb, .tchangebNb:
+            return BESSemanticAttributes.firstRegisterMask(instruction.operands) ?? 0
         default:
             return nil
         }
     }
 
-    /// Mask of the first `Operand/register(_:)` in the operand list,
-    /// or `nil` if no register operand is present. Used to extract the
-    /// per-mnemonic Rt / Rn for verification.
+    /// Mask of the first `Operand/register(_:)` in the operand list, or `nil`
+    /// if no register operand is present.
     @_effects(readonly)
     public static func firstRegisterMask(_ operands: Instruction.Operands) -> UInt64? {
         for op in operands {
@@ -383,9 +353,8 @@ public enum BESSemanticAttributes {
         return nil
     }
 
-    /// Mask of the last `Operand/register(_:)` in the operand list,
-    /// or `nil` if no register operand is present. Used to extract the
-    /// trailing Rt in MSR `[.systemRegister, .register(Rt)]` shape.
+    /// Mask of the last `Operand/register(_:)` in the operand list, or `nil`
+    /// if no register operand is present.
     @_effects(readonly)
     public static func lastRegisterMask(_ operands: Instruction.Operands) -> UInt64? {
         for op in operands.reversed() {
@@ -396,9 +365,8 @@ public enum BESSemanticAttributes {
         return nil
     }
 
-    /// Mask of the first two `Operand/register(_:)` entries in the
-    /// operand list. Used to extract the (Rn, Rm) pair for two-operand
-    /// auth-branches (BRAA / BRAB / BLRAA / BLRAB).
+    /// Mask of the first two `Operand/register(_:)` entries in the operand
+    /// list.
     @_effects(readonly)
     public static func firstTwoRegistersMask(_ operands: Instruction.Operands) -> UInt64 {
         var mask: UInt64 = 0

@@ -1,33 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Load/store register, unscaled immediate (LDUR/STUR
-// family) + PRFUM. Encoding shell bits[29:24] = 111000, V=0, bit[21]=0,
-// bits[11:10] = 00.
-//
-// size[31:30] × opc[23:22] selects the instruction:
-//   size=00 opc=00 STURB   (store byte)
-//   size=00 opc=01 LDURB   (load byte, zero-extend to Wt)
-//   size=00 opc=10 LDURSB  (load byte, sign-extend to Xt)
-//   size=00 opc=11 LDURSB  (load byte, sign-extend to Wt)
-//   size=01 opc=00 STURH   (store halfword)
-//   size=01 opc=01 LDURH   (load halfword, zero-extend to Wt)
-//   size=01 opc=10 LDURSH  (load halfword, sign-extend to Xt)
-//   size=01 opc=11 LDURSH  (load halfword, sign-extend to Wt)
-//   size=10 opc=00 STUR (Wt)
-//   size=10 opc=01 LDUR (Wt)
-//   size=10 opc=10 LDURSW (load word, sign-extend to Xt)
-//   size=10 opc=11 reserved
-//   size=11 opc=00 STUR (Xt)
-//   size=11 opc=01 LDUR (Xt)
-//   size=11 opc=10 PRFUM (prefetch unscaled)
-//   size=11 opc=11 reserved
-//
-// imm9 at bits[20:12] is a 9-bit signed unscaled byte offset (range -256
-// to +255).
-//
-// Operand shape: Rt, [Rn|SP{, #simm9}]. PRFUM uses .prefetchOperation in
-// the Rt slot.
 
 enum LoadStoreUnscaledDecode {
     @_optimize(speed)
@@ -40,7 +12,6 @@ enum LoadStoreUnscaledDecode {
 
         let displacement = lsSignExtendImm9(imm9)
 
-        // Determine mnemonic, register width, and access type.
         let mnemonic: Mnemonic
         let rtWidth: RegisterWidth
         let memoryAccess: MemoryAccess
@@ -61,7 +32,6 @@ enum LoadStoreUnscaledDecode {
         case (0b11, 0b00): mnemonic = .stur; rtWidth = .x64; memoryAccess = .store; isLoad = false
         case (0b11, 0b01): mnemonic = .ldur; rtWidth = .x64; memoryAccess = .load; isLoad = true
         case (0b11, 0b10):
-            // PRFUM <prfop>, [Rn|SP{, #simm9}]
             let rnRef = lsGprOperand(encoding: Rn, width: .x64, form: .spOrGeneral)
             return DecodedDraft(
                 address: address,
@@ -84,7 +54,6 @@ enum LoadStoreUnscaledDecode {
                 ))),
             )
         default:
-            // size=10/opc=11 and size=11/opc=11 — reserved encodings.
             return .undefined(at: address, encoding: encoding)
         }
 

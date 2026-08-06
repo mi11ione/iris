@@ -4,10 +4,8 @@
 import Iris
 import Testing
 
-/// Validates `normalizeDisassembly(_:)` — the public Sources/Iris/
-/// helper that strips ARM `;` comments, lowercases, and collapses
-/// whitespace so two disassembly strings compare equal regardless of
-/// the source tool's formatting whim.
+/// Validates `normalizeDisassembly(_:)`, which strips ARM `;` comments,
+/// lowercases and collapses whitespace so two disassembly strings compare.
 @Suite("Disassembler / normalizeDisassembly")
 struct DisassemblyTextTests {
     @Test func emptyInputProducesEmptyOutput() {
@@ -47,10 +45,7 @@ struct DisassemblyTextTests {
     }
 }
 
-/// Pins the text router's truncated-tail `.byte` arm: real residual tails
-/// from the bytes-in path render exactly `tailByteCount` two-digit
-/// lowercase hex bytes; hand-built counts clamp to the four bytes the
-/// packed encoding carries; a zero-count tail renders the bare directive.
+/// Pins the text router's truncated-tail `.byte` arm.
 @Suite("DisassemblyText / truncated-tail rendering")
 struct TruncatedTailTextTests {
     @Test func oneResidualByteRendersDotByte() {
@@ -121,8 +116,7 @@ struct TruncatedTailTextTests {
     }
 }
 
-/// Pins `Instruction`'s `CustomStringConvertible` conformance:
-/// `description` is exactly the canonical `text`.
+/// Pins `Instruction`'s `CustomStringConvertible` conformance.
 @Suite("Instruction / description mirrors text")
 struct InstructionDescriptionTests {
     @Test func descriptionIsCanonicalText() {

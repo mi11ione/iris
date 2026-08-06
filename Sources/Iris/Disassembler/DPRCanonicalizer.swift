@@ -1,34 +1,13 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Canonicalizer that formats an Instruction into llvm-mc-compatible
-// disassembly text. Mirrors the DPICanonicalizer and BESCanonicalizer
-// pattern: per-mnemonic formatting, lowercase output, single space
-// between mnemonic and operand list, comma-space between operands.
-//
-// Special rules:
-//   - SP-extended display collapse (item 5): at 64-bit, `.extendedRegister(Xm, .uxtx, 0)`
-//     when (Rd OR Rn) is SP renders as bare `xm` (no extend keyword).
-//     SXTX never collapses; UXTW never collapses; non-zero shift never
-//     collapses. The rule is checked against the operand list before
-//     per-operand rendering.
-//   - Conditions follow llvm-mc canonical naming: `cs` → `hs`, `cc` → `lo`.
 
-/// Canonical llvm-mc-compatible disassembly text formatter for the
-/// Data Processing — Register family. Output is normalized: lowercase,
-/// single space between tokens, no leading or trailing whitespace.
+/// Canonical llvm-mc-compatible disassembly text formatter for the Data
+/// Processing.
 enum DPRCanonicalizer {
-    // Format `instruction` to canonical llvm-mc-compatible disassembly
-    // text. Empty string means UNDEFINED (a defensive arm — the text
-    // router renders undefined records as `.long` before dispatching
-    // here).
-
-    /// The byte path — same text, written straight into a UTF-8 buffer.
+    /// The byte path.
     @_optimize(speed)
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
         if instruction.mnemonic == .undefined { return }
-        // PAC standalone + MTE-DPR records flow through DPR's
-        // top-of-method delegation; route them to the crypto canonicalizer.
         if CryptoAppleExtensionsCanonicalizer.owns(instruction.mnemonic) {
             CryptoAppleExtensionsCanonicalizer.format(instruction, into: &out)
             return
@@ -37,12 +16,6 @@ enum DPRCanonicalizer {
         let operands = instruction.operands
         if operands.isEmpty { return }
         out.put(UInt8(ascii: " "))
-        // SP-extended display collapse rule. The "natural"
-        // extend for the destination width (UXTX at sf=1, UXTW at sf=0)
-        // is elided when a preceding operand is SP at the same width.
-        // amount=0 → bare register; amount>0 → "<reg>, lsl #<amount>"
-        // (the extend keyword is replaced by `lsl`). SXTX, UXTW-at-sf=1,
-        // UXTX-at-sf=0 never collapse — all empirically verified.
         for idx in 0 ..< operands.count {
             if idx > 0 { out.put(", ") }
             let op = operands[idx]
@@ -60,7 +33,8 @@ enum DPRCanonicalizer {
         }
     }
 
-    /// True iff an `.extendedRegister` operand falls in the SP-extended display-collapse case.
+    /// Whether an `.extendedRegister` operand falls in the SP-extended
+    /// display-collapse case.
     @_effects(readonly)
     private static func extendedRegisterCollapses(
         reg: RegisterRef, extend: ExtendKind, operands: Instruction.Operands, idx: Int,
@@ -95,8 +69,6 @@ enum DPRCanonicalizer {
         case let .extendedRegister(reg, extend, shift):
             RegisterNames.put(reg, into: &out)
             out.put(", ")
-            // `.none` contributes no token, which leaves the trailing
-            // separator the `String` path also produced.
             putExtendKind(extend, into: &out)
             if shift != 0 {
                 out.put(" #")
@@ -104,9 +76,6 @@ enum DPRCanonicalizer {
             }
         case let .conditionCode(c):
             putConditionName(c, into: &out)
-        // DPR's decoders never produce these — defensive sentinels so the
-        // @frozen Operand switch stays exhaustive. A divergence would
-        // surface as a text mismatch in the parity sweep.
         case .vectorRegister, .floatImmediate, .label, .memory,
              .systemRegister, .pstateField, .barrierOption,
              .prefetchOperation, .systemOp, .amxField, .amxUnknown,
@@ -146,9 +115,7 @@ enum DPRCanonicalizer {
         }
     }
 
-    /// Lowercase llvm-mc condition name. `cs` and `cc` render as `hs`
-    /// and `lo` respectively (canonical names per ARM ARM aliasing
-    /// rules; llvm-mc emits these in disassembly output).
+    /// Lowercase llvm-mc condition name.
     @inline(__always)
     private static func putConditionName(_ c: ConditionCode, into out: inout TextBytes) {
         switch c {

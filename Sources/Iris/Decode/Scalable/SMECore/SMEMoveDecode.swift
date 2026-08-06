@@ -1,13 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SME MOVA / ZERO / ADDHA / ADDVA decoder (cells 110|0|x).
-// MOVA (rendered `mov`, the always-preferred alias) moves a Z vector to a ZA
-// tile slice (insert) or a tile slice to a Z vector (extract), both predicated
-// merging. ZERO zeroes a set of ZA tiles selected by an 8-bit mask. ADDHA /
-// ADDVA accumulate a predicated horizontal / vertical sum into a ZA tile.
-// The dense SME2 residue sharing these cells (multi-vector MOVA/MOVAZ, ZERO_MXI,
-// MOVT, LUTI) matches no block here and falls through to UNDEFINED.
 
 extension SMECoreDecode {
     /// Decode an SME move / zero / accumulate word.
@@ -21,15 +13,8 @@ extension SMECoreDecode {
         if addD == 0xC0D0_0000 { return decodeAddHV(e, a, .d, .addha, &sink) }
         if addD == 0xC0D1_0000 { return decodeAddHV(e, a, .d, .addva, &sink) }
         if let element = movaInsertElement(e) { return decodeMovaInsert(e, a, element, &sink) }
-        // The core claim for these cells (`smeIsCoreMoveZero`) admits exactly
-        // the five blocks tested here, and the four above are ruled out, so
-        // what remains is a MOVA extract — no UNDEFINED fallthrough is
-        // reachable. (The dense SME2 residue sharing the cells never arrives:
-        // it fails the core claim and decodes in SME2.)
         return decodeMovaExtract(e, a, movaExtractElement(e), &sink)
     }
-
-    // MARK: - MOVA (rendered `mov`)
 
     /// The tile element of a MOVA insert (vector → tile) encoding, or `nil`.
     @inline(__always)
@@ -44,11 +29,7 @@ extension SMECoreDecode {
         }
     }
 
-    /// The tile element of a MOVA extract (tile → vector) encoding. Total over
-    /// the extract block the core claim admits — the caller has already ruled
-    /// out the other four blocks in these cells, so one of these patterns
-    /// holds. The mask fixes bit9=0, so the SME2p1 MOVAZ twin (bit9=1) is
-    /// excluded (it decodes in SME2).
+    /// The tile element of a MOVA extract encoding.
     @inline(__always)
     static func movaExtractElement(_ e: UInt32) -> ScalarSize {
         switch e & 0xFFFF_0200 {
@@ -56,7 +37,7 @@ extension SMECoreDecode {
         case 0xC042_0000: .h
         case 0xC082_0000: .s
         case 0xC0C2_0000: .d
-        default: .q // 0xC0C3_0000 — the last pattern in the claim.
+        default: .q
         }
     }
 
@@ -101,11 +82,7 @@ extension SMECoreDecode {
         )
     }
 
-    // MARK: - ZERO
-
-    /// Decode `ZERO { <tile-list> }` — the imm8 mask selects which `ZA` tiles
-    /// zero; the operands mirror the rendered list. The write is
-    /// exact (not partial): imm8 replicated into a 16-bit residue mask.
+    /// Decode `ZERO { <tile-list> }`.
     @inline(__always)
     static func decodeZero(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let imm8 = UInt8(e & 0xFF)
@@ -122,17 +99,15 @@ extension SMECoreDecode {
         )
     }
 
-    /// The `ZERO` tile list for an imm8 mask: whole `za` (0xFF),
-    /// the two `.h` aliases (0x55 / 0xAA), an ascending `.s` list for any other
-    /// equal-nibble mask, else an ascending `.d` list per set bit. Empty for 0.
+    /// The `ZERO` tile list for an imm8 mask.
     @inline(__always)
     static func zeroTileList(_ imm8: UInt8) -> [(index: UInt8, element: ScalarSize?)] {
         if imm8 == 0 { return [] }
-        if imm8 == 0xFF { return [(0, nil)] } // whole za
+        if imm8 == 0xFF { return [(0, nil)] }
         if imm8 == 0x55 { return [(0, .h)] }
         if imm8 == 0xAA { return [(1, .h)] }
         var list: [(index: UInt8, element: ScalarSize?)] = []
-        if (imm8 >> 4) == (imm8 & 0xF) { // equal-nibble → .s tiles
+        if (imm8 >> 4) == (imm8 & 0xF) {
             let lo = imm8 & 0xF
             for j: UInt8 in 0 ..< 4 where (lo >> j) & 1 == 1 {
                 list.append((j, .s))
@@ -145,10 +120,7 @@ extension SMECoreDecode {
         return list
     }
 
-    // MARK: - ADDHA / ADDVA
-
-    /// Decode `ADDHA` / `ADDVA <ZAda>.<T>, Pn/m, Pm/m, Zn.<T>` — a predicated
-    /// horizontal / vertical accumulate into a `ZA` tile.
+    /// Decode `ADDHA` / `ADDVA <ZAda>.<T>, Pn/m, Pm/m, Zn.<T>`.
     @inline(__always)
     static func decodeAddHV(_ e: UInt32, _ a: UInt64, _ element: ScalarSize, _ mnemonic: Mnemonic, _ sink: inout OperandSink) -> DecodedDraft {
         let tileIndex = element == .s ? UInt8(e & 0x3) : UInt8(e & 0x7)

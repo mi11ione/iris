@@ -4,27 +4,18 @@
 import Iris
 import Testing
 
-/// Validates `isSVEFloatingPointEncoding` — the single encoding predicate that
-/// defines which SVE words the floating-point decoder owns. It is consulted by
-/// the family decoder's gate, the validator's skip filter and the corpus
-/// harvester's scope filter, so a wrong answer either silently drops a real
-/// instruction from validation or hands a foreign encoding to the wrong
-/// decoder. 2s.4 owns both 0x64/0x65 top bytes outright plus four carve-out
-/// families that live at the integer top bytes 0x04/0x05/0x25, so each owned
-/// region is claimed and each neighbouring family that shares the encoding
-/// space (integer, predicate & control, permute, memory) is disclaimed.
+/// Validates `isSVEFloatingPointEncoding`, the predicate defining which SVE
+/// words the floating-point decoder owns and the one consulted by the family.
 @Suite("SVE floating-point / encoding-scope predicate")
 struct SVEFloatingPointScopeTests {
     @Test func onlyTheScalableTierIsConsidered() {
-        // op0 (bits 28:25) must be 0b0010. Everything else is another family's
-        // encoding space, whatever its low bits look like.
         for encoding: UInt32 in [
-            0x0000_0000, // op0=0 reserved
-            0x1400_0000, // branch
-            0x8B02_0020, // data-processing register
-            0xF900_0000, // load/store
-            0x4E20_1C00, // advanced SIMD
-            0x7500_0000, // op0=0b1010 — a top byte that shares the 0x?5 low nibble
+            0x0000_0000,
+            0x1400_0000,
+            0x8B02_0020,
+            0xF900_0000,
+            0x4E20_1C00,
+            0x7500_0000,
         ] {
             #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
@@ -32,9 +23,6 @@ struct SVEFloatingPointScopeTests {
     }
 
     @Test func neighbouringGroupsThatShareTheEncodingSpaceAreDisclaimed() {
-        // Each sits inside one of the top bytes 2s.4 borders but belongs to
-        // another sibling decoder. The carve-out signatures are the exact complement of
-        // 2s.3's exclusions, so an integer DUP/CPY one bit away must stay out.
         let foreign: [(UInt32, String)] = [
             (0x0400_0000, "add predicated — integer (2s.3)"),
             (0x0422_0020, "add unpredicated — integer (2s.3)"),
@@ -57,8 +45,6 @@ struct SVEFloatingPointScopeTests {
     }
 
     @Test func theArchitecturalHolesStayInScopeAndDecodeToUndefined() {
-        // A hole inside an owned region is this decoder's to reject — it must not
-        // be pushed out of scope, or nothing would ever validate it.
         let holes: [(UInt32, String)] = [
             (0x654B_8000, "reserved predicated-binary opcode 1011"),
             (0x650D_8000, "fdiv at the reserved sz=00"),
@@ -76,21 +62,10 @@ struct SVEFloatingPointScopeTests {
     }
 }
 
-/// Validates that the family gate, the scope predicate, and the floating-point
-/// decoder agree over the entire dispatch-relevant encoding space. The scope
-/// predicate and the decoder's sub-dispatch are two independent transcriptions
-/// of the same encoding tree, so they can disagree — and a family gate that
-/// routed an owned word to the wrong decoder (or a foreign word here) would
-/// mis-decode silently. The sweep exhausts every dispatch-relevant bit
-/// combination (bits[23:10], the sz / bit21 / opcode / sub-class selectors)
-/// across the two owned top bytes and the three carve-out top bytes, with four
-/// payload patterns so a routing decision that wrongly depended on the register
-/// or fixed-zero payload bits could not hide.
+/// Validates that the family gate, the scope predicate and the decoder agree
+/// over the whole dispatch-relevant space.
 @Suite("SVE floating-point / decoder agrees with its scope predicate")
 struct SVEFloatingPointScopeAgreementTests {
-    /// Bits 23...10 select every dispatch path; the payloads below drive the
-    /// register fields plus the fixed-zero fields the class decoders reject on
-    /// (bit5 / bits[9:6] in the pair-convert and immediate classes).
     private static let payloads: [UInt32] = [0x000, 0x3FF, 0x2AA, 0x155]
     private static let ownedTopBytes: [UInt32] = [0x64, 0x65]
     private static let carveOutTopBytes: [UInt32] = [0x04, 0x05, 0x25]
@@ -119,9 +94,6 @@ struct SVEFloatingPointScopeAgreementTests {
     }
 
     @Test func everyOwnedWordRendersTextExactlyWhenItDecodes() {
-        // A decoded record must render nonempty single-line text with no
-        // unresolved placeholder; an UNDEFINED must render the empty string
-        // (the reference assembler's silence for a rejected word).
         for topByte in Self.ownedTopBytes {
             Self.sweep(topByte: topByte) { encoding in
                 let draft = Iris.decode(encoding, at: 0)

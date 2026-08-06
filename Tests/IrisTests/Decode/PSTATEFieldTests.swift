@@ -4,9 +4,8 @@
 import Iris
 import Testing
 
-/// Validates PSTATEField — the named PSTATE selectors for the
-/// `MSR (immediate)` instruction plus the `.unknown(op1:op2:)`
-/// forward-compatibility case.
+/// Validates `PSTATEField`: the named selectors for `MSR (immediate)` plus the
+/// `.unknown(op1:op2:)` forward-compatibility case.
 @Suite("PSTATEField / named cases and unknown round-trip")
 struct PSTATEFieldTests {
     @Test func namedCasesAreDistinct() {

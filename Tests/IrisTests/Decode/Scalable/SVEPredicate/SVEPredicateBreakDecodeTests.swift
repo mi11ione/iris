@@ -12,16 +12,11 @@ private func predicates(_ set: ScalableRegisterSet) -> [UInt8] {
     (0 ..< 16).filter { set.containsPredicate(UInt8($0)) }.map(UInt8.init)
 }
 
-/// Validates the predicate break-and-partition group — BRKA/BRKB (with their
-/// flag-setting twins), BRKN, BRKPA/BRKPB, PFIRST and PNEXT. Two things here are
-/// easy to get wrong and expensive downstream: the merging break reads its own
-/// destination and preserves inactive lanes (so it is a partial write, unlike
-/// every other predicate write in the tier), and PFIRST's size field is not a
-/// size at all — it is part of the opcode, so any other value is UNDEFINED.
+/// Validates the predicate break-and-partition group.
 @Suite("SVE predicate & control / break and partition")
 struct SVEPredicateBreakDecodeTests {
     @Test func theZeroingBreakFullyWritesItsDestination() {
-        let d = decode(0x2510_4443) // brka p3.b, p1/z, p2.b
+        let d = decode(0x2510_4443)
         #expect(d.mnemonic == .brka)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -35,7 +30,7 @@ struct SVEPredicateBreakDecodeTests {
     }
 
     @Test func theMergingBreakReadsItsDestinationAndWritesItPartially() {
-        let d = decode(0x2510_4453) // brka p3.b, p1/m, p2.b
+        let d = decode(0x2510_4453)
         #expect(d.mnemonic == .brka)
         #expect(Array(d.operands) == [
             .scalablePredicate(ScalablePredicateRef(registerIndex: 3, element: .b, role: .result)),
@@ -48,11 +43,11 @@ struct SVEPredicateBreakDecodeTests {
     }
 
     @Test func breakBeforeIsSelectedByBitTwentyThree() {
-        let zeroing = decode(0x2590_4443) // brkb p3.b, p1/z, p2.b
+        let zeroing = decode(0x2590_4443)
         #expect(zeroing.mnemonic == .brkb)
         #expect(zeroing.scalableEffect == .readsStreamingMode)
 
-        let merging = decode(0x2590_4453) // brkb p3.b, p1/m, p2.b
+        let merging = decode(0x2590_4453)
         #expect(merging.mnemonic == .brkb)
         #expect(merging.scalableEffect == [.readsStreamingMode, .partialWrite])
         #expect(predicates(merging.scalableReads) == [1, 2, 3])
@@ -65,18 +60,17 @@ struct SVEPredicateBreakDecodeTests {
             #expect(d.flagEffect == .nzcv)
             #expect(d.scalableEffect == .readsStreamingMode, "no flag-setting break is a partial write")
         }
-        // There is no flag-setting merging break: that bit combination is a hole.
         #expect(decode(0x2550_4453).mnemonic == .undefined)
         #expect(decode(0x25D0_4453).mnemonic == .undefined)
     }
 
     @Test func theBreakRejectsItsReservedBits() {
-        #expect(decode(0x2511_4443).mnemonic == .undefined) // bits 18:16
-        #expect(decode(0x2510_4643).mnemonic == .undefined) // bit 9
+        #expect(decode(0x2511_4443).mnemonic == .undefined)
+        #expect(decode(0x2510_4643).mnemonic == .undefined)
     }
 
     @Test func theBreakIntoNextPartitionReadsAndFullyWritesItsTiedDestination() {
-        let d = decode(0x2518_4443) // brkn p3.b, p1/z, p2.b, p3.b
+        let d = decode(0x2518_4443)
         #expect(d.mnemonic == .brkn)
         #expect(d.flagEffect == .none)
         #expect(Array(d.operands) == [
@@ -91,15 +85,15 @@ struct SVEPredicateBreakDecodeTests {
     }
 
     @Test func theFlagSettingBreakIntoNextPartition() {
-        let d = decode(0x2558_4443) // brkns p3.b, p1/z, p2.b, p3.b
+        let d = decode(0x2558_4443)
         #expect(d.mnemonic == .brkns)
         #expect(d.flagEffect == .nzcv)
         #expect(d.operands.count == 4)
     }
 
     @Test func theBreakIntoNextPartitionRejectsItsReservedBits() {
-        #expect(decode(0x2598_4443).mnemonic == .undefined) // bit 23
-        #expect(decode(0x2518_4453).mnemonic == .undefined) // bit 4
+        #expect(decode(0x2598_4443).mnemonic == .undefined)
+        #expect(decode(0x2518_4453).mnemonic == .undefined)
     }
 
     @Test func theBreakPairFormsReadThreePredicatesAndWriteOne() {
@@ -126,12 +120,12 @@ struct SVEPredicateBreakDecodeTests {
     }
 
     @Test func theBreakPairRejectsItsReservedBits() {
-        #expect(decode(0x2584_C443).mnemonic == .undefined) // bit 23
-        #expect(decode(0x2504_C643).mnemonic == .undefined) // bit 9
+        #expect(decode(0x2584_C443).mnemonic == .undefined)
+        #expect(decode(0x2504_C643).mnemonic == .undefined)
     }
 
     @Test func setFirstActiveLaneIsAPartialWriteOnItsTiedDestination() {
-        let d = decode(0x2558_C043) // pfirst p3.b, p2, p3.b
+        let d = decode(0x2558_C043)
         #expect(d.mnemonic == .pfirst)
         #expect(d.flagEffect == .nzcv)
         #expect(Array(d.operands) == [
@@ -145,11 +139,9 @@ struct SVEPredicateBreakDecodeTests {
     }
 
     @Test func setFirstActiveLaneHardwiresItsSizeFieldAsOpcode() {
-        // The two bits that are a size everywhere else are part of PFIRST's
-        // opcode: only the value 01 is the instruction, and it is byte-element.
-        #expect(decode(0x2518_C043).mnemonic == .undefined) // 00
-        #expect(decode(0x2598_C043).mnemonic == .undefined) // 10
-        #expect(decode(0x25D8_C043).mnemonic == .undefined) // 11
+        #expect(decode(0x2518_C043).mnemonic == .undefined)
+        #expect(decode(0x2598_C043).mnemonic == .undefined)
+        #expect(decode(0x25D8_C043).mnemonic == .undefined)
     }
 
     @Test func advanceToNextActiveLaneTakesEverySizeAndFullyWrites() {
@@ -178,8 +170,8 @@ struct SVEPredicateBreakDecodeTests {
     }
 
     @Test func thePartitionOpcodeRejectsEveryUnallocatedCombination() {
-        #expect(decode(0x2558_C053).mnemonic == .undefined) // bit 4 set
-        #expect(decode(0x255A_C043).mnemonic == .undefined) // bits 18:16 = 010
-        #expect(decode(0x2558_C643).mnemonic == .undefined) // bits 10:9 = 11
+        #expect(decode(0x2558_C053).mnemonic == .undefined)
+        #expect(decode(0x255A_C043).mnemonic == .undefined)
+        #expect(decode(0x2558_C643).mnemonic == .undefined)
     }
 }

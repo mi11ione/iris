@@ -4,11 +4,8 @@
 import Iris
 import Testing
 
-/// Validates the computed accessors layered onto
-/// ``AMXField`` (opcode, operandField, operandIsImmediate, isUnknownOpcode).
-/// Every AMX encoding is `0x00201000 | (opcode << 5) | operand`; the
-/// accessors decompose the raw payload into the opcode (bits[9:5]) and
-/// operand field (bits[4:0]).
+/// Validates ``AMXField``'s accessors decomposing the raw payload into opcode
+/// (bits[9:5]) and operand field (bits[4:0]).
 @Suite("AMX / AMXField computed accessors")
 struct AMXFieldExtensionsTests {
     @Test func opcodeZeroOperandZero() {
@@ -20,7 +17,6 @@ struct AMXFieldExtensionsTests {
     }
 
     @Test func opcodeMaxDocumentedOperandMax() {
-        // opcode 22 (genlut), operand 31 (XZR).
         let f = AMXField(rawBits: 0x0020_1000 | (22 << 5) | 31)
         #expect(f.opcode == 22)
         #expect(f.operandField == 31)
@@ -29,7 +25,6 @@ struct AMXFieldExtensionsTests {
     }
 
     @Test func opcodeSeventeenIsImmediate() {
-        // opcode 17 (set/clr) uses operandField as an immediate, not a GPR.
         let f = AMXField(rawBits: 0x0020_1000 | (17 << 5) | 0)
         #expect(f.opcode == 17)
         #expect(f.operandIsImmediate)
@@ -37,8 +32,6 @@ struct AMXFieldExtensionsTests {
     }
 
     @Test func opcodeTwentyThreeIsUnknownOpcode() {
-        // 23 is the first opcode value outside the documented 0...22 range;
-        // hardware faults, the decoder surfaces as amxUnknownOp.
         let f = AMXField(rawBits: 0x0020_1000 | (23 << 5))
         #expect(f.opcode == 23)
         #expect(f.isUnknownOpcode)
@@ -46,7 +39,6 @@ struct AMXFieldExtensionsTests {
     }
 
     @Test func opcodeThirtyOneIsUnknownOpcode() {
-        // Highest possible value in the 5-bit opcode field.
         let f = AMXField(rawBits: 0x0020_1000 | (31 << 5) | 31)
         #expect(f.opcode == 31)
         #expect(f.operandField == 31)
@@ -54,7 +46,6 @@ struct AMXFieldExtensionsTests {
     }
 
     @Test func accessorsIgnoreBitsAboveTen() {
-        // High bits don't influence the documented sub-fields.
         let f = AMXField(rawBits: 0xFFFF_FC00 | (10 << 5) | 7)
         #expect(f.opcode == 10)
         #expect(f.operandField == 7)

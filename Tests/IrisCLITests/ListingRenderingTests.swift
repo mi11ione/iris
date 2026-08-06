@@ -5,16 +5,12 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates listing-renderer mechanics the goldens cannot isolate:
-/// truncated-tail word columns, marker rendering without context,
-/// cross-section symbolication suppression, label placement when
-/// function starts and symbols disagree, and the bare-stream path.
+/// Validates listing mechanics the goldens cannot isolate.
 @Suite("Listing renderer mechanics")
 struct ListingRenderingTests {
     let plain = ListingRenderer(palette: Palette(enabled: false), includeSemantics: false)
 
     @Test func truncatedTailShowsResidualBytes() {
-        // 6 bytes: one word + a 2-byte tail rendered at natural width.
         let run = runCLI(["--bytes", "1f 20 03 d5 aa bb"])
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stdout == "0: d503201f  nop\n4: bbaa      .byte 0xaa, 0xbb ; truncated tail\n")
@@ -26,16 +22,23 @@ struct ListingRenderingTests {
     }
 
     @Test func undefinedWordRendersAsSentinel() {
-        // 0x02000000 sits in op0=1, architecturally unallocated — honest
-        // UNDEFINED; the note separates it from a data-in-code .long.
         let run = runCLI(["0x02000000"])
         #expect(run.stdout == "0: 02000000  .long 0x2000000 ; undefined\n")
     }
 
+    @Test func undefinedWordInAnAllocatedTierIsAnnotatedToo() {
+        let stream = InstructionStream(bytes: [0xFE, 0xB1, 0xDE, 0x80] as [UInt8])
+        #expect(stream[0].isUndefined)
+        #expect(stream[0].category != .undefined)
+        let run = runCLI(["--bytes", "fe b1 de 80 86 47 be ef"])
+        #expect(run.stdout == """
+        0: 80deb1fe  .long 0x80deb1fe ; undefined
+        4: efbe4786  .long 0xefbe4786 ; undefined
+
+        """)
+    }
+
     @Test func markerLineWithoutContextOmitsKind() throws {
-        // `line(for:addressWidth:context:)` with a data-marker
-        // instruction and no section context (the direct-decode shape)
-        // renders the directive without a kind annotation.
         let binary = try #require(walkedBinary(cliFixturePath("dic-linked")))
         let text = try #require(binary.codeSections.first { $0.sectionName == "__text" })
         let stream = text.instructions(features: binary.features)
@@ -59,9 +62,6 @@ struct ListingRenderingTests {
     }
 
     @Test func crossSectionNearestSymbolIsSuppressed() throws {
-        // Two code sections; the only symbol lives in the first; a
-        // branch targets the middle of the second. `_first+0x...` would
-        // fabricate locality across sections, so no annotation appears.
         var a = MachOAssembler()
         a.machHeader64(ncmds: 2, sizeofcmds: 72 + 160 + 24)
         a.segmentCommand64(name: "__TEXT", vmaddr: 0x1000, nsects: 2, cmdsize: 72 + 160)
@@ -69,7 +69,7 @@ struct ListingRenderingTests {
         a.section64(sectname: "__stubs", segname: "__TEXT", addr: 0x1008, size: 8, offset: 520, flags: someInstructions)
         a.symtabCommand(symoff: 528, nsyms: 1, stroff: 544, strsize: 8)
         a.pad(to: 512)
-        a.u32(0x1400_0003) // b #12 -> 0x100c, inside __stubs
+        a.u32(0x1400_0003)
         a.u32(0xD503_201F)
         a.u32(0xD503_201F)
         a.u32(0xD65F_03C0)
@@ -90,8 +90,6 @@ struct ListingRenderingTests {
     }
 
     @Test func targetBeforeEverySymbolHasNoAnnotation() throws {
-        // A backwards branch to an address below the lowest symbol: the
-        // closest-preceding lookup finds nothing.
         var a = MachOAssembler()
         a.machHeader64(ncmds: 2, sizeofcmds: 72 + 80 + 24)
         a.segmentCommand64(name: "__TEXT", vmaddr: 0x1000, nsects: 1, cmdsize: 72 + 80)
@@ -99,7 +97,7 @@ struct ListingRenderingTests {
         a.symtabCommand(symoff: 520, nsyms: 1, stroff: 536, strsize: 8)
         a.pad(to: 512)
         a.u32(0xD503_201F)
-        a.u32(0x17FF_FFFF) // b #-4 -> 0x1000, below the only symbol
+        a.u32(0x17FF_FFFF)
         a.nlist64(strx: 1, type: 0x0F, value: 0x1004)
         a.fixedString("\0_late\0", length: 8)
         let binary = try #require(walkedBinary(bytes: a.bytes))
@@ -110,13 +108,11 @@ struct ListingRenderingTests {
     }
 
     @Test func functionStartOutsideSectionDrawsNoLabel() throws {
-        // A function-start address below the section's range cannot
-        // attach to any line; the listing simply has no label for it.
         let bytes = minimalBinary(words: [0xD503_201F], extraSize: 16, extraCommands: { a in
             a.linkeditDataCommand(cmd: 0x26, dataoff: 264, datasize: 2)
         }, trailer: { a in
             a.pad(to: 264)
-            a.bytes.append(contentsOf: [0x04, 0x00]) // 0x1004: past the 4-byte section
+            a.bytes.append(contentsOf: [0x04, 0x00])
         })
         let binary = try #require(walkedBinary(bytes: bytes))
         #expect(binary.functionStarts == [0x1004])
@@ -127,29 +123,18 @@ struct ListingRenderingTests {
     }
 
     @Test func branchTextWithoutLabelTokenPassesThrough() {
-        // Defensive arm of the absolute-target rewrite: a record whose
-        // branchTarget resolves but whose canonical text carries no `#`
-        // token cannot come out of the decoder (direct branches always
-        // render their label); a hand-built record pins the pass-through
-        // instead of leaving the arm untested.
         let synthetic = Instruction(
             mnemonic: .ret,
             branchClass: .direct,
             category: .branchesExceptionSystem,
             operands: [.label(byteOffset: 16)],
         )
-        // The canonicalizer renders its can't-format witness for the
-        // impossible operand shape — which is exactly a no-`#` text.
         #expect(synthetic.branchTarget == 16)
         #expect(synthetic.text == "?ret")
         #expect(InstructionText.absoluteBranchText(synthetic) == "?ret")
     }
 
     @Test func emitStreamEmitsOneChunkPerInstruction() {
-        // One sink fed both streams in order: the empty buffer adds nothing,
-        // the one-word buffer adds exactly its line. Sharing the sink keeps it
-        // exercised, so the empty case proves the boundary without a body an
-        // empty stream could never reach.
         let empty = InstructionStream(
             baseAddress: 0,
             byteCount: 0,
@@ -158,7 +143,7 @@ struct ListingRenderingTests {
             operands: [],
             diagnostics: [],
         )
-        let oneWord = InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5]) // nop
+        let oneWord = InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5])
         var chunks: [String] = []
         let sink: (String) -> Void = { chunks.append($0) }
 
@@ -172,21 +157,15 @@ struct ListingRenderingTests {
         let binary = try #require(walkedBinary(cliFixturePath("dic-arm64.o")))
         var listing = ""
         plain.emitListing(for: binary, emit: { listing += $0 })
-        // Section spans [0x0, 0x50): two-digit width, zero-padded.
         #expect(listing.contains("\n00: 52800000  mov w0, #0\n"))
         #expect(listing.contains("\n04: d65f03c0  ret\n"))
     }
 
-    /// A section whose addresses wrap past 2^64 (hostile section header).
     func wrappingBinaryBytes() -> [UInt8] {
         minimalBinary(words: [0xD503_201F, 0xD503_201F, 0xD65F_03C0], textAddr: UInt64.max - 7)
     }
 
     @Test func wrappingSectionListsWithoutCrashing() throws {
-        // The label collection must not construct an invalid Range when
-        // the section's end wraps below its start; symbols on both
-        // sides of the wrap (including one at the very top address)
-        // are still collected.
         let bytes = minimalBinary(
             words: [0xD503_201F, 0xD503_201F, 0xD65F_03C0],
             textAddr: UInt64.max - 7,
@@ -196,9 +175,9 @@ struct ListingRenderingTests {
             },
             trailer: { a in
                 a.pad(to: 268)
-                a.nlist64(strx: 1, type: 0x0F, value: UInt64.max - 7) // _f at section start
-                a.nlist64(strx: 4, type: 0x0F, value: UInt64.max) // _top at the very top
-                a.nlist64(strx: 9, type: 0x0F, value: 0) // _wrap past the wrap
+                a.nlist64(strx: 1, type: 0x0F, value: UInt64.max - 7)
+                a.nlist64(strx: 4, type: 0x0F, value: UInt64.max)
+                a.nlist64(strx: 9, type: 0x0F, value: 0)
                 a.fixedString("\0_f\0_top\0_wrap\0", length: 17)
             },
         )
@@ -213,8 +192,6 @@ struct ListingRenderingTests {
     }
 
     @Test func addressWrapIsSurfacedOnStderr() {
-        // Every file verb that decodes the section surfaces the wrap: the
-        // default disasm, disasm --json, and the stats census.
         for mode in [[], ["--json"], ["stats"]] {
             let run = withTemporaryFile(bytes: wrappingBinaryBytes()) { runCLI(mode + [$0]) }
             #expect(run.status == CLI.exitSuccess)
@@ -226,16 +203,11 @@ struct ListingRenderingTests {
         let run = withTemporaryFile(bytes: wrappingBinaryBytes()) { runCLI(["--quiet", $0]) }
         #expect(run.status == CLI.exitSuccess)
         #expect(run.stderr.isEmpty)
-        // The records themselves stay total and modular.
         #expect(run.stdout.contains("0: d65f03c0  ret\n"))
     }
 }
 
-/// Validates the `--semantics` column against a record that HAS no
-/// semantics. A data-in-code or unallocated word carries no reads, no
-/// writes, no branch class and no memory effect, so its annotation is
-/// empty — and an empty annotation must contribute neither the padding
-/// nor the `;` marker, or every such line would end in trailing space.
+/// Validates the `--semantics` column on a record with no semantics.
 @Suite("Listing / semantics column with an empty annotation")
 struct SemanticsEmptyAnnotationTests {
     private let renderer = ListingRenderer(palette: Palette(enabled: false), includeSemantics: true)
@@ -248,7 +220,6 @@ struct SemanticsEmptyAnnotationTests {
     }
 
     @Test func aRecordWithSemanticsStillGetsItsColumn() {
-        // `add x0, x1, #1` reads x1 and writes x0.
         let stream = InstructionStream(bytes: [0x20, 0x04, 0x00, 0x91] as [UInt8])
         let line = renderer.line(for: stream[0], addressWidth: 4, context: nil)
         #expect(line.contains("; reads=x1 writes=x0"), "got \(line.debugDescription)")

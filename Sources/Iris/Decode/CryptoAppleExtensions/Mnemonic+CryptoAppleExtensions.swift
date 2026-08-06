@@ -1,30 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Crypto/Apple-extensions Mnemonic constants: AES / SHA-1 / SHA-256 /
-// SHA-3 / SHA-512 /
-// SM3 / SM4 (crypto), PAC standalone, MTE, AMX. Each value falls strictly
-// inside its declared sub-range from the carve-up below; the
-// `range-membership` self-check on Mnemonic.allocations enforces this.
-//
-// Sub-range carve-up within the family's reserved range [12288, 16383]:
-//   12288 ... 12299  Crypto AES (4) + headroom
-//   12300 ... 12319  Crypto SHA-1 (6) + SHA-256 (4) + headroom
-//   12320 ... 12351  Crypto SHA-3 + SHA-512 + SM3 + SM4 (17) + headroom
-//   12352 ... 12415  PAC standalone (19) + headroom
-//   12416 ... 12479  MTE (15) + headroom
-//   12480 ... 12527  AMX documented (23) + amxUnknownOp (1) + headroom
-//   12528 ... 16383  reserved (future 2.x growth)
 
 public extension Mnemonic {
-    // MARK: Crypto — AES (4)
-
     static let aese = Mnemonic(rawValue: 12288)
     static let aesd = Mnemonic(rawValue: 12289)
     static let aesmc = Mnemonic(rawValue: 12290)
     static let aesimc = Mnemonic(rawValue: 12291)
-
-    // MARK: Crypto — SHA-1 (6)
 
     static let sha1c = Mnemonic(rawValue: 12300)
     static let sha1p = Mnemonic(rawValue: 12301)
@@ -33,14 +14,10 @@ public extension Mnemonic {
     static let sha1h = Mnemonic(rawValue: 12304)
     static let sha1su1 = Mnemonic(rawValue: 12305)
 
-    // MARK: Crypto — SHA-256 (4)
-
     static let sha256h = Mnemonic(rawValue: 12306)
     static let sha256h2 = Mnemonic(rawValue: 12307)
     static let sha256su0 = Mnemonic(rawValue: 12308)
     static let sha256su1 = Mnemonic(rawValue: 12309)
-
-    // MARK: Crypto — SHA-3 (4), SHA-512 (4), SM3 (7), SM4 (2)
 
     static let eor3 = Mnemonic(rawValue: 12320)
     static let bcax = Mnemonic(rawValue: 12321)
@@ -59,8 +36,6 @@ public extension Mnemonic {
     static let sm3partw2 = Mnemonic(rawValue: 12334)
     static let sm4e = Mnemonic(rawValue: 12335)
     static let sm4ekey = Mnemonic(rawValue: 12336)
-
-    // MARK: Pointer Authentication standalone (19)
 
     static let pacia = Mnemonic(rawValue: 12352)
     static let pacib = Mnemonic(rawValue: 12353)
@@ -82,7 +57,18 @@ public extension Mnemonic {
     static let xpacd = Mnemonic(rawValue: 12369)
     static let pacga = Mnemonic(rawValue: 12370)
 
-    // MARK: Memory Tagging Extension (15)
+    static let autiasppc = Mnemonic(rawValue: 12371)
+    static let autibsppc = Mnemonic(rawValue: 12372)
+    static let autiasppcr = Mnemonic(rawValue: 12373)
+    static let autibsppcr = Mnemonic(rawValue: 12374)
+    static let paciasppc = Mnemonic(rawValue: 12375)
+    static let pacibsppc = Mnemonic(rawValue: 12376)
+    static let pacnbiasppc = Mnemonic(rawValue: 12377)
+    static let pacnbibsppc = Mnemonic(rawValue: 12378)
+    static let pacia171615 = Mnemonic(rawValue: 12379)
+    static let pacib171615 = Mnemonic(rawValue: 12380)
+    static let autia171615 = Mnemonic(rawValue: 12381)
+    static let autib171615 = Mnemonic(rawValue: 12382)
 
     static let addg = Mnemonic(rawValue: 12416)
     static let subg = Mnemonic(rawValue: 12417)
@@ -98,8 +84,6 @@ public extension Mnemonic {
     static let ldgm = Mnemonic(rawValue: 12427)
     static let stgm = Mnemonic(rawValue: 12428)
     static let stzgm = Mnemonic(rawValue: 12429)
-
-    // MARK: Apple AMX (24 — 23 documented + amxUnknownOp)
 
     static let amxLdx = Mnemonic(rawValue: 12480)
     static let amxLdy = Mnemonic(rawValue: 12481)
@@ -129,10 +113,8 @@ public extension Mnemonic {
 }
 
 extension Mnemonic {
-    /// Canonical lowercase name for every Crypto + Apple Extensions mnemonic constant —
-    /// the family's slice of ``Mnemonic/name``, declared beside the
-    /// constants it names so the two cannot drift. Unallocated raw
-    /// values in the family's range return `"?<raw>"`.
+    /// Canonical lowercase name for every Crypto + Apple Extensions mnemonic;
+    /// unallocated raw values in the range return `"?<raw>"`.
     static func cryptoAppleExtensionsName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .aese: "aese"
@@ -185,6 +167,18 @@ extension Mnemonic {
         case .xpaci: "xpaci"
         case .xpacd: "xpacd"
         case .pacga: "pacga"
+        case .autiasppc: "autiasppc"
+        case .autibsppc: "autibsppc"
+        case .autiasppcr: "autiasppcr"
+        case .autibsppcr: "autibsppcr"
+        case .paciasppc: "paciasppc"
+        case .pacibsppc: "pacibsppc"
+        case .pacnbiasppc: "pacnbiasppc"
+        case .pacnbibsppc: "pacnbibsppc"
+        case .pacia171615: "pacia171615"
+        case .pacib171615: "pacib171615"
+        case .autia171615: "autia171615"
+        case .autib171615: "autib171615"
         case .addg: "addg"
         case .subg: "subg"
         case .irg: "irg"

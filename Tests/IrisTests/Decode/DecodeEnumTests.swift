@@ -4,8 +4,8 @@
 import Iris
 import Testing
 
-/// Validates BranchClass — 7 mutually-exclusive control-flow classes
-/// from `none` through `exception`, raw values 0..6 stable.
+/// Validates BranchClass — 7 mutually-exclusive control-flow classes from
+/// `none` through `exception`, raw values 0..6 stable.
 @Suite("BranchClass / raw values and exhaustive cases")
 struct BranchClassTests {
     @Test func everyCaseHasStableRawValue() {
@@ -32,8 +32,8 @@ struct BranchClassTests {
     }
 }
 
-/// Validates MemoryAccess — 7 mutually-exclusive memory-effect
-/// classes; `.atomic` is RMW (both load and store atomically).
+/// Validates MemoryAccess — 7 mutually-exclusive memory-effect classes;
+/// `.atomic` is RMW (both load and store atomically).
 @Suite("MemoryAccess / raw values and exhaustive cases")
 struct MemoryAccessTests {
     @Test func everyCaseHasStableRawValue() {
@@ -129,8 +129,8 @@ struct FlagEffectTests {
     }
 }
 
-/// Validates Category — 12 cases covering the decoder sentinels plus
-/// the per-family encoding attributions; raw values stable.
+/// Validates Category — 12 cases covering the decoder sentinels plus the
+/// per-family encoding attributions; raw values stable.
 @Suite("Category / raw values and exhaustive cases")
 struct CategoryTests {
     @Test func everyCaseHasStableRawValue() {
@@ -159,8 +159,8 @@ struct CategoryTests {
     }
 }
 
-/// Validates ShiftKind — four register-shift kinds (LSL/LSR/ASR/ROR) plus
-/// MSL (modified shift left, AdvSIMD modified-immediate only).
+/// Validates ShiftKind — four register-shift kinds (LSL/LSR/ASR/ROR) plus MSL
+/// (modified shift left, AdvSIMD modified-immediate only).
 @Suite("ShiftKind / raw values and exhaustive cases")
 struct ShiftKindTests {
     @Test func everyCaseHasStableRawValue() {
@@ -182,8 +182,8 @@ struct ShiftKindTests {
     }
 }
 
-/// Validates ExtendKind — none + 8 UXT/SXT extensions + the
-/// degenerate LSL form used in some indexed addressing encodings.
+/// Validates ExtendKind — none + 8 UXT/SXT extensions + the degenerate LSL
+/// form used in some indexed addressing encodings.
 @Suite("ExtendKind / raw values and exhaustive cases")
 struct ExtendKindTests {
     @Test func everyCaseHasStableRawValue() {
@@ -210,8 +210,8 @@ struct ExtendKindTests {
     }
 }
 
-/// Validates Writeback — `.none`, `.preIndex`, `.postIndex` for the
-/// three forms of base-register update on indexed load/store.
+/// Validates Writeback — `.none`, `.preIndex`, `.postIndex` for the three
+/// forms of base-register update on indexed load/store.
 @Suite("Writeback / raw values and exhaustive cases")
 struct WritebackTests {
     @Test func everyCaseHasStableRawValue() {
@@ -231,8 +231,8 @@ struct WritebackTests {
     }
 }
 
-/// Validates ConditionCode — 16 raw values matching the 4-bit `cond`
-/// field, including the distinct `.al` (always) and `.nv` (never) codes.
+/// Validates ConditionCode — 16 raw values matching the 4-bit `cond` field,
+/// including the distinct `.al` (always) and `.nv` (never) codes.
 @Suite("ConditionCode / raw values and exhaustive cases")
 struct ConditionCodeTests {
     @Test func everyCaseHasStableRawValue() {

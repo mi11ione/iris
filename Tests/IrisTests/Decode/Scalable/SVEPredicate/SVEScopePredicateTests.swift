@@ -4,26 +4,18 @@
 import Iris
 import Testing
 
-/// Validates `isSVEPredicateControlEncoding` — the single encoding predicate
-/// that defines which SVE words the predicate & control decoder owns. It is
-/// consulted by the family decoder's gate, the validator's skip filter and the
-/// corpus harvester's scope filter, so a wrong answer either silently drops a
-/// real instruction from validation or hands a foreign encoding to the wrong
-/// decoder. Each in-scope group is claimed; each neighbouring group that
-/// shares the encoding space (integer compare, predicate-as-counter,
-/// wide-immediate, floating-point immediate, permute, memory) is disclaimed.
+/// Validates `isSVEPredicateControlEncoding`, the predicate defining which SVE
+/// words the predicate & control decoder owns and the one consulted by the.
 @Suite("SVE predicate & control / encoding-scope predicate")
 struct SVEScopePredicateTests {
     @Test func onlyTheScalableTierIsConsidered() {
-        // op0 (bits 28:25) must be 0b0010. Everything else is another family's
-        // encoding space, whatever its low bits look like.
         for encoding: UInt32 in [
-            0x0000_0000, // op0=0 reserved
-            0x1400_0000, // branch
-            0x8B02_0020, // data-processing register
-            0xF900_0000, // load/store
-            0x4E20_1C00, // advanced SIMD
-            0x2400_0000 | 0x0200_0000, // op0=3, not the SVE tier
+            0x0000_0000,
+            0x1400_0000,
+            0x8B02_0020,
+            0xF900_0000,
+            0x4E20_1C00,
+            0x2400_0000 | 0x0200_0000,
         ] {
             #expect(Iris.decode(encoding).category != .sve,
                     "0x\(String(encoding, radix: 16))")
@@ -66,25 +58,18 @@ struct SVEScopePredicateTests {
     }
 
     @Test func theCtermSlotIsClaimedOnlyWithItsHighBitSet() {
-        // CTERM shares bits 15:10 with nothing else, but its bit-23 value is
-        // part of the opcode: with bit 23 clear the slot is unallocated space,
-        // not a CTERM the decoder owns.
         #expect(Iris.decode(0x25A5_20C0).mnemonic != .undefined)
         #expect(Iris.decode(0x2565_20C0).mnemonic == .undefined,
                 "bit 23 clear is unallocated space")
     }
 
     @Test func theMovprfxUnpredicatedSlotNeedsBothLowOpcodeBits() {
-        // bits 15:11 = 10111 and bit 10 = 1 pin the unpredicated prefix; either
-        // bit clear is a different integer encoding, never a MOVPRFX.
         #expect(Iris.decode(0x0420_BC20).mnemonic == .movprfx)
-        #expect(Iris.decode(0x0420_B820).mnemonic != .movprfx) // bit 10 clear
-        #expect(Iris.decode(0x0420_B420).mnemonic != .movprfx) // bit 11 clear
+        #expect(Iris.decode(0x0420_B820).mnemonic != .movprfx)
+        #expect(Iris.decode(0x0420_B420).mnemonic != .movprfx)
     }
 
     @Test func theArchitecturalHolesStayInScopeAndDecodeToUndefined() {
-        // A hole inside an owned group is this decoder's to reject — it must not
-        // be pushed out of scope, or nothing would ever validate it.
         let holes: [(UInt32, String)] = [
             (0x2543_4A30, "unallocated predicate-logical slot"),
             (0x2550_4453, "brkas with a merging qualifier"),
@@ -102,21 +87,10 @@ struct SVEScopePredicateTests {
     }
 }
 
-/// Validates that the predicate & control decoder is a total function over the
-/// two encoding regions it spans: it never invents an instruction for a word it
-/// does not own. The scope predicate and the decoder's own sub-dispatch are two
-/// independent transcriptions of the same encoding tree, so they can disagree —
-/// a disagreement in the "decoder is wider than the predicate" direction is
-/// invisible to the corpus runner (which only diffs the words the predicate
-/// admits) and would silently mis-decode a sibling decoder's instruction. This
-/// sweep closes that hole by exhausting every dispatch-relevant bit combination
-/// in both regions.
+/// Validates that the predicate & control decoder is total over both regions
+/// it spans and never invents an instruction for a word it does not own.
 @Suite("SVE predicate & control / decoder agrees with its scope predicate")
 struct SVEPredicateControlScopeAgreementTests {
-    /// Bits 23...9 select every dispatch path in both regions; the remaining
-    /// low bits are register/immediate payload that no routing decision reads.
-    /// Both payload patterns are swept so a routing decision that (wrongly)
-    /// depended on them could not hide.
     private static let payloads: [UInt32] = [0x000, 0x1FF]
 
     private static func sweep(topByte: UInt32, _ body: (UInt32) -> Void) {

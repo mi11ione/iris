@@ -11,12 +11,9 @@ import Testing
     import Darwin
 #endif
 
-/// Validates the bounds-checked mmap substrate: construction failure
-/// modes, typed reads at every boundary, string reads, buffer views,
-/// and sub-range windows sharing one mapping.
+/// Validates the bounds-checked mmap substrate.
 @Suite("Mapped file reads")
 struct MappedFileTests {
-    /// Map a fresh temporary file holding `bytes`.
     func mapped(_ bytes: [UInt8], _ body: (MappedFile?) -> Void) {
         withTemporaryFile(bytes: bytes) { body(MappedFile(path: $0)) }
     }
@@ -37,10 +34,6 @@ struct MappedFileTests {
         let path = FileManager.default.temporaryDirectory
             .appendingPathComponent("iris-cli-test-\(UUID().uuidString)").path
         #expect(FileManager.default.createFile(atPath: path, contents: Data([1, 2, 3]), attributes: [.posixPermissions: 0o000]))
-        // Root bypasses permission bits (CI containers run as root), so mode
-        // 000 is still readable there and mapping succeeds; unprivileged hosts
-        // get nil. Folded into one expectation so neither host is an
-        // unexercised arm.
         let mappable = MappedFile(path: path) != nil
         #expect(mappable == (geteuid() == 0))
         try FileManager.default.removeItem(atPath: path)
@@ -85,8 +78,8 @@ struct MappedFileTests {
     @Test func cStringReads() {
         mapped(Array("ab\0cd".utf8)) { file in
             #expect(file?.readCString(at: 0, maxLength: 16) == "ab")
-            #expect(file?.readCString(at: 3, maxLength: 16) == nil) // no NUL before EOF
-            #expect(file?.readCString(at: 0, maxLength: 2) == nil) // NUL outside window
+            #expect(file?.readCString(at: 3, maxLength: 16) == nil)
+            #expect(file?.readCString(at: 0, maxLength: 2) == nil)
             #expect(file?.readCString(at: 0, maxLength: 3) == "ab")
             #expect(file?.readCString(at: -1, maxLength: 4) == nil)
             #expect(file?.readCString(at: 5, maxLength: 4) == nil)
@@ -103,7 +96,7 @@ struct MappedFileTests {
     @Test func fixedStringReads() {
         mapped(Array("__TEXT\0\0__data".utf8)) { file in
             #expect(file?.readFixedString(at: 0, length: 8) == "__TEXT")
-            #expect(file?.readFixedString(at: 8, length: 6) == "__data") // no NUL: whole window
+            #expect(file?.readFixedString(at: 8, length: 6) == "__data")
             #expect(file?.readFixedString(at: 0, length: 0) == "")
             #expect(file?.readFixedString(at: -1, length: 4) == nil)
             #expect(file?.readFixedString(at: 10, length: 8) == nil)
@@ -128,18 +121,11 @@ struct MappedFileTests {
     }
 
     @Test func unmappableFileFailsCleanly() throws {
-        // A 200 TB sparse file is a valid regular file whose mapping
-        // cannot be reserved (exceeds user address space): open and
-        // fstat succeed, mmap itself fails, and the initializer returns
-        // nil instead of trapping.
         let path = FileManager.default.temporaryDirectory
             .appendingPathComponent("iris-cli-test-\(UUID().uuidString)").path
         #expect(FileManager.default.createFile(atPath: path, contents: nil))
         let handle = try #require(FileHandle(forWritingAtPath: path))
         defer { try? FileManager.default.removeItem(atPath: path) }
-        // A filesystem that cannot create the sparse vehicle (ext4 caps regular
-        // files at 16 TiB, so Linux CI rejects the truncate) leaves nothing to
-        // assert; the mmap-failure arm is exercised on hosts that can.
         let sparse = (try? handle.truncate(atOffset: 200 << 40)) != nil
         try handle.close()
         if sparse {
@@ -148,8 +134,6 @@ struct MappedFileTests {
     }
 
     @Test func mappingSurvivesUnlink() {
-        // The fixture-walk helper unlinks before reads complete; pin the
-        // kernel-pins-the-inode property the helper relies on.
         let path = FileManager.default.temporaryDirectory
             .appendingPathComponent("iris-cli-test-\(UUID().uuidString)").path
         #expect(FileManager.default.createFile(atPath: path, contents: Data([0xAB, 0xCD])))

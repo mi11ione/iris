@@ -1,10 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FEAT_WFxT instructions (WFET / WFIT).
-// Encoding: 1101 0101 0000 0011 0001 0000 op2 Rt
-// op2 = 000 → WFET, 001 → WFIT. Other op2 → .undefined.
-// CRm (bits 11:8) must be 0000.
 
 enum WFXTDecode {
     @inline(__always)

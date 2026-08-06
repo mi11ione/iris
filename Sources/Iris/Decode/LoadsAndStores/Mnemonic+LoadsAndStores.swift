@@ -1,19 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Mnemonic constants for the Loads & Stores family. Raw
-// values 2048..2296 within the family's reserved 2048..4095 slab. 249 mnemonics
-// covering every L/S instruction llvm-mc emits at
-// -mattr=+v8.7a,+lse,+lor,+rcpc,+rcpc-immo,+pauth,+mte,+ssbs,+xs,+spe.
-//
-// llvm-mc emits a distinct mnemonic for each LSE atomic / CAS family
-// (operation × size × ordering) combination; the operand register width
-// further disambiguates 32-bit vs 64-bit forms within the same name.
-// L/S mirrors that convention exactly so canonicalizer text parity holds.
 
 public extension Mnemonic {
-    // MARK: - Standard load/store integer (2048..2056)
-
     static let ldr = Mnemonic(rawValue: 2048)
     static let str = Mnemonic(rawValue: 2049)
     static let ldrb = Mnemonic(rawValue: 2050)
@@ -23,8 +11,6 @@ public extension Mnemonic {
     static let ldrsb = Mnemonic(rawValue: 2054)
     static let ldrsh = Mnemonic(rawValue: 2055)
     static let ldrsw = Mnemonic(rawValue: 2056)
-
-    // MARK: - Unscaled-immediate load/store (LDUR family) + PRFUM (2057..2066)
 
     static let ldur = Mnemonic(rawValue: 2057)
     static let stur = Mnemonic(rawValue: 2058)
@@ -37,16 +23,12 @@ public extension Mnemonic {
     static let ldursw = Mnemonic(rawValue: 2065)
     static let prfum = Mnemonic(rawValue: 2066)
 
-    // MARK: - Load/store register pair (2067..2072)
-
     static let ldp = Mnemonic(rawValue: 2067)
     static let stp = Mnemonic(rawValue: 2068)
     static let ldpsw = Mnemonic(rawValue: 2069)
     static let stgp = Mnemonic(rawValue: 2070)
     static let ldnp = Mnemonic(rawValue: 2071)
     static let stnp = Mnemonic(rawValue: 2072)
-
-    // MARK: - Load/store exclusive register + pair (2073..2088)
 
     static let ldxr = Mnemonic(rawValue: 2073)
     static let stxr = Mnemonic(rawValue: 2074)
@@ -65,8 +47,6 @@ public extension Mnemonic {
     static let ldaxp = Mnemonic(rawValue: 2087)
     static let stlxp = Mnemonic(rawValue: 2088)
 
-    // MARK: - Load-acquire / store-release (2089..2094)
-
     static let ldar = Mnemonic(rawValue: 2089)
     static let stlr = Mnemonic(rawValue: 2090)
     static let ldarb = Mnemonic(rawValue: 2091)
@@ -74,13 +54,9 @@ public extension Mnemonic {
     static let ldarh = Mnemonic(rawValue: 2093)
     static let stlrh = Mnemonic(rawValue: 2094)
 
-    // MARK: - LRCPC (Armv8.3 — LDAPR family) (2095..2097)
-
     static let ldapr = Mnemonic(rawValue: 2095)
     static let ldaprb = Mnemonic(rawValue: 2096)
     static let ldaprh = Mnemonic(rawValue: 2097)
-
-    // MARK: - LOR (FEAT_LOR — LDLAR / STLLR family) (2098..2103)
 
     static let ldlar = Mnemonic(rawValue: 2098)
     static let ldlarb = Mnemonic(rawValue: 2099)
@@ -88,8 +64,6 @@ public extension Mnemonic {
     static let stllr = Mnemonic(rawValue: 2101)
     static let stllrb = Mnemonic(rawValue: 2102)
     static let stllrh = Mnemonic(rawValue: 2103)
-
-    // MARK: - LRCPC2 (Armv8.4 unscaled-imm load-acquire / store-release) (2104..2112)
 
     static let ldapur = Mnemonic(rawValue: 2104)
     static let ldapurb = Mnemonic(rawValue: 2105)
@@ -101,13 +75,6 @@ public extension Mnemonic {
     static let stlurb = Mnemonic(rawValue: 2111)
     static let stlurh = Mnemonic(rawValue: 2112)
 
-    // MARK: - LSE atomics — RMW operations (Armv8.1) (2113..2220)
-
-    // 9 ops × 4 orderings × 3 size-suffixes (no-suffix / B / H) = 108 mnemonics.
-    // The 32-bit vs 64-bit width is encoded in the operand register Wt vs Xt
-    // for the no-suffix variants; B suffix = 8-bit, H suffix = 16-bit.
-
-    // LDADD family — 2113..2124
     static let ldadd = Mnemonic(rawValue: 2113)
     static let ldadda = Mnemonic(rawValue: 2114)
     static let ldaddl = Mnemonic(rawValue: 2115)
@@ -121,7 +88,6 @@ public extension Mnemonic {
     static let ldaddlh = Mnemonic(rawValue: 2123)
     static let ldaddalh = Mnemonic(rawValue: 2124)
 
-    // LDCLR family — 2125..2136
     static let ldclr = Mnemonic(rawValue: 2125)
     static let ldclra = Mnemonic(rawValue: 2126)
     static let ldclrl = Mnemonic(rawValue: 2127)
@@ -135,7 +101,6 @@ public extension Mnemonic {
     static let ldclrlh = Mnemonic(rawValue: 2135)
     static let ldclralh = Mnemonic(rawValue: 2136)
 
-    // LDEOR family — 2137..2148
     static let ldeor = Mnemonic(rawValue: 2137)
     static let ldeora = Mnemonic(rawValue: 2138)
     static let ldeorl = Mnemonic(rawValue: 2139)
@@ -149,7 +114,6 @@ public extension Mnemonic {
     static let ldeorlh = Mnemonic(rawValue: 2147)
     static let ldeoralh = Mnemonic(rawValue: 2148)
 
-    // LDSET family — 2149..2160
     static let ldset = Mnemonic(rawValue: 2149)
     static let ldseta = Mnemonic(rawValue: 2150)
     static let ldsetl = Mnemonic(rawValue: 2151)
@@ -163,7 +127,6 @@ public extension Mnemonic {
     static let ldsetlh = Mnemonic(rawValue: 2159)
     static let ldsetalh = Mnemonic(rawValue: 2160)
 
-    // LDSMAX family — 2161..2172
     static let ldsmax = Mnemonic(rawValue: 2161)
     static let ldsmaxa = Mnemonic(rawValue: 2162)
     static let ldsmaxl = Mnemonic(rawValue: 2163)
@@ -177,7 +140,6 @@ public extension Mnemonic {
     static let ldsmaxlh = Mnemonic(rawValue: 2171)
     static let ldsmaxalh = Mnemonic(rawValue: 2172)
 
-    // LDSMIN family — 2173..2184
     static let ldsmin = Mnemonic(rawValue: 2173)
     static let ldsmina = Mnemonic(rawValue: 2174)
     static let ldsminl = Mnemonic(rawValue: 2175)
@@ -191,7 +153,6 @@ public extension Mnemonic {
     static let ldsminlh = Mnemonic(rawValue: 2183)
     static let ldsminalh = Mnemonic(rawValue: 2184)
 
-    // LDUMAX family — 2185..2196
     static let ldumax = Mnemonic(rawValue: 2185)
     static let ldumaxa = Mnemonic(rawValue: 2186)
     static let ldumaxl = Mnemonic(rawValue: 2187)
@@ -205,7 +166,6 @@ public extension Mnemonic {
     static let ldumaxlh = Mnemonic(rawValue: 2195)
     static let ldumaxalh = Mnemonic(rawValue: 2196)
 
-    // LDUMIN family — 2197..2208
     static let ldumin = Mnemonic(rawValue: 2197)
     static let ldumina = Mnemonic(rawValue: 2198)
     static let lduminl = Mnemonic(rawValue: 2199)
@@ -219,7 +179,6 @@ public extension Mnemonic {
     static let lduminlh = Mnemonic(rawValue: 2207)
     static let lduminalh = Mnemonic(rawValue: 2208)
 
-    // SWP family — 2209..2220
     static let swp = Mnemonic(rawValue: 2209)
     static let swpa = Mnemonic(rawValue: 2210)
     static let swpl = Mnemonic(rawValue: 2211)
@@ -233,15 +192,6 @@ public extension Mnemonic {
     static let swplh = Mnemonic(rawValue: 2219)
     static let swpalh = Mnemonic(rawValue: 2220)
 
-    // MARK: - LSE store-aliases (Rt=ZR collapses to ST* form) (2221..2268)
-
-    // An LSE RMW collapses to its ST* alias only when Rt=ZR AND the acquire
-    // bit A=0 — llvm-mc keeps the LD* form for the A=1 (acquire /
-    // acquire-release) orderings, so STADDA / STADDAL and the like are not
-    // ARM64 mnemonics. 8 RMW ops (no SWP) × 2 A=0 orderings (plain, release)
-    // × 3 size-suffixes = 48 mnemonics.
-
-    // STADD family — 2221..2226
     static let stadd = Mnemonic(rawValue: 2221)
     static let staddl = Mnemonic(rawValue: 2222)
     static let staddb = Mnemonic(rawValue: 2223)
@@ -249,7 +199,6 @@ public extension Mnemonic {
     static let staddh = Mnemonic(rawValue: 2225)
     static let staddlh = Mnemonic(rawValue: 2226)
 
-    // STCLR family — 2227..2232
     static let stclr = Mnemonic(rawValue: 2227)
     static let stclrl = Mnemonic(rawValue: 2228)
     static let stclrb = Mnemonic(rawValue: 2229)
@@ -257,7 +206,6 @@ public extension Mnemonic {
     static let stclrh = Mnemonic(rawValue: 2231)
     static let stclrlh = Mnemonic(rawValue: 2232)
 
-    // STEOR family — 2233..2238
     static let steor = Mnemonic(rawValue: 2233)
     static let steorl = Mnemonic(rawValue: 2234)
     static let steorb = Mnemonic(rawValue: 2235)
@@ -265,7 +213,6 @@ public extension Mnemonic {
     static let steorh = Mnemonic(rawValue: 2237)
     static let steorlh = Mnemonic(rawValue: 2238)
 
-    // STSET family — 2239..2244
     static let stset = Mnemonic(rawValue: 2239)
     static let stsetl = Mnemonic(rawValue: 2240)
     static let stsetb = Mnemonic(rawValue: 2241)
@@ -273,7 +220,6 @@ public extension Mnemonic {
     static let stseth = Mnemonic(rawValue: 2243)
     static let stsetlh = Mnemonic(rawValue: 2244)
 
-    // STSMAX family — 2245..2250
     static let stsmax = Mnemonic(rawValue: 2245)
     static let stsmaxl = Mnemonic(rawValue: 2246)
     static let stsmaxb = Mnemonic(rawValue: 2247)
@@ -281,7 +227,6 @@ public extension Mnemonic {
     static let stsmaxh = Mnemonic(rawValue: 2249)
     static let stsmaxlh = Mnemonic(rawValue: 2250)
 
-    // STSMIN family — 2251..2256
     static let stsmin = Mnemonic(rawValue: 2251)
     static let stsminl = Mnemonic(rawValue: 2252)
     static let stsminb = Mnemonic(rawValue: 2253)
@@ -289,7 +234,6 @@ public extension Mnemonic {
     static let stsminh = Mnemonic(rawValue: 2255)
     static let stsminlh = Mnemonic(rawValue: 2256)
 
-    // STUMAX family — 2257..2262
     static let stumax = Mnemonic(rawValue: 2257)
     static let stumaxl = Mnemonic(rawValue: 2258)
     static let stumaxb = Mnemonic(rawValue: 2259)
@@ -297,15 +241,12 @@ public extension Mnemonic {
     static let stumaxh = Mnemonic(rawValue: 2261)
     static let stumaxlh = Mnemonic(rawValue: 2262)
 
-    // STUMIN family — 2263..2268
     static let stumin = Mnemonic(rawValue: 2263)
     static let stuminl = Mnemonic(rawValue: 2264)
     static let stuminb = Mnemonic(rawValue: 2265)
     static let stuminlb = Mnemonic(rawValue: 2266)
     static let stuminh = Mnemonic(rawValue: 2267)
     static let stuminlh = Mnemonic(rawValue: 2268)
-
-    // MARK: - Compare-and-swap (CAS) family (2269..2284)
 
     static let cas = Mnemonic(rawValue: 2269)
     static let casa = Mnemonic(rawValue: 2270)
@@ -324,17 +265,10 @@ public extension Mnemonic {
     static let caspl = Mnemonic(rawValue: 2283)
     static let caspal = Mnemonic(rawValue: 2284)
 
-    // MARK: - Prefetch (2285)
-
     static let prfm = Mnemonic(rawValue: 2285)
-    // prfum is already declared above (2066) alongside the LDUR family.
-
-    // MARK: - ARM64E PAC authenticated loads (2286..2287)
 
     static let ldraa = Mnemonic(rawValue: 2286)
     static let ldrab = Mnemonic(rawValue: 2287)
-
-    // MARK: - Unprivileged load/store (LDTR family) (2288..2296)
 
     static let ldtr = Mnemonic(rawValue: 2288)
     static let sttr = Mnemonic(rawValue: 2289)
@@ -346,13 +280,11 @@ public extension Mnemonic {
     static let ldtrsh = Mnemonic(rawValue: 2295)
     static let ldtrsw = Mnemonic(rawValue: 2296)
 
-    // FEAT_LSUI (unprivileged load/store).
     static let ldtp = Mnemonic(rawValue: 2297)
     static let sttp = Mnemonic(rawValue: 2298)
     static let ldtnp = Mnemonic(rawValue: 2299)
     static let sttnp = Mnemonic(rawValue: 2300)
 
-    // FEAT_LSUI unprivileged exclusive + compare-and-swap.
     static let sttxr = Mnemonic(rawValue: 2301)
     static let stltxr = Mnemonic(rawValue: 2302)
     static let ldtxr = Mnemonic(rawValue: 2303)
@@ -366,18 +298,12 @@ public extension Mnemonic {
     static let casplt = Mnemonic(rawValue: 2311)
     static let caspalt = Mnemonic(rawValue: 2312)
 
-    // MARK: - FEAT_RPRES range prefetch (2313)
-
     static let rprfm = Mnemonic(rawValue: 2313)
-
-    // MARK: - FEAT_LS64 accelerator load/store (2314..2317)
 
     static let ld64b = Mnemonic(rawValue: 2314)
     static let st64b = Mnemonic(rawValue: 2315)
     static let st64bv = Mnemonic(rawValue: 2316)
     static let st64bv0 = Mnemonic(rawValue: 2317)
-
-    // MARK: - FEAT_LSE128 128-bit atomics (2318..2329)
 
     static let swpp = Mnemonic(rawValue: 2318)
     static let swppa = Mnemonic(rawValue: 2319)
@@ -392,10 +318,6 @@ public extension Mnemonic {
     static let ldsetpl = Mnemonic(rawValue: 2328)
     static let ldsetpal = Mnemonic(rawValue: 2329)
 
-    // MARK: - FEAT_MOPS memory copy (2330..2425)
-
-    // CPYF (forward-only) then CPY (bidirectional), each P/M/E stage ×
-    // 16 option combos (bits15:14 nontemporal, bits13:12 read/write).
     static let cpyfp = Mnemonic(rawValue: 2330)
     static let cpyfpwt = Mnemonic(rawValue: 2331)
     static let cpyfprt = Mnemonic(rawValue: 2332)
@@ -493,10 +415,6 @@ public extension Mnemonic {
     static let cpyertn = Mnemonic(rawValue: 2424)
     static let cpyetn = Mnemonic(rawValue: 2425)
 
-    // MARK: - FEAT_MOPS memory set (2426..2449)
-
-    // SET (memory set) then SETG (set with tag), each P/M/E stage × 4
-    // option combos (bit13 nontemporal, bit12 unprivileged).
     static let setp = Mnemonic(rawValue: 2426)
     static let setpt = Mnemonic(rawValue: 2427)
     static let setpn = Mnemonic(rawValue: 2428)
@@ -522,9 +440,6 @@ public extension Mnemonic {
     static let setgen = Mnemonic(rawValue: 2448)
     static let setgetn = Mnemonic(rawValue: 2449)
 
-    // MARK: - FEAT_LSUI unprivileged atomics (2450..2465)
-
-    // ldtadd/ldtclr/ldtset/swpt, each × {plain,L,A,AL}; size in operand width.
     static let ldtadd = Mnemonic(rawValue: 2450)
     static let ldtaddl = Mnemonic(rawValue: 2451)
     static let ldtadda = Mnemonic(rawValue: 2452)
@@ -542,10 +457,6 @@ public extension Mnemonic {
     static let swpta = Mnemonic(rawValue: 2464)
     static let swptal = Mnemonic(rawValue: 2465)
 
-    // MARK: - FEAT_THE RCW (Read-Check-Write) atomics (2466..2529)
-
-    // Non-pair clr/swp/set (2466..2489): rcw* (32-bit check) + rcws*
-    // (64-bit check), each × {plain,L,A,AL}; size in operand width.
     static let rcwclr = Mnemonic(rawValue: 2466)
     static let rcwclrl = Mnemonic(rawValue: 2467)
     static let rcwclra = Mnemonic(rawValue: 2468)
@@ -570,7 +481,6 @@ public extension Mnemonic {
     static let rcwssetl = Mnemonic(rawValue: 2487)
     static let rcwsseta = Mnemonic(rawValue: 2488)
     static let rcwssetal = Mnemonic(rawValue: 2489)
-    // CAS non-pair (2490..2497).
     static let rcwcas = Mnemonic(rawValue: 2490)
     static let rcwcasl = Mnemonic(rawValue: 2491)
     static let rcwcasa = Mnemonic(rawValue: 2492)
@@ -579,7 +489,6 @@ public extension Mnemonic {
     static let rcwscasl = Mnemonic(rawValue: 2495)
     static let rcwscasa = Mnemonic(rawValue: 2496)
     static let rcwscasal = Mnemonic(rawValue: 2497)
-    // 128-bit pair clrp/swpp/setp (2498..2521).
     static let rcwclrp = Mnemonic(rawValue: 2498)
     static let rcwclrpl = Mnemonic(rawValue: 2499)
     static let rcwclrpa = Mnemonic(rawValue: 2500)
@@ -604,7 +513,6 @@ public extension Mnemonic {
     static let rcwssetpl = Mnemonic(rawValue: 2519)
     static let rcwssetpa = Mnemonic(rawValue: 2520)
     static let rcwssetpal = Mnemonic(rawValue: 2521)
-    // CASP 128-bit pair (2522..2529).
     static let rcwcasp = Mnemonic(rawValue: 2522)
     static let rcwcaspl = Mnemonic(rawValue: 2523)
     static let rcwcaspa = Mnemonic(rawValue: 2524)
@@ -614,17 +522,11 @@ public extension Mnemonic {
     static let rcwscaspa = Mnemonic(rawValue: 2528)
     static let rcwscaspal = Mnemonic(rawValue: 2529)
 
-    // MARK: - FEAT_RCPC3 ordered load/store pair (2530..2531)
-
     static let stilp = Mnemonic(rawValue: 2530)
     static let ldiapp = Mnemonic(rawValue: 2531)
 
-    // MARK: - FEAT_GCS guarded control stack store (2532..2533)
-
     static let gcsstr = Mnemonic(rawValue: 2532)
     static let gcssttr = Mnemonic(rawValue: 2533)
-
-    // MARK: - FEAT_LSUI ST-aliases (Rt=ZR, A=0 collapses LDT* to STT*) (2534..2539)
 
     static let sttadd = Mnemonic(rawValue: 2534)
     static let sttaddl = Mnemonic(rawValue: 2535)
@@ -632,13 +534,28 @@ public extension Mnemonic {
     static let sttclrl = Mnemonic(rawValue: 2537)
     static let sttset = Mnemonic(rawValue: 2538)
     static let sttsetl = Mnemonic(rawValue: 2539)
+
+    static let setgop = Mnemonic(rawValue: 2540)
+    static let setgopt = Mnemonic(rawValue: 2541)
+    static let setgopn = Mnemonic(rawValue: 2542)
+    static let setgoptn = Mnemonic(rawValue: 2543)
+    static let setgom = Mnemonic(rawValue: 2544)
+    static let setgomt = Mnemonic(rawValue: 2545)
+    static let setgomn = Mnemonic(rawValue: 2546)
+    static let setgomtn = Mnemonic(rawValue: 2547)
+    static let setgoe = Mnemonic(rawValue: 2548)
+    static let setgoet = Mnemonic(rawValue: 2549)
+    static let setgoen = Mnemonic(rawValue: 2550)
+    static let setgoetn = Mnemonic(rawValue: 2551)
+
+    static let ldap = Mnemonic(rawValue: 2552)
+    static let ldapp = Mnemonic(rawValue: 2553)
+    static let stlp = Mnemonic(rawValue: 2554)
 }
 
 extension Mnemonic {
-    /// Canonical lowercase name for every Loads & Stores mnemonic constant —
-    /// the family's slice of ``Mnemonic/name``, declared beside the
-    /// constants it names so the two cannot drift. Unallocated raw
-    /// values in the family's range return `"?<raw>"`.
+    /// Canonical lowercase name for every Loads & Stores mnemonic; unallocated
+    /// raw values in the range return `"?<raw>"`.
     static func loadsAndStoresName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .ldr: "ldr"
@@ -1133,6 +1050,21 @@ extension Mnemonic {
         case .sttclrl: "sttclrl"
         case .sttset: "sttset"
         case .sttsetl: "sttsetl"
+        case .setgop: "setgop"
+        case .setgopt: "setgopt"
+        case .setgopn: "setgopn"
+        case .setgoptn: "setgoptn"
+        case .setgom: "setgom"
+        case .setgomt: "setgomt"
+        case .setgomn: "setgomn"
+        case .setgomtn: "setgomtn"
+        case .setgoe: "setgoe"
+        case .setgoet: "setgoet"
+        case .setgoen: "setgoen"
+        case .setgoetn: "setgoetn"
+        case .ldap: "ldap"
+        case .ldapp: "ldapp"
+        case .stlp: "stlp"
         default: nil
         }
     }

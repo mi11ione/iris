@@ -1,15 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Generated AArch64 system-register name table, sourced from ARM's
-// machine-readable architecture specification (the A64 ISA / AArch64
-// register data). NOT sourced from any disassembler (llvm-mc / Capstone),
-// so the decode-parity sweep against llvm-mc remains an independent check.
-// Maps the (op0,op1,CRn,CRm,op2) MRS/MSR encoding to the canonical
-// lowercase name, per direction: some encodings name distinct registers
-// for read vs write (e.g. icc_hppir_el1 on MRS, icv_hppir_el1 on MSR), and
-// a read-only register written (or write-only read) falls back to the
-// generic s<...>_ form, matching the oracle's named-form rejection.
 
 enum SystemRegisterNameTable {
     @inline(__always)
@@ -17,7 +7,7 @@ enum SystemRegisterNameTable {
         (op0 << 14) | (op1 << 11) | (crn << 7) | (crm << 3) | op2
     }
 
-    /// One register per line: "op0 op1 crn crm op2 name access" (access ro/wo/rw).
+    /// One register per line.
     private static let data = """
     2 0 0 0 2 osdtrrx_el1 rw
     2 0 0 0 4 dbgbvr0_el1 rw
@@ -1461,18 +1451,204 @@ enum SystemRegisterNameTable {
     3 4 14 0 5 cntiscale_el2 rw
     3 4 14 0 7 cntvfrq_el2 rw
     3 6 10 7 1 mpamvidsr_el3 rw
+    2 1 8 0 0 brbinf0_el1 ro
+    2 1 8 0 1 brbsrc0_el1 ro
+    2 1 8 0 2 brbtgt0_el1 ro
+    2 1 8 0 4 brbinf16_el1 ro
+    2 1 8 0 5 brbsrc16_el1 ro
+    2 1 8 0 6 brbtgt16_el1 ro
+    2 1 8 1 0 brbinf1_el1 ro
+    2 1 8 1 1 brbsrc1_el1 ro
+    2 1 8 1 2 brbtgt1_el1 ro
+    2 1 8 1 4 brbinf17_el1 ro
+    2 1 8 1 5 brbsrc17_el1 ro
+    2 1 8 1 6 brbtgt17_el1 ro
+    2 1 8 2 0 brbinf2_el1 ro
+    2 1 8 2 1 brbsrc2_el1 ro
+    2 1 8 2 2 brbtgt2_el1 ro
+    2 1 8 2 4 brbinf18_el1 ro
+    2 1 8 2 5 brbsrc18_el1 ro
+    2 1 8 2 6 brbtgt18_el1 ro
+    2 1 8 3 0 brbinf3_el1 ro
+    2 1 8 3 1 brbsrc3_el1 ro
+    2 1 8 3 2 brbtgt3_el1 ro
+    2 1 8 3 4 brbinf19_el1 ro
+    2 1 8 3 5 brbsrc19_el1 ro
+    2 1 8 3 6 brbtgt19_el1 ro
+    2 1 8 4 0 brbinf4_el1 ro
+    2 1 8 4 1 brbsrc4_el1 ro
+    2 1 8 4 2 brbtgt4_el1 ro
+    2 1 8 4 4 brbinf20_el1 ro
+    2 1 8 4 5 brbsrc20_el1 ro
+    2 1 8 4 6 brbtgt20_el1 ro
+    2 1 8 5 0 brbinf5_el1 ro
+    2 1 8 5 1 brbsrc5_el1 ro
+    2 1 8 5 2 brbtgt5_el1 ro
+    2 1 8 5 4 brbinf21_el1 ro
+    2 1 8 5 5 brbsrc21_el1 ro
+    2 1 8 5 6 brbtgt21_el1 ro
+    2 1 8 6 0 brbinf6_el1 ro
+    2 1 8 6 1 brbsrc6_el1 ro
+    2 1 8 6 2 brbtgt6_el1 ro
+    2 1 8 6 4 brbinf22_el1 ro
+    2 1 8 6 5 brbsrc22_el1 ro
+    2 1 8 6 6 brbtgt22_el1 ro
+    2 1 8 7 0 brbinf7_el1 ro
+    2 1 8 7 1 brbsrc7_el1 ro
+    2 1 8 7 2 brbtgt7_el1 ro
+    2 1 8 7 4 brbinf23_el1 ro
+    2 1 8 7 5 brbsrc23_el1 ro
+    2 1 8 7 6 brbtgt23_el1 ro
+    2 1 8 8 0 brbinf8_el1 ro
+    2 1 8 8 1 brbsrc8_el1 ro
+    2 1 8 8 2 brbtgt8_el1 ro
+    2 1 8 8 4 brbinf24_el1 ro
+    2 1 8 8 5 brbsrc24_el1 ro
+    2 1 8 8 6 brbtgt24_el1 ro
+    2 1 8 9 0 brbinf9_el1 ro
+    2 1 8 9 1 brbsrc9_el1 ro
+    2 1 8 9 2 brbtgt9_el1 ro
+    2 1 8 9 4 brbinf25_el1 ro
+    2 1 8 9 5 brbsrc25_el1 ro
+    2 1 8 9 6 brbtgt25_el1 ro
+    2 1 8 10 0 brbinf10_el1 ro
+    2 1 8 10 1 brbsrc10_el1 ro
+    2 1 8 10 2 brbtgt10_el1 ro
+    2 1 8 10 4 brbinf26_el1 ro
+    2 1 8 10 5 brbsrc26_el1 ro
+    2 1 8 10 6 brbtgt26_el1 ro
+    2 1 8 11 0 brbinf11_el1 ro
+    2 1 8 11 1 brbsrc11_el1 ro
+    2 1 8 11 2 brbtgt11_el1 ro
+    2 1 8 11 4 brbinf27_el1 ro
+    2 1 8 11 5 brbsrc27_el1 ro
+    2 1 8 11 6 brbtgt27_el1 ro
+    2 1 8 12 0 brbinf12_el1 ro
+    2 1 8 12 1 brbsrc12_el1 ro
+    2 1 8 12 2 brbtgt12_el1 ro
+    2 1 8 12 4 brbinf28_el1 ro
+    2 1 8 12 5 brbsrc28_el1 ro
+    2 1 8 12 6 brbtgt28_el1 ro
+    2 1 8 13 0 brbinf13_el1 ro
+    2 1 8 13 1 brbsrc13_el1 ro
+    2 1 8 13 2 brbtgt13_el1 ro
+    2 1 8 13 4 brbinf29_el1 ro
+    2 1 8 13 5 brbsrc29_el1 ro
+    2 1 8 13 6 brbtgt29_el1 ro
+    2 1 8 14 0 brbinf14_el1 ro
+    2 1 8 14 1 brbsrc14_el1 ro
+    2 1 8 14 2 brbtgt14_el1 ro
+    2 1 8 14 4 brbinf30_el1 ro
+    2 1 8 14 5 brbsrc30_el1 ro
+    2 1 8 14 6 brbtgt30_el1 ro
+    2 1 8 15 0 brbinf15_el1 ro
+    2 1 8 15 1 brbsrc15_el1 ro
+    2 1 8 15 2 brbtgt15_el1 ro
+    2 1 8 15 4 brbinf31_el1 ro
+    2 1 8 15 5 brbsrc31_el1 ro
+    2 1 8 15 6 brbtgt31_el1 ro
+    2 1 9 0 0 brbcr_el1 rw
+    2 1 9 0 1 brbfcr_el1 rw
+    2 1 9 0 2 brbts_el1 rw
+    2 1 9 1 0 brbinfinj_el1 rw
+    2 1 9 1 1 brbsrcinj_el1 rw
+    2 1 9 1 2 brbtgtinj_el1 rw
+    2 1 9 2 0 brbidr0_el1 ro
+    2 4 9 0 0 brbcr_el2 rw
+    2 5 9 0 0 brbcr_el12 rw
+    3 0 0 0 4 mpuir_el1 rw
+    3 0 6 1 1 prenr_el1 rw
+    3 0 6 2 1 prselr_el1 rw
+    3 0 6 8 0 prbar_el1 rw
+    3 0 6 8 1 prlar_el1 rw
+    3 0 6 8 4 prbar1_el1 rw
+    3 0 6 8 5 prlar1_el1 rw
+    3 0 6 9 0 prbar2_el1 rw
+    3 0 6 9 1 prlar2_el1 rw
+    3 0 6 9 4 prbar3_el1 rw
+    3 0 6 9 5 prlar3_el1 rw
+    3 0 6 10 0 prbar4_el1 rw
+    3 0 6 10 1 prlar4_el1 rw
+    3 0 6 10 4 prbar5_el1 rw
+    3 0 6 10 5 prlar5_el1 rw
+    3 0 6 11 0 prbar6_el1 rw
+    3 0 6 11 1 prlar6_el1 rw
+    3 0 6 11 4 prbar7_el1 rw
+    3 0 6 11 5 prlar7_el1 rw
+    3 0 6 12 0 prbar8_el1 rw
+    3 0 6 12 1 prlar8_el1 rw
+    3 0 6 12 4 prbar9_el1 rw
+    3 0 6 12 5 prlar9_el1 rw
+    3 0 6 13 0 prbar10_el1 rw
+    3 0 6 13 1 prlar10_el1 rw
+    3 0 6 13 4 prbar11_el1 rw
+    3 0 6 13 5 prlar11_el1 rw
+    3 0 6 14 0 prbar12_el1 rw
+    3 0 6 14 1 prlar12_el1 rw
+    3 0 6 14 4 prbar13_el1 rw
+    3 0 6 14 5 prlar13_el1 rw
+    3 0 6 15 0 prbar14_el1 rw
+    3 0 6 15 1 prlar14_el1 rw
+    3 0 6 15 4 prbar15_el1 rw
+    3 0 6 15 5 prlar15_el1 rw
+    3 0 9 9 1 pmsnevfr_el1 rw
+    3 0 13 0 5 accdata_el1 rw
+    3 1 0 0 2 ccsidr2_el1 ro
+    3 3 2 4 0 rndr ro
+    3 3 2 4 1 rndrrs ro
+    3 4 0 0 4 mpuir_el2 rw
+    3 4 6 1 1 prenr_el2 rw
+    3 4 6 2 1 prselr_el2 rw
+    3 4 6 8 0 prbar_el2 rw
+    3 4 6 8 1 prlar_el2 rw
+    3 4 6 8 4 prbar1_el2 rw
+    3 4 6 8 5 prlar1_el2 rw
+    3 4 6 9 0 prbar2_el2 rw
+    3 4 6 9 1 prlar2_el2 rw
+    3 4 6 9 4 prbar3_el2 rw
+    3 4 6 9 5 prlar3_el2 rw
+    3 4 6 10 0 prbar4_el2 rw
+    3 4 6 10 1 prlar4_el2 rw
+    3 4 6 10 4 prbar5_el2 rw
+    3 4 6 10 5 prlar5_el2 rw
+    3 4 6 11 0 prbar6_el2 rw
+    3 4 6 11 1 prlar6_el2 rw
+    3 4 6 11 4 prbar7_el2 rw
+    3 4 6 11 5 prlar7_el2 rw
+    3 4 6 12 0 prbar8_el2 rw
+    3 4 6 12 1 prlar8_el2 rw
+    3 4 6 12 4 prbar9_el2 rw
+    3 4 6 12 5 prlar9_el2 rw
+    3 4 6 13 0 prbar10_el2 rw
+    3 4 6 13 1 prlar10_el2 rw
+    3 4 6 13 4 prbar11_el2 rw
+    3 4 6 13 5 prlar11_el2 rw
+    3 4 6 14 0 prbar12_el2 rw
+    3 4 6 14 1 prlar12_el2 rw
+    3 4 6 14 4 prbar13_el2 rw
+    3 4 6 14 5 prlar13_el2 rw
+    3 4 6 15 0 prbar14_el2 rw
+    3 4 6 15 1 prlar14_el2 rw
+    3 4 6 15 4 prbar15_el2 rw
+    3 4 6 15 5 prlar15_el2 rw
+    3 4 10 8 0 mecid_p0_el2 rw
+    3 4 10 8 1 mecid_a0_el2 rw
+    3 4 10 8 2 mecid_p1_el2 rw
+    3 4 10 8 3 mecid_a1_el2 rw
+    3 4 10 8 7 mecidr_el2 ro
+    3 4 10 9 0 vmecid_p_el2 rw
+    3 4 10 9 1 vmecid_a_el2 rw
+    3 6 2 1 4 gptbr_el3 rw
+    3 6 2 1 6 gpccr_el3 rw
+    3 6 10 10 1 mecid_rl_a_el3 rw
     """
 
-    /// Per-direction names for an encoding. `read` is the MRS name, `write`
-    /// the MSR name; an encoding may populate one, the other, or both (with
-    /// the same or — for read/write register pairs — different names).
+    /// Per-direction names for an encoding.
     private static let table: [UInt16: (read: String?, write: String?)] = {
         var t: [UInt16: (read: String?, write: String?)] = [:]
-        t.reserveCapacity(1700)
+        t.reserveCapacity(2048)
         for line in data.split(separator: "\n") {
             let f = line.split(separator: " ")
-            // Every embedded line is 7 well-formed fields; the conditional
-            // binding keeps the parse total without a separate skip arm.
             if f.count == 7,
                let op0 = UInt16(f[0]), let op1 = UInt16(f[1]), let crn = UInt16(f[2]),
                let crm = UInt16(f[3]), let op2 = UInt16(f[4])
@@ -1480,7 +1656,6 @@ enum SystemRegisterNameTable {
                 let name = String(f[5])
                 let k = key(op0, op1, crn, crm, op2)
                 var entry = t[k] ?? (read: nil, write: nil)
-                // ro → read name; wo → write name; rw → both.
                 if f[6] == "ro" {
                     entry.read = name
                 } else if f[6] == "wo" {

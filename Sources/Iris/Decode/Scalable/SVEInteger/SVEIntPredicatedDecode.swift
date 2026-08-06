@@ -1,30 +1,13 @@
-/// Copyright (c) 2026 Roman Zhuzhgov
-/// Licensed under the Apache License, Version 2.0
-///
-/// the predicated SVE integer groups: G1 (arith/logical), G2
-/// (shifts by register, by wide elements, and by immediate), G3 (unary), G4
-/// (multiply-add), G5 (reductions, including the SVE2p1 quadword forms). All
-/// share the predicated field layout — Zd/Zdn/Zda at [4:0], Zn/Zm at [9:5], Pg
-/// at [12:10], sz at [23:22] — but each group reads its operation selector from
-/// a different place: [20:16] for G1 and G5, [19:16] for G3 and the G2
-/// immediate, [15:14]+[13] for G4.
-///
-/// Per the predicated `/M` destructive forms read their destination
-/// (RMW) and set `partialWrite` (inactive lanes preserve it); `/Z` forms are
-/// full writes; reductions write a scalar SIMD register (or, for the quadword
-/// forms, a whole NEON vector). Every in-scope form sets `readsStreamingMode`
-///
-extension SVEIntegerDecode {
-    // MARK: G1 — predicated integer arith / logical (destructive /M)
+// Copyright (c) 2026 Roman Zhuzhgov
+// Licensed under the Apache License, Version 2.0
 
+extension SVEIntegerDecode {
     @inline(__always)
     static func decodePredicatedArithLog(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         guard let mnemonic = predicatedArithLogMnemonic((e >> 16) & 0b11111, sz: (e >> 22) & 0b11) else {
             return undefined(e, a)
         }
         let d = zd(e), n = zn(e), g = pg3(e), size = sz(e)
-        // `add Zdn.T, Pg/m, Zdn.T, Zm.T` — destructive: Zdn (=Zd, low field) is
-        // the accumulator and the second source; Zm is at [9:5].
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
             semanticReads: vecMask(d).union(vecMask(n)),
@@ -35,16 +18,14 @@ extension SVEIntegerDecode {
         )
     }
 
-    /// opc[20:16] × sz → mnemonic for `sve_int_bin_pred_arit_log`. SDIV/UDIV/
-    /// SDIVR/UDIVR are legal only for sz ∈ {S, D}; every other opc is size-
-    /// independent. Returns nil for reserved opc / illegal size (→ UNDEFINED).
+    /// opc[20:16] × sz → mnemonic for `sve_int_bin_pred_arit_log`.
     @inline(__always)
     static func predicatedArithLogMnemonic(_ opc: UInt32, sz: UInt32) -> Mnemonic? {
         switch opc {
         case 0x00: .add
         case 0x01: .sub
         case 0x03: .subr
-        case 0x04: sz == 0b11 ? .addpt : nil // FEAT_CPA, .d only
+        case 0x04: sz == 0b11 ? .addpt : nil
         case 0x05: sz == 0b11 ? .subpt : nil
         case 0x08: .smax
         case 0x09: .umax
@@ -67,11 +48,9 @@ extension SVEIntegerDecode {
         }
     }
 
-    // MARK: G3 — predicated unary (/M or /Z)
-
     @inline(__always)
     static func decodePredicatedUnary(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        let merging = (e >> 20) & 1 == 1 // b20: 1 = /M (sve_int_un_pred_arit), 0 = /Z (…_z, SVE2p2)
+        let merging = (e >> 20) & 1 == 1
         guard let mnemonic = predicatedUnaryMnemonic((e >> 16) & 0b1111, sz: (e >> 22) & 0b11) else {
             return undefined(e, a)
         }
@@ -79,7 +58,7 @@ extension SVEIntegerDecode {
         var reads = vecMask(n)
         var effect: ScalableEffect = .readsStreamingMode
         if merging {
-            reads = reads.union(vecMask(d)) // /M merges inactive lanes → Zd is RMW
+            reads = reads.union(vecMask(d))
             effect.insert(.partialWrite)
         }
         return DecodedDraft(
@@ -91,10 +70,7 @@ extension SVEIntegerDecode {
         )
     }
 
-    /// opc[19:16] × sz → mnemonic for the predicated unary family. The sign/
-    /// zero-extend ops are size-gated (SXTB/UXTB need sz ≥ H, SXTH/UXTH ≥ S,
-    /// SXTW/UXTW = D). FABS/FNEG (opc 0b1100/0b1101 with b19=1) are excluded by
-    /// the scope predicate. Returns nil for reserved opc / illegal size.
+    /// opc[19:16] × sz → mnemonic for the predicated unary family.
     @inline(__always)
     static func predicatedUnaryMnemonic(_ opc: UInt32, sz: UInt32) -> Mnemonic? {
         switch opc {
@@ -115,11 +91,8 @@ extension SVEIntegerDecode {
         }
     }
 
-    // MARK: G4 — predicated multiply-add (MLA/MLS accumulate; MAD/MSB multiply)
-
     @inline(__always)
     static func decodeMultiplyAddMLA(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // `mla Zda.T, Pg/m, Zn.T, Zm.T` — Zda [4:0] accumulate, Zn [9:5], Zm [20:16].
         let da = zd(e), n = zn(e), m = zm(e), g = pg3(e), size = sz(e)
         let mnemonic: Mnemonic = (e >> 13) & 1 == 0 ? .mla : .mls
         return DecodedDraft(
@@ -134,7 +107,6 @@ extension SVEIntegerDecode {
 
     @inline(__always)
     static func decodeMultiplyAddMAD(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // `mad Zdn.T, Pg/m, Zm.T, Za.T` — Zdn [4:0] multiplicand, Zm [20:16], Za [9:5].
         let dn = zd(e), m = zm(e), za = zn(e), g = pg3(e), size = sz(e)
         let mnemonic: Mnemonic = (e >> 13) & 1 == 0 ? .mad : .msb
         return DecodedDraft(
@@ -147,24 +119,14 @@ extension SVEIntegerDecode {
         )
     }
 
-    // MARK: G5 — reductions (write a scalar SIMD register; SVE2p1 quadword → NEON vector)
-
     @inline(__always)
     static func decodeReduction(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // sve_int_reduce and sve2p1_int_reduce_q share b15:13=001, and b18 is the
-        // bit that separates them: every scalar-reduction opcode clears it, every
-        // quadword-reduction opcode sets it.
         if (e >> 18) & 1 == 1 {
             return decodeReductionQuadword(e, a, &sink)
         }
         guard let mnemonic = reductionMnemonic((e >> 16) & 0b11111) else { return undefined(e, a) }
         let vd = zd(e), n = zn(e), g = pg3(e), size = sz(e)
-        // SADDV sign-extends its elements into a 64-bit accumulator, which a `.d`
-        // source has nothing to widen into — so `.d` is reserved for SADDV alone.
-        // UADDV encodes at every size (a `.d` UADDV is a plain 64-bit sum).
         if mnemonic == .saddv, size == .d { return undefined(e, a) }
-        // SADDV/UADDV always write a D scalar; the others write a scalar of the
-        // element width. The destination is a SIMD register (bit 32+d).
         let destSize: ScalarSize = mnemonic == .saddv || mnemonic == .uaddv ? .d : size
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mnemonic,
@@ -175,9 +137,7 @@ extension SVEIntegerDecode {
         )
     }
 
-    /// opc[20:16] → mnemonic for `sve_int_reduce`. Every reduction encodes at
-    /// every element size; the sole size asymmetry is SADDV's reserved `.d`
-    /// (handled by the caller), so this table gates on the opcode alone.
+    /// opc[20:16] → mnemonic for `sve_int_reduce`.
     @inline(__always)
     static func reductionMnemonic(_ opc: UInt32) -> Mnemonic? {
         switch opc {
@@ -194,11 +154,7 @@ extension SVEIntegerDecode {
         }
     }
 
-    // MARK: G5 — SVE2p1 quadword reductions (write a full NEON vector, not a scalar)
-
-    /// `<mn> <Vd>.<arr>, <Pg>, <Zn>.<T>` — reduces each 128-bit segment of Zn to
-    /// one element, so the result is a whole NEON vector whose arrangement is the
-    /// element size packed into 128 bits (`.b` → `v0.16b`, `.d` → `v0.2d`).
+    /// `<mn> <Vd>.<arr>, <Pg>, <Zn>.<T>`.
     @inline(__always)
     static func decodeReductionQuadword(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         let mnemonic: Mnemonic
@@ -218,7 +174,7 @@ extension SVEIntegerDecode {
         case .b: .b16
         case .h: .h8
         case .s: .s4
-        default: .d2 // .d (`.q` cannot be encoded by the 2-bit size field)
+        default: .d2
         }
         let vd = zd(e), n = zn(e), g = pg3(e)
         return DecodedDraft(
@@ -230,13 +186,10 @@ extension SVEIntegerDecode {
         )
     }
 
-    // MARK: G2 — predicated shifts (register, wide, and immediate with tsz)
-
     @inline(__always)
     static func decodePredicatedShift(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        if (e >> 20) & 1 == 0 { return decodePredicatedShiftImmediate(e, a, &sink) } // sve_int_bin_pred_shift_imm
-        if (e >> 19) & 1 == 1 { return decodePredicatedShiftWide(e, a, &sink) } // wide (Zm.D)
-        // Register shift `<mn> Zdn.T, Pg/m, Zdn.T, Zm.T` — opc[18:16].
+        if (e >> 20) & 1 == 0 { return decodePredicatedShiftImmediate(e, a, &sink) }
+        if (e >> 19) & 1 == 1 { return decodePredicatedShiftWide(e, a, &sink) }
         let mnemonic: Mnemonic
         switch (e >> 16) & 0b111 {
         case 0b000: mnemonic = .asr
@@ -252,7 +205,7 @@ extension SVEIntegerDecode {
 
     @inline(__always)
     static func decodePredicatedShiftWide(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        if sz(e) == .d { return undefined(e, a) } // wide requires source < .d
+        if sz(e) == .d { return undefined(e, a) }
         let mnemonic: Mnemonic
         switch (e >> 16) & 0b111 {
         case 0b000: mnemonic = .asr
@@ -263,7 +216,7 @@ extension SVEIntegerDecode {
         return predicatedShiftRegisterDraft(e, a, mnemonic: mnemonic, wide: true, &sink)
     }
 
-    /// Shared predicated register/wide shift draft: `Zdn.T, Pg/m, Zdn.T, Zm.<T|d>`.
+    /// Shared predicated register/wide shift draft.
     @inline(__always)
     static func predicatedShiftRegisterDraft(_ e: UInt32, _ a: UInt64, mnemonic: Mnemonic, wide: Bool, _ sink: inout OperandSink) -> DecodedDraft {
         let d = zd(e), m = zn(e), g = pg3(e), size = sz(e)
@@ -279,8 +232,6 @@ extension SVEIntegerDecode {
 
     @inline(__always)
     static func decodePredicatedShiftImmediate(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // opc[18:16] + b19 select the operation; the element and amount come
-        // from the tsz field (tszh [23:22], tszl:imm3 [9:5]).
         let selector = (((e >> 19) & 1) << 3) | ((e >> 16) & 0b111)
         let (mnemonic, isLeft): (Mnemonic, Bool)
         switch selector {

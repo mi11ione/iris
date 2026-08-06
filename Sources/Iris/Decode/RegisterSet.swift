@@ -1,18 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// RegisterSet. A 64-bit bitset over canonical
-// GPR (bits 0..31) and SIMD (bits 32..63) indices. PSTATE.NZCV is tracked
-// separately via FlagEffect; FPCR/FPSR/system registers/AMX state are
-// not in the bitset — they are visible through the operand stream on the
-// MSR/MRS/AMX instructions that touch them.
 
-/// Bitmask over the 64 named ARM64 architectural registers (31 GPRs +
-/// SP/XZR slot at index 31 + 32 SIMD/FP at indices 32..63).
-///
-/// `RegisterSet` is the per-instruction semantic-reads / -writes carrier
-/// on ``InstructionRecord``. Dataflow analysis (liveness, def-use,
-/// reaching-definitions) consumes it as O(1) bitwise operations.
+/// Bitmask over the 64 named ARM64 architectural registers — 31 GPRs, the
+/// SP/XZR slot at 31, and 32 SIMD/FP at 32...63. The semantic-reads and
+/// -writes carrier on ``InstructionRecord``, consumed as O(1) bit operations.
 @frozen
 public struct RegisterSet: Sendable, Hashable {
     /// Raw 64-bit mask. Bit `i` set means canonical-index `i` is in the set.
@@ -26,7 +17,7 @@ public struct RegisterSet: Sendable, Hashable {
     /// The empty set — no register references.
     public static let empty = RegisterSet(mask: 0)
 
-    /// True iff `reg`'s canonical-index is set in the mask. Returns false
+    /// Whether `reg`'s canonical-index is set in the mask. Returns false
     /// for indices >= 64 (special registers tracked elsewhere).
     @inlinable
     @inline(__always)
@@ -91,28 +82,28 @@ public struct RegisterSet: Sendable, Hashable {
         RegisterSet(mask: mask ^ other.mask)
     }
 
-    /// True iff every register of `self` is in `other`.
+    /// Whether every register of `self` is in `other`.
     @inlinable
     @inline(__always)
     public func isSubset(of other: RegisterSet) -> Bool {
         mask & ~other.mask == 0
     }
 
-    /// True iff every register of `other` is in `self`.
+    /// Whether every register of `other` is in `self`.
     @inlinable
     @inline(__always)
     public func isSuperset(of other: RegisterSet) -> Bool {
         other.mask & ~mask == 0
     }
 
-    /// True iff `self` and `other` share no register.
+    /// Whether `self` and `other` share no register.
     @inlinable
     @inline(__always)
     public func isDisjoint(with other: RegisterSet) -> Bool {
         mask & other.mask == 0
     }
 
-    /// True iff no register is in the set.
+    /// Whether the set is empty.
     @inlinable
     @inline(__always)
     public var isEmpty: Bool {
@@ -130,23 +121,10 @@ public struct RegisterSet: Sendable, Hashable {
 extension RegisterSet: Sequence {
     public typealias Element = RegisterRef
 
-    /// Pops the lowest set bit per step, yielding each register at its
-    /// architectural width: bit `i` (0…30) → `.x(i)`, bit 31 → `.sp()`,
-    /// bits 32…63 → `.simd(i - 32)`.
-    ///
-    /// **Width policy — X-form.** The set tracks *architectural
-    /// registers*; the semantic layer is independent of alias/width
-    /// presentation, and W-form is a per-operand display fact the set
-    /// deliberately erases. `x0`…`x30`, `sp`, `v0`…`v31` are the
-    /// registers' canonical names.
-    ///
-    /// **Bit 31 is SP, never XZR/WZR**: the decoders never record
-    /// zero-register participation (reads-as-zero, writes-discard — the
-    /// zero register is not state), so bit 31 occurs only for SP/WSP
-    /// participants. There is no `pc` element (PC is not a general
-    /// register in ARM64 — PC-relative reads surface as operands and
-    /// ``Instruction/pcRelativeTarget``) and no `nzcv` element (flags
-    /// are ``FlagEffect``'s domain).
+    /// Pops the lowest set bit per step: bit `i` (0…30) → `.x(i)`, bit 31 →
+    /// `.sp()`, bits 32…63 → `.simd(i - 32)`. Bit 31 is SP, never XZR/WZR, since
+    /// the decoders never record zero-register participation. There is no `pc`
+    /// element and no `nzcv` element.
     @frozen
     public struct Iterator: IteratorProtocol, Sendable {
         @usableFromInline

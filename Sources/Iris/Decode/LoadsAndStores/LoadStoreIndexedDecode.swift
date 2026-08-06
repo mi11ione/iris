@@ -1,14 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Load/store register, immediate post-indexed (L8) and
-// pre-indexed (L10). Same encoding shell as LDUR (bits[29:24] = 111000,
-// V=0, bit[21]=0), distinguished only by bits[11:10]: 01 = post-index,
-// 11 = pre-index.
-//
-// size × opc table is identical to L7 (LDUR/STUR) for the load/store
-// kind discrimination. PRFM has no pre/post-index forms (the equivalent
-// opc=11 size=11 encoding is reserved here).
 
 enum LoadStoreIndexedDecode {
     @_optimize(speed)
@@ -43,9 +34,6 @@ enum LoadStoreIndexedDecode {
         case (0b11, 0b00): mnemonic = .str; rtWidth = .x64; memoryAccess = .store; isLoad = false
         case (0b11, 0b01): mnemonic = .ldr; rtWidth = .x64; memoryAccess = .load; isLoad = true
         default:
-            // The indexed class has no PRFM form, so size=11/opc=10
-            // (PRFM in the offset classes), size=10/opc=11, and
-            // size=11/opc=11 are all unallocated → reserved.
             return .undefined(at: address, encoding: encoding)
         }
 
@@ -63,7 +51,6 @@ enum LoadStoreIndexedDecode {
             reads = r
             writes = .empty
         }
-        // Pre/post-index always writes back the base register.
         writes = lsInsertingNonZero(reg: rnRef, into: writes)
 
         return DecodedDraft(

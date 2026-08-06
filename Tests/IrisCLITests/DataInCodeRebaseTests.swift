@@ -5,10 +5,8 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates `LC_DATA_IN_CODE` handling: rebase into section buffer
-/// space under both offset conventions (file offsets in linked images,
-/// section-address-space offsets in MH_OBJECT), span kinds, straddling
-/// and degenerate entries, and the resulting data-marker records.
+/// Validates `LC_DATA_IN_CODE`: rebase under both offset conventions, span
+/// kinds, straddling and degenerate entries, and the marker records.
 @Suite("Data-in-code rebase")
 struct DataInCodeRebaseTests {
     @Test func objectFileSpansUseSectionAddressSpace() throws {
@@ -23,8 +21,6 @@ struct DataInCodeRebaseTests {
     @Test func linkedImageSpansUseFileOffsets() throws {
         let binary = try #require(walkedBinary(cliFixturePath("dic-linked")))
         let text = try #require(binary.codeSections.first { $0.sectionName == "__text" })
-        // Same code, same in-section placement — the rebase result is
-        // identical even though the on-disk convention differs.
         #expect(text.dataInCode == [
             DataInCodeSpan(offset: 0x48, length: 4, kind: .jumpTable8),
             DataInCodeSpan(offset: 0x4C, length: 4, kind: .data),
@@ -38,14 +34,10 @@ struct DataInCodeRebaseTests {
         let markers = stream.filter { $0.category == .dataInCodeMarker }
         #expect(markers.count == 2)
         #expect(markers.map(\.encoding) == [0x0604_0200, 0xDEAD_BEEF])
-        // 0xdeadbeef would otherwise decode as an instruction-like word;
-        // the marker proves loader knowledge overrode byte plausibility.
         #expect(markers.allSatisfy { $0.text.hasPrefix(".long ") })
     }
 
     @Test func straddlingEntryIsClampedWithDiagnostic() throws {
-        // One 8-byte DIC entry whose second half runs past the section's
-        // end: the in-section half is kept, the loss is diagnosed.
         let bytes = minimalBinary(words: [0xD503_201F, 0x0000_002A], extraSize: 16, extraCommands: { a in
             a.linkeditDataCommand(cmd: 0x29, dataoff: 264, datasize: 8)
         }, trailer: { a in
@@ -73,8 +65,6 @@ struct DataInCodeRebaseTests {
     }
 
     @Test func raggedTableDecodesWholeEntries() throws {
-        // datasize 12 is one whole entry plus four stray bytes: the
-        // floor prefix decodes, the remainder is diagnosed.
         let bytes = minimalBinary(words: [0xD503_201F, 0x0000_002A], extraSize: 16, extraCommands: { a in
             a.linkeditDataCommand(cmd: 0x29, dataoff: 264, datasize: 12)
         }, trailer: { a in
@@ -102,9 +92,6 @@ struct DataInCodeRebaseTests {
     }
 
     @Test func entryCoveringTwoSectionsSplits() throws {
-        // Two adjacent code sections with one DIC entry spanning the
-        // boundary: each section receives its in-bounds part, no
-        // diagnostic (every byte is accounted for).
         var a = MachOAssembler()
         a.machHeader64(ncmds: 2, sizeofcmds: 72 + 160 + 16)
         a.segmentCommand64(name: "__TEXT", vmaddr: 0x1000, nsects: 2, cmdsize: 72 + 160)

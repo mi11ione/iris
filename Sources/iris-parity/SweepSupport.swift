@@ -1,15 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Shared sweep machinery: deterministic randomness (SplitMix64),
-// deterministic hashing (FNV-1a 64), repo-root resolution for in-repo
-// fixtures/docs, parse-or-die option-value parsing, the streaming TSV
-// line reader, and console helpers.
 
 import Foundation
 
-/// Deterministic 64-bit generator (SplitMix64). Seeded sweeps are
-/// reproducible run to run and across platforms.
+/// Deterministic 64-bit generator (SplitMix64).
 struct SplitMix64 {
     var state: UInt64
 
@@ -30,8 +24,7 @@ struct SplitMix64 {
     }
 }
 
-/// FNV-1a 64 running hash. Process-independent (unlike `Hasher`), so
-/// digests compare across runs, processes, and platforms.
+/// FNV-1a 64 running hash.
 struct FNV1a {
     private(set) var digest: UInt64 = 0xCBF2_9CE4_8422_2325
 
@@ -68,14 +61,13 @@ struct FNV1a {
     }
 }
 
-/// Package root resolved from this source file's compile-time path, with
-/// a working-directory fallback for relocated binaries. Used to locate
-/// `Tests/Fixtures/Decode/` and `KNOWN-DEVIATIONS.md`.
+/// Package root resolved from this source file's compile-time path, with a
+/// working-directory fallback for relocated binaries.
 func repositoryRoot() -> URL {
     let compiled = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent() // iris-parity
-        .deletingLastPathComponent() // Sources
-        .deletingLastPathComponent() // <package root>
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
     if FileManager.default.fileExists(atPath: compiled.appendingPathComponent("Package.swift").path) {
         return compiled
     }
@@ -86,12 +78,7 @@ func eprint(_ message: String) {
     FileHandle.standardError.write(Data((message + "\n").utf8))
 }
 
-/// Parse a decimal option value or die: a malformed `--count`/`--jobs`/
-/// `--limit`/`--chunk` must never fall back to a default — the run
-/// that proceeds would silently not be the run that was asked for.
-/// `minimum` rejects degenerate values a subcommand cannot honor
-/// (`--chunk 0` / `--jobs 0` would never make progress).
-/// Failures name the flag and the offending value on stderr, exit 1.
+/// Parse a decimal option value or die.
 func parseDecimalOption(_ flag: String, in args: [String], at index: Int, for subcommand: String, minimum: Int = 0) -> Int {
     let raw = optionValue(flag, in: args, at: index, for: subcommand)
     guard let value = Int(raw), value >= minimum else {
@@ -101,8 +88,7 @@ func parseDecimalOption(_ flag: String, in args: [String], at index: Int, for su
     return value
 }
 
-/// Parse a `--seed` value or die. Seeds are naturally written in hex,
-/// so 0x-prefixed hex is accepted alongside decimal.
+/// Parse a `--seed` value or die.
 func parseSeedOption(_ flag: String, in args: [String], at index: Int, for subcommand: String) -> UInt64 {
     let raw = optionValue(flag, in: args, at: index, for: subcommand)
     let parsed = raw.hasPrefix("0x") || raw.hasPrefix("0X")
@@ -140,8 +126,8 @@ func secondsText(_ seconds: Double) -> String {
     return String(format: "%dm%02ds", Int(seconds) / 60, Int(seconds) % 60)
 }
 
-/// Buffered incremental line reader so multi-GB corpus TSVs stream at
-/// constant memory.
+/// Buffered incremental line reader so multi-GB corpus TSVs stream at constant
+/// memory.
 final class TSVLineReader {
     private let handle: FileHandle
     private var buffer = Data()
@@ -186,7 +172,6 @@ final class TSVLineReader {
             } else {
                 eof = true
             }
-            // Re-base indices after append so Data slice indexing stays valid.
             buffer = Data(buffer)
             offset = 0
         }

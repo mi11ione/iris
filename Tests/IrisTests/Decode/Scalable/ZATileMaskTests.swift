@@ -4,18 +4,8 @@
 import Iris
 import Testing
 
-/// Element size in bytes for each ZA tier, transcribed from the ARM ARM
-/// (B:1, H:2, S:4, D:8, Q:16) rather than read back from `ScalarSize.tileCount`
-/// — the oracle below must not mirror the implementation it checks.
 private let architecturalElementBytes: [ScalarSize: Int] = [.b: 1, .h: 2, .s: 4, .d: 8, .q: 16]
 
-/// The set of `ZA` array rows tile `tileIndex` occupies at element size
-/// `element`, in an array of `rowCount` rows.
-///
-/// Derived by enumerating the ARM ARM (DDI0616) `ZAhslice` pseudocode
-/// `row = tile + slice · (esize / 8)` — an independent derivation of the
-/// architectural storage, not a restatement of the 16-bit residue mask under
-/// test. Two accesses overlap architecturally iff their row sets intersect.
 private func architecturalRows(tile tileIndex: UInt8, element: ScalarSize, rowCount: Int) -> Set<Int> {
     let stride = architecturalElementBytes[element]!
     var rows: Set<Int> = []
@@ -27,8 +17,6 @@ private func architecturalRows(tile tileIndex: UInt8, element: ScalarSize, rowCo
     return rows
 }
 
-/// Every named ZA tile, as `(tileIndex, element)` — 31 in total
-/// (B:1 + H:2 + S:4 + D:8 + Q:16), the complete tile namespace.
 private let everyNamedTile: [(tile: UInt8, element: ScalarSize)] = {
     var tiles: [(tile: UInt8, element: ScalarSize)] = []
     for (element, count) in [(ScalarSize.b, 1), (.h, 2), (.s, 4), (.d, 8), (.q, 16)] {
@@ -39,15 +27,10 @@ private let everyNamedTile: [(tile: UInt8, element: ScalarSize)] = {
     return tiles
 }()
 
-/// Validates ZATileMask against the ARM ARM reference masks — the concrete
-/// 16-bit residue mask each named `ZA` tile decomposes to. These are the
-/// literal values the ARM ARM pseudocode and the LLVM ZAQ-leaf sub-register
-/// pyramid both establish; pinning them here
-/// catches any drift in the tile → Q-position mapping.
+/// Validates ZATileMask against the ARM ARM reference masks.
 @Suite("ZATileMask / named tiles match the ARM ARM reference masks")
 struct ZATileMaskReferenceTests {
     @Test func byteTileCoversTheWholeArray() {
-        // ZA0.B is the only B tile and spans every Q position.
         #expect(ZATileMask(tile: 0, element: .b).bits == 0xFFFF)
     }
 
@@ -80,8 +63,6 @@ struct ZATileMaskReferenceTests {
     }
 
     @Test func tilesWithinATierPartitionTheArray() {
-        // The tiles of one tier are disjoint and together cover every
-        // Q position — the defining property of the interleaved mapping.
         for (element, count) in [(ScalarSize.b, 1), (.h, 2), (.s, 4), (.d, 8), (.q, 16)] {
             var accumulated = ZATileMask.none
             for tile in 0 ..< UInt8(count) {
@@ -94,13 +75,7 @@ struct ZATileMaskReferenceTests {
     }
 }
 
-/// Validates ZATileMask.overlaps against an independent architectural oracle:
-/// the `ZA` row sets enumerated from the ARM ARM `ZAhslice` pseudocode
-/// (`row = tile + slice · esize/8`) intersected directly. Runs the complete
-/// 31 × 31 cross-product of every named tile, at three vector lengths — which
-/// simultaneously proves the residue mask is SVL-invariant (the same overlap
-/// answer at SVL = 128, 512, and 2048 bits, where the array has 16, 64, and
-/// 256 rows respectively).
+/// Validates `ZATileMask.overlaps` against an independent oracle.
 @Suite("ZATileMask / overlap matches architectural row intersection")
 struct ZATileMaskOverlapOracleTests {
     @Test(arguments: [16, 64, 256]) func overlapMatchesRowIntersectionAtEveryVectorLength(rowCount: Int) {
@@ -128,12 +103,10 @@ struct ZATileMaskOverlapOracleTests {
     }
 
     @Test func containedTileOverlapsItsContainer() {
-        // ZA0.B is the whole array, so ZA0.S's storage lives inside it.
         #expect(ZATileMask(tile: 0, element: .s).overlaps(ZATileMask(tile: 0, element: .b)))
     }
 
     @Test func tilesInDifferentTiersWithDisjointStorageDoNotOverlap() {
-        // ZA1.H occupies the odd Q positions; ZA0.S occupies 0, 4, 8, 12.
         #expect(!ZATileMask(tile: 1, element: .h).overlaps(ZATileMask(tile: 0, element: .s)))
     }
 
@@ -147,9 +120,7 @@ struct ZATileMaskOverlapOracleTests {
     }
 }
 
-/// Validates ZATileMask's set surface — the empty / whole constants, union,
-/// emptiness, out-of-range tile reduction (the factory masks rather than
-/// traps), and value semantics.
+/// Validates ZATileMask's set surface.
 @Suite("ZATileMask / set algebra and construction")
 struct ZATileMaskSetTests {
     @Test func noneIsTheEmptySet() {
@@ -194,8 +165,6 @@ struct ZATileMaskSetTests {
     }
 
     @Test func outOfRangeTileIndexReducesIntoRangeWithoutTrapping() {
-        // The tier has `tileCount` tiles; a wider index reduces modulo that
-        // count rather than trapping (the substrate's no-trap factory rule).
         #expect(ZATileMask(tile: 4, element: .s) == ZATileMask(tile: 0, element: .s))
         #expect(ZATileMask(tile: 7, element: .s) == ZATileMask(tile: 3, element: .s))
         #expect(ZATileMask(tile: 2, element: .h) == ZATileMask(tile: 0, element: .h))
@@ -215,10 +184,7 @@ struct ZATileMaskSetTests {
     }
 }
 
-/// Pins ZATileMask's layout — the 16-position residue mask is exactly its
-/// UInt16 payload, with no witness or padding. The ZA residue occupies bits
-/// [16..31] of a ``ScalableRegisterSet``, so a wider ZATileMask would silently
-/// overflow that field.
+/// Pins ZATileMask's layout.
 @Suite("ZATileMask / memory-layout invariant")
 struct ZATileMaskLayoutTests {
     @Test func sizeIsExactlyTwoBytes() {

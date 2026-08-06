@@ -1,22 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// scalable-predicate operand reference — Pn / PNn with its qualifier,
-// role, counter-view flag, and optional element size / index. The register
-// is a bare index 0..15; predicate-as-counter (PN) aliases the same physical
-// predicate file, distinguished by `isCounter` (an opcode property).
-// Predicates map to ScalableRegisterSet predicate bits, NEVER to RegisterRef
-// (a RegisterRef at index n would alias GPR Xn).
 
-/// Reference to an SVE/SME predicate operand — `Pn`, `Pn.<T>`, `Pn/z`,
-/// `Pn/m`, or the predicate-as-counter `PNn`.
-///
-/// Carried by ``Operand/scalablePredicate(_:)``. The register is a bare
-/// index (0..15). ``qualifier`` is the `/Z` or `/M` on a governing
-/// predicate; ``role`` distinguishes a governing predicate from a result
-/// predicate; ``isCounter`` selects the predicate-as-counter (`PN`) view of
-/// the same physical register. Its semantic read/write is
-/// ``ScalableRegisterSet/insertingPredicate(_:)`` on ``registerIndex``.
+/// Reference to an SVE/SME predicate operand. The register is a bare index
+/// (0...15); ``qualifier`` is the `/Z` or `/M`, ``role`` separates governing
+/// from result predicates, and ``isCounter`` selects the `PN` view.
 @frozen
 public struct ScalablePredicateRef: Sendable, Hashable {
     /// Predicate register number 0..15.
@@ -47,7 +34,7 @@ public struct ScalablePredicateRef: Sendable, Hashable {
         elementIndex: UInt8? = nil,
         selectRegister: RegisterRef? = nil,
     ) {
-        self.registerIndex = registerIndex & 0b1111 // masked (no trap)
+        self.registerIndex = registerIndex & 0b1111
         self.element = element
         self.qualifier = qualifier
         self.role = role

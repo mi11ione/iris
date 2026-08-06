@@ -12,8 +12,6 @@ private func text(_ e: UInt32) -> String {
     decode(e).text
 }
 
-/// Assert a representative encoding decodes to its mnemonic, is semantically
-/// consistent, and renders nonempty placeholder-free text.
 private func expectFamily(_ e: UInt32, _ m: Mnemonic, _ label: String) {
     let d = decode(e)
     #expect(d.mnemonic == m, "\(label) 0x\(String(e, radix: 16))")
@@ -22,7 +20,6 @@ private func expectFamily(_ e: UInt32, _ m: Mnemonic, _ label: String) {
     #expect(!t.isEmpty && !t.contains("?") && !t.contains("\n"), "\(label) -> \(t)")
 }
 
-/// Every `(mask, value)` row of `destructiveSpec`, paired with its mnemonic.
 private let destructives: [(UInt32, Mnemonic)] = [
     (0xC120_B800, .smax),
     (0xC120_B801, .umax),
@@ -238,7 +235,6 @@ private let destructives: [(UInt32, Mnemonic)] = [
     (0xC1E0_A400, .sqdmulh),
 ]
 
-/// Every `(mask, value)` row of `convertSpec`, paired with its mnemonic.
 private let converts: [(UInt32, Mnemonic)] = [
     (0xC131_E000, .fcvtzs),
     (0xC131_E020, .fcvtzu),
@@ -307,12 +303,7 @@ private let converts: [(UInt32, Mnemonic)] = [
     (0xC1E0_E800, .fmul),
 ]
 
-/// Validates the SME2 non-ZA multi-vector families (the `{Zd}`-targeting side of
-/// the `0xC1` cell): SEL, the destructive elementwise ops, the clamp family, the
-/// 2-way/4-way saturating narrowing shifts, the ZIP/UZP/SUNPK/UUNPK permutes,
-/// the convert/FMUL/FRINT group, and the `0xC1` LUTI6 no-ZT0 form. The two big
-/// generated tables (destructive, convert) are driven row-for-row; the other
-/// families are asserted by representative.
+/// Validates the non-ZA multi-vector families.
 @Suite("SME2 / vector-ops decode")
 struct SME2VectorOpsDecodeTests {
     @Test func everyDestructiveRowResolvesAndIsConsistent() {
@@ -334,8 +325,6 @@ struct SME2VectorOpsDecodeTests {
     }
 
     @Test func theDestructiveDestinationIsTiedToItsFirstSource() {
-        // `{Zdn}, {Zdn}, Zm` (zzv single broadcast) and `{Zdn}, {Zdn}, {Zm}`
-        // (zzw multi) — the destination register re-appears as source one.
         #expect(text(0xC120_A300) == "add { z0.b, z1.b }, { z0.b, z1.b }, z0.b")
         #expect(text(0xC120_B800) == "smax { z0.b - z3.b }, { z0.b - z3.b }, { z0.b - z3.b }")
     }
@@ -359,10 +348,6 @@ struct SME2VectorOpsDecodeTests {
     }
 
     @Test func theSaturatingNarrowShiftsDecodeBothWidths() {
-        // 4-way (tsize:imm5 shift field) and 2-way (imm4 shift field). tsize=01
-        // gives `.b<-.s` (shift 64-field), tsize>=10 gives `.h<-.d` (shift
-        // 128-field); op:U picks the signed/unsigned/signed-to-unsigned variant
-        // and its narrowing twin.
         expectFamily(0xC160_D800, .sqrshr, "sqrshr 4x .b<-.s")
         expectFamily(0xC160_DC00, .sqrshrn, "sqrshrn 4x")
         expectFamily(0xC160_D820, .uqrshr, "uqrshr 4x")
@@ -376,7 +361,6 @@ struct SME2VectorOpsDecodeTests {
     }
 
     @Test func theNarrowShiftReservedFormsAreClaimedHoles() {
-        // 4-way tsize=00 is reserved; the op=1,U=1 opcode is unallocated.
         for e: UInt32 in [0xC120_D800, 0xC160_DC60] {
             #expect(decode(e).mnemonic == .undefined, "0x\(String(e, radix: 16))")
             #expect(text(e) == ".long 0x\(String(e, radix: 16))", "0x\(String(e, radix: 16))")
@@ -402,8 +386,6 @@ struct SME2VectorOpsDecodeTests {
     }
 
     @Test func theConvertShapesRenderNarrowWidenSameAndFmul() {
-        // narrow (`Zd, {Zn}`), widen (`{Zd}, Zn`), same (`{Zd}, {Zn}`) and the
-        // FMUL broadcast/multi second source.
         #expect(text(0xC120_E000) == "fcvt z0.h, { z0.s, z1.s }")
         #expect(text(0xC126_E000) == "f1cvt { z0.h, z1.h }, z0.b")
         #expect(text(0xC121_E000) == "fcvtzs { z0.s, z1.s }, { z0.s, z1.s }")
@@ -418,8 +400,6 @@ struct SME2VectorOpsDecodeTests {
     }
 
     @Test func anUnallocatedWordInEachVectorOpsGroupIsAClaimedHole() {
-        // 101 destructive, 110 clamp/narrow/permute and 111 convert each reject
-        // a word matching none of their tables.
         for e: UInt32 in [0xC100_A00C, 0xC100_C00C, 0xC100_E00C] {
             let d = decode(e)
             #expect(d.mnemonic == .undefined, "0x\(String(e, radix: 16))")

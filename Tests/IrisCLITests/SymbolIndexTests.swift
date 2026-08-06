@@ -4,9 +4,7 @@
 import IrisCLICore
 import Testing
 
-/// Validates the address-keyed symbol index: exact and
-/// closest-preceding lookup, range queries, first-wins deduplication,
-/// and the empty index.
+/// Validates the address-keyed symbol index.
 @Suite("Symbol index lookup")
 struct SymbolIndexTests {
     let index = SymbolIndex(symbols: [
@@ -25,7 +23,6 @@ struct SymbolIndexTests {
         #expect(index.count == 3)
     }
 
-    /// Whether an optional `(address, name)` pair equals the expectation.
     func matches(_ pair: (address: UInt64, name: String)?, _ address: UInt64, _ name: String) -> Bool {
         pair?.address == address && pair?.name == name
     }

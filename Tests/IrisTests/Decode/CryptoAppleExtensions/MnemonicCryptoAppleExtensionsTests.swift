@@ -4,12 +4,8 @@
 import Iris
 import Testing
 
-/// Validates the crypto/Apple-extensions mnemonic constants and the
-/// sub-range carve-up: every crypto mnemonic falls in [12288, 12351],
-/// every PAC standalone in [12352, 12415], every MTE in [12416, 12479],
-/// every AMX (documented + amxUnknownOp) in [12480, 12527]. Also
-/// verifies the family's master range [12288, 16383] from
-/// `Mnemonic.allocations` contains every constant.
+/// Validates the crypto/Apple-extensions mnemonic sub-ranges (crypto, PAC,
+/// MTE, AMX) and that the family's master range contains every constant.
 @Suite("CryptoAppleExtensions / Mnemonic constant allocations")
 struct MnemonicCryptoAppleExtensionsTests {
     @Test func cryptoMnemonicsAllInCryptoSubRange() {

@@ -1,11 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AdvSIMD scalar x-indexed-element per
-// ARM ARM § C4.1.96.18. Encoding:
-// `0 1 U 1 1111 size L M Rm opcode H 0 Rn Rd`. Scalar element-indexed
-// multiply/multiply-accumulate variants: SQDMLAL/SQDMLSL/SQDMULL/
-// SQDMULH/SQRDMULH/FMLA/FMLS/FMUL/FMULX/SQRDMLAH/SQRDMLSH.
 
 enum AdvSIMDScalarXIndexedElementDecode {
     @_optimize(speed)
@@ -27,9 +21,6 @@ enum AdvSIMDScalarXIndexedElementDecode {
             false
         }
         if isFPFamily {
-            // size selects precision: 00 = H (FP16, index H:L:M, Rm in
-            // v0..v15), 10 = S (index H:L), 11 = D (index H, L reserved 0).
-            // 01 is reserved.
             let elementSize: ScalarSize
             let index: UInt8
             let elementReg: UInt8
@@ -62,7 +53,6 @@ enum AdvSIMDScalarXIndexedElementDecode {
                 operandCount: sink.emit(simdfpScalarOperand(Rd, size: elementSize), simdfpScalarOperand(Rn, size: elementSize), simdfpElementOperand(elementReg, elementSize: elementSize, index: index)),
             )
         }
-        // Integer family (SQDMLAL/SQDMLSL/SQDMULL/SQDMULH/SQRDMULH/...).
         let (srcSize, dstSize): (ScalarSize, ScalarSize)
         switch size {
         case 0b01: srcSize = .h; dstSize = .s
@@ -71,12 +61,9 @@ enum AdvSIMDScalarXIndexedElementDecode {
         }
         let elementReg = (M << 4) | Rm
         let rmReg = srcSize == .h ? Rm & 0xF : elementReg
-        // ARM ARM x-indexed-element H-element index = H:L:M (H is the most-
-        // significant bit of the 3-bit index). srcSize is constrained to
-        // .h or .s by the size-switch above.
         let index: UInt8 = switch srcSize {
         case .h: (H << 2) | (L << 1) | M
-        default: (H << 1) | L // srcSize == .s
+        default: (H << 1) | L
         }
         let m: Mnemonic
         var isLengthening = true

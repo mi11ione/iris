@@ -1,19 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// multi-vector register-group operand — { Zn.T ... }. Stores the first
-// register, the count (1..4; 3 exists for LD3/ST3 structured), the element
-// size, and the layout. The layout is load-bearing: it disambiguates the
-// physical registers (consecutive count-2 = {Zk, Zk+1}; strided count-2 =
-// {Zk, Zk+8}) and drives the canonicalizer's comma-vs-range rendering.
 
-/// A multi-vector register group operand — `{ Zn.<T>, ... }` (1 to 4
-/// registers, consecutive or strided).
-///
-/// Carried by ``Operand/scalableVectorGroup(_:)``. The semantic reads/writes
-/// are the union of the member registers' canonical indices
-/// (`32 + memberIndex`); ``memberIndex(_:)`` computes each member's register
-/// number from ``firstIndex``, ``count``, and ``layout``.
+/// A multi-vector register group operand of 1 to 4 registers, consecutive or
+/// strided. Reads and writes are the union of the members' canonical indices,
+/// which ``memberIndex(_:)`` computes.
 @frozen
 public struct ScalableVectorGroup: Sendable, Hashable {
     /// First register number 0..31.
@@ -35,7 +25,7 @@ public struct ScalableVectorGroup: Sendable, Hashable {
         firstIndex: UInt8, count: UInt8, element: ScalarSize?, layout: Layout,
         elementIndex: UInt8? = nil,
     ) {
-        self.firstIndex = firstIndex & 0b11111 // masked (no trap)
+        self.firstIndex = firstIndex & 0b11111
         self.count = count
         self.element = element
         self.layout = layout

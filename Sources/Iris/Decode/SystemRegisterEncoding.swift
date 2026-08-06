@@ -1,20 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SystemRegisterEncoding. Packs the 5-field
-// (op0, op1, CRn, CRm, op2) tuple from `MSR (register)` / `MRS` into a
-// single 16-bit value. The friendly-name lookup (e.g. mapping to
-// "TPIDR_EL0") belongs to the text-rendering layer, not this record type.
 
-/// Encoded system-register identifier, as carried by `MSR (register)` and
-/// `MRS`.
-///
-/// The five sub-fields pack into 16 bits exact: ``op0`` occupies bits 14
-/// and 15 (2 bits), ``op1`` bits 11 through 13 (3 bits), ``crn`` bits 7
-/// through 10 (4 bits), ``crm`` bits 3 through 6 (4 bits), and ``op2``
-/// bits 0 through 2 (3 bits). Translating the tuple into a human-readable
-/// name (TPIDR_EL0, CNTVCT_EL0, etc.) is a downstream concern — the
-/// decoder preserves the encoding bit-for-bit.
+/// Encoded system-register identifier for `MSR (register)` and `MRS`. The five
+/// sub-fields pack into 16 bits exactly: ``op0`` at 14-15, ``op1`` at 11-13,
+/// ``crn`` at 7-10, ``crm`` at 3-6, ``op2`` at 0-2. Naming the tuple is a
+/// downstream concern; the decoder preserves the encoding bit-for-bit.
 @frozen
 public struct SystemRegisterEncoding: Sendable, Hashable {
     /// Packed 16-bit form. Layout per the file-header comment.

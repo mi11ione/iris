@@ -6,14 +6,9 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates the `--json` NDJSON stream against the documented schema
-/// (the JSONOutput DocC article): every line parses as one JSON object,
-/// carries every required field with the right type, matches the locked
-/// golden, and spot-checks decode values; plus the string-escape rules
-/// the hand-rolled emitter implements.
+/// Validates the `--json` NDJSON stream against the documented schema.
 @Suite("NDJSON output")
 struct JSONOutputTests {
-    /// Parse one NDJSON line into a JSON object.
     func object(_ line: some StringProtocol) -> [String: Any]? {
         let data = Data(line.utf8)
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
@@ -63,8 +58,6 @@ struct JSONOutputTests {
 
     @Test func instructionsCarryContainingSymbol() throws {
         let run = runCLI(["--json", cliFixturePath("hello-arm64")])
-        // _main's call to _helper reports _main as its containing function
-        // and _helper as its target.
         let callLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"branchTarget\":\"0x100000398\"") })
         let fields = try #require(object(callLine))
         #expect(fields["symbol"] as? String == "_main")
@@ -80,16 +73,12 @@ struct JSONOutputTests {
     }
 
     @Test func branchTargetSymbolUsesOffsetForm() throws {
-        // hello-arm64's intra-function back-branch lands past a symbol in
-        // the same section, so targetSymbol is the name+0x<delta> form.
         let run = runCLI(["--json", cliFixturePath("hello-arm64")])
         let offsetLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"branchTarget\":\"0x10000038c\"") })
         #expect(try #require(object(offsetLine))["targetSymbol"] as? String == "_sum_to+0x4c")
     }
 
     @Test func strippedBinaryReportsSubLabelAsSymbol() throws {
-        // No symbol table: the containing function is a sub_ label, and
-        // the stub import still resolves as targetSymbol.
         let run = runCLI(["--json", cliFixturePath("stub-stripped")])
         let stubLine = try #require(run.stdout.split(separator: "\n").first { $0.contains("\"branchTarget\":\"0x10000042c\"") })
         let fields = try #require(object(stubLine))
@@ -98,7 +87,6 @@ struct JSONOutputTests {
     }
 
     @Test func directDecodeModesOmitSymbolFields() throws {
-        // Raw bytes carry no symbols, so neither field is emitted.
         let run = runCLI(["--json", "0x97ffffdf"])
         let fields = try #require(object(run.stdout.trimmingCharacters(in: .newlines)))
         #expect(fields["symbol"] == nil)
@@ -106,8 +94,6 @@ struct JSONOutputTests {
     }
 
     @Test func symbolContextMemberwiseInitComposes() {
-        // The memberwise init pairs a label set and a resolver directly;
-        // instructionLine reads both through it.
         let labels = FunctionLabels(functionStarts: [0x1000], symbols: .empty)
         let symbolizer = BranchSymbolizer(symbols: .empty, sections: [], stubTargets: [0x2000: "_imported"])
         let context = JSONText.SymbolContext(labels: labels, symbolizer: symbolizer)
@@ -155,7 +141,6 @@ struct JSONOutputTests {
     }
 
     @Test func pcRelativeTargetAppears() throws {
-        // adrp x1, #0 at address 0: page target resolves to 0x0.
         let run = runCLI(["--json", "0x90000001"])
         let fields = try #require(object(run.stdout.trimmingCharacters(in: .newlines)))
         #expect(fields["pcRelativeTarget"] as? String == "0x0")
@@ -163,19 +148,16 @@ struct JSONOutputTests {
     }
 
     @Test func memoryAndOrderingFields() throws {
-        // ldar x0, [x1]: acquire-ordered load.
         let run = runCLI(["--json", "0xc8dffc20"])
         let fields = try #require(object(run.stdout.trimmingCharacters(in: .newlines)))
         #expect(fields["memoryAccess"] as? String == "load")
         #expect(fields["ordering"] as? [String] == ["acquire"])
 
-        // stlr x0, [x1]: release-ordered store.
         let release = runCLI(["--json", "0xc89ffc20"])
         let releaseFields = try #require(object(release.stdout.trimmingCharacters(in: .newlines)))
         #expect(releaseFields["memoryAccess"] as? String == "store")
         #expect(releaseFields["ordering"] as? [String] == ["release"])
 
-        // casal x0, x1, [x2]: acquire-release atomic.
         let both = runCLI(["--json", "0xc8e0fc41"])
         let bothFields = try #require(object(both.stdout.trimmingCharacters(in: .newlines)))
         #expect(bothFields["memoryAccess"] as? String == "atomic")
@@ -183,7 +165,6 @@ struct JSONOutputTests {
     }
 
     @Test func flagWritesRender() throws {
-        // adds x0, x1, #1 writes NZCV.
         let run = runCLI(["--json", "0xb1000420"])
         let fields = try #require(object(run.stdout.trimmingCharacters(in: .newlines)))
         let flagEffect = try #require(fields["flagEffect"] as? [String: Any])
@@ -226,11 +207,7 @@ struct JSONOutputTests {
         #expect(!run.stdout.contains("\u{1B}"))
     }
 
-    // MARK: Scalable state
-
     @Test func baseISALinesCarryNoScalableFields() throws {
-        // The scalable fields are absent-when-empty, so every pre-scalable
-        // consumer sees a byte-identical line.
         let line = try #require(object(runCLI(["--json", "0xd503201f"]).stdout))
         #expect(line["scalableReads"] == nil)
         #expect(line["scalableWrites"] == nil)
@@ -238,8 +215,6 @@ struct JSONOutputTests {
     }
 
     @Test func predicatedSVEWritesItsGoverningPredicate() throws {
-        // subr z1.d, p0/m, z1.d, z31.d — p0 governs, so the write is
-        // partial and the record says so.
         let line = try #require(object(runCLI(["--json", "0x04C303E1"]).stdout))
         let reads = try #require(line["scalableReads"] as? [String: Any])
         #expect(reads["predicates"] as? [String] == ["p0"])
@@ -248,8 +223,6 @@ struct JSONOutputTests {
     }
 
     @Test func smeOuterProductCarriesItsZAMask() throws {
-        // fmopa za0.s — tile 0 at .S is the .Q positions {0,4,8,12}, the
-        // 0x1111 residue mask, read and written alike.
         let line = try #require(object(runCLI(["--json", "0x8080FC00"]).stdout))
         let reads = try #require(line["scalableReads"] as? [String: Any])
         let writes = try #require(line["scalableWrites"] as? [String: Any])
@@ -259,8 +232,6 @@ struct JSONOutputTests {
     }
 
     @Test func faultingLoadsCarryFFRAndTheirFaultClass() throws {
-        // A first-fault gather reads and writes FFR; the fault class is the
-        // effect flag that tells the two apart.
         let firstFault = try #require(object(runCLI(["--json", "0x844F7FC0"]).stdout))
         #expect((firstFault["scalableReads"] as? [String: Any])?["ffr"] as? Bool == true)
         #expect((firstFault["scalableWrites"] as? [String: Any])?["ffr"] as? Bool == true)
@@ -284,9 +255,6 @@ struct JSONOutputTests {
     @Test func scalableRenderersCoverTheirWholeVocabulary() {
         #expect(JSONText.scalableSet(.empty) == nil)
         #expect(JSONText.scalableEffectNames(.none).isEmpty)
-        // Every flag, in bit order. The two streaming-mode transition flags
-        // have no decoder that sets them today, so they are pinned here on a
-        // built value rather than on a word.
         let all: ScalableEffect = [
             .partialWrite, .readsStreamingMode, .writesStreamingMode, .writesZAEnable,
             .firstFaulting, .nonFaulting, .nonTemporal,
@@ -298,11 +266,8 @@ struct JSONOutputTests {
     }
 }
 
-/// Validates `JSONText.putString(_:into:)` — the byte-path string
-/// escaper. The `String`-returning `string(_:)` is exercised by the
-/// records above; this is the same escaping table on the path the CLI
-/// actually renders through, so both have to agree character for
-/// character.
+/// Validates `JSONText.putString(_:into:)`, the byte-path escaper, against the
+/// `String`-returning form it must agree with character for character.
 @Suite("JSON / byte-path string escaping")
 struct JSONByteStringTests {
     private func rendered(_ value: String) -> String {

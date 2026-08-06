@@ -20,17 +20,9 @@ private func canonicalIndices(_ set: RegisterSet) -> [Int] {
     (0 ..< 64).filter { (set.mask >> UInt64($0)) & 1 == 1 }
 }
 
-/// Validates the SVE2 integer delta at top byte 0x45 outside the narrowing
-/// families: the widening arithmetic with the polynomial multiplies and
-/// their quadword-from-doubleword form, bit-permute, the interleaved-long
-/// adds, the interleaved XOR (a genuine partial write), the carry-propagating
-/// and absolute-difference accumulators, integer matmul, the accumulate and
-/// insert shifts (SLI/SRI preserve bits — partial), the widening shift-left,
-/// complex addition, MATCH/NMATCH (predicate + NZCV writers), and the
-/// histogram forms.
+/// Validates the SVE2 integer delta at 0x45 outside the narrowing families.
 @Suite("SVE integer / SVE2 widening, bit-permute, match, histogram")
 struct SVEIntSVE2HighDecodeTests {
-    /// Every allocated widening-arithmetic opcode at a halfword destination.
     private static let widening: [(UInt32, Mnemonic, String)] = [
         (0x4542_0020, .saddlb, "saddlb z0.h, z1.b, z2.b"),
         (0x4542_0420, .saddlt, "saddlt z0.h, z1.b, z2.b"),
@@ -83,8 +75,6 @@ struct SVEIntSVE2HighDecodeTests {
     }
 
     @Test func thePolynomialMultipliesOwnTheQuadwordFormAndAMidRangeHole() {
-        // sz=00 is the quadword-from-doubleword widening; sz=10 is the one
-        // reserved value in the middle of the class's size range.
         #expect(text(0x4502_6820) == "pmullb z0.q, z1.d, z2.d")
         #expect(text(0x4502_6C20) == "pmullt z0.q, z1.d, z2.d")
         #expect(text(0x4542_6820) == "pmullb z0.h, z1.b, z2.b")
@@ -111,9 +101,6 @@ struct SVEIntSVE2HighDecodeTests {
     }
 
     @Test func theInterleavedXorPreservesTheOtherLaneParity() {
-        // EORBT/EORTB write one lane parity and leave the other — the
-        // destination is read AND the write is partial, unlike every other
-        // unpredicated destructive form.
         let d = decode(0x4502_9020)
         #expect(d.mnemonic == .eorbt)
         #expect(text(0x4502_9020) == "eorbt z0.b, z1.b, z2.b")
@@ -125,8 +112,6 @@ struct SVEIntSVE2HighDecodeTests {
     }
 
     @Test func theCarryPropagatingAccumulatorsNeverTouchTheFlags() {
-        // The "carry" is an in-vector value from the odd lanes of Zm, never
-        // PSTATE.C — no flag read, no flag write, full accumulator rewrite.
         let rows: [(UInt32, Mnemonic, String)] = [
             (0x4502_D020, .adclb, "adclb z0.s, z1.s, z2.s"),
             (0x4502_D420, .adclt, "adclt z0.s, z1.s, z2.s"),
@@ -190,8 +175,6 @@ struct SVEIntSVE2HighDecodeTests {
     }
 
     @Test func theInsertShiftsPreserveTheVacatedBits() {
-        // SRI/SLI merge through a mask, leaving part of the destination's
-        // prior value at statically known bit positions — read + partial.
         let rows: [(UInt32, Mnemonic, String)] = [
             (0x4508_F020, .sri, "sri z0.b, z1.b, #8"),
             (0x4508_F420, .sli, "sli z0.b, z1.b, #0"),
@@ -208,8 +191,6 @@ struct SVEIntSVE2HighDecodeTests {
     }
 
     @Test func theWideningShiftLeftsWriteEveryDestinationLane() {
-        // B/T selects which half of the SOURCE is read; the destination is
-        // fully written either way — full write, unlike the narrowing tops.
         let rows: [(UInt32, Mnemonic, String)] = [
             (0x4508_A020, .sshllb, "sshllb z0.h, z1.b, #0"),
             (0x4508_A420, .sshllt, "sshllt z0.h, z1.b, #0"),

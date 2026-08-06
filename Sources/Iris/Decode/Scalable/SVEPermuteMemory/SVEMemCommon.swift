@@ -1,26 +1,13 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// shared SVE memory decode helpers: the load/store draft
-// builders, the dtype/msz → (mnemonic, element) tables, the fault/temporal
-// flag markers, and the small signed-immediate sign-extends. Used by both the
-// scalar-base (SVEContiguousMemDecode) and vector-indexed
-// (SVEGatherScatterDecode) memory decoders.
 
 extension SVEPermuteMemoryDecode {
-    // MARK: draft builders
-
-    /// Build a load record: data (single `Zt` or a group), the governing
-    /// predicate (rendered `/z`), and the address operand. The base GPR and any
-    /// index (scalar GPR or vector `Zm`) are read; the destination register(s)
-    /// are written. Loads are full-writes (not partialWrite).
+    /// Build a load record.
     @inline(__always)
     static func memLoadDraft(
         _ e: UInt32, _ a: UInt64, mn: Mnemonic, zt: UInt8, el: ScalarSize,
         g: UInt8, addr: ScalableMemoryOperand, groupCount count: UInt8 = 1, _ sink: inout OperandSink,
     ) -> DecodedDraft {
-        // A single-vector load renders a one-element braced list `{ Zt.<T> }`; a
-        // structured load renders the whole group. Both write every member.
         DecodedDraft(
             address: a, encoding: e, mnemonic: mn,
             semanticReads: addressReads(addr),
@@ -32,16 +19,12 @@ extension SVEPermuteMemoryDecode {
         )
     }
 
-    /// Build a store record: data, the governing predicate (rendered bare), and
-    /// the address. The data register(s), base GPR, and any index are read;
-    /// nothing is written to a Z/P register.
+    /// Build a store record.
     @inline(__always)
     static func memStoreDraft(
         _ e: UInt32, _ a: UInt64, mn: Mnemonic, zt: UInt8, el: ScalarSize,
         g: UInt8, addr: ScalableMemoryOperand, groupCount count: UInt8 = 1, _ sink: inout OperandSink,
     ) -> DecodedDraft {
-        // A single-vector store renders a one-element braced list `{ Zt.<T> }`; a
-        // structured store renders the whole group. Both read every member.
         DecodedDraft(
             address: a, encoding: e, mnemonic: mn,
             semanticReads: addressReads(addr).union(groupMask(zt, count: count)),
@@ -53,14 +36,11 @@ extension SVEPermuteMemoryDecode {
         )
     }
 
-    /// A prefetch record: the prefetch operation, the governing predicate
-    /// (bare), and the address. Base + index read; nothing written.
+    /// A prefetch record.
     @inline(__always)
     static func memPrefetchDraft(
         _ e: UInt32, _ a: UInt64, mn: Mnemonic, g: UInt8, addr: ScalableMemoryOperand, _ sink: inout OperandSink,
     ) -> DecodedDraft {
-        // Every SVE prefetch fixes bit4=0 (the prefetch op is bits[3:0]); bit4=1
-        // is a hole llvm-mc rejects.
         if (e >> 4) & 1 != 0 { return undefined(e, a) }
         return DecodedDraft(
             address: a, encoding: e, mnemonic: mn,
@@ -73,8 +53,7 @@ extension SVEPermuteMemoryDecode {
         )
     }
 
-    /// The register reads implied by an address: the base (GPR or vector), the
-    /// scalar index, and the vector index.
+    /// The register reads implied by an address.
     @inline(__always)
     static func addressReads(_ addr: ScalableMemoryOperand) -> RegisterSet {
         var set = RegisterSet.empty
@@ -87,9 +66,7 @@ extension SVEPermuteMemoryDecode {
         return set
     }
 
-    // MARK: fault / temporal markers
-
-    /// Mark a load as first-faulting: `.firstFaulting` flag + FFR read/write.
+    /// Mark a load as first-faulting.
     @inline(__always)
     static func markFirstFault(_ d: DecodedDraft) -> DecodedDraft {
         var draft = d
@@ -99,7 +76,7 @@ extension SVEPermuteMemoryDecode {
         return draft
     }
 
-    /// Mark a load as non-faulting: `.nonFaulting` flag + FFR read/write.
+    /// Mark a load as non-faulting.
     @inline(__always)
     static func markNonFault(_ d: DecodedDraft) -> DecodedDraft {
         var draft = d
@@ -109,7 +86,7 @@ extension SVEPermuteMemoryDecode {
         return draft
     }
 
-    /// Mark a load/store as non-temporal: `.nonTemporal` flag (no FFR).
+    /// Mark a load/store as non-temporal.
     @inline(__always)
     static func markNonTemporal(_ d: DecodedDraft) -> DecodedDraft {
         var draft = d
@@ -117,26 +94,21 @@ extension SVEPermuteMemoryDecode {
         return draft
     }
 
-    // MARK: dtype / msz → (mnemonic, element)
-
-    /// The contiguous-load dtype table (speca). `nonFault` swaps the LD1
-    /// mnemonic for its LDNF1 counterpart.
+    /// The contiguous-load dtype table (speca).
     @inline(__always)
     static func loadDtype(_ dtype: UInt8, nonFault: Bool) -> (Mnemonic, ScalarSize) {
         let (base, el) = loadDtypeBase(dtype)
         return (nonFault ? nonFaultName(base) : base, el)
     }
 
-    /// The access (loaded-element) log2 size for a contiguous-load dtype — the
-    /// register-offset `lsl #k` scale (byte access → 0, so `ld1b {z.h}` renders
-    /// `[Xn, Xm]` with no shift).
+    /// The access (loaded-element) log2 size for a contiguous-load dtype.
     @inline(__always)
     static func loadAccessScale(_ dtype: UInt8) -> UInt8 {
         switch dtype {
-        case 0b0000, 0b0001, 0b0010, 0b0011, 0b1100, 0b1101, 0b1110: 0 // ld1b / ld1sb
-        case 0b0101, 0b0110, 0b0111, 0b1000, 0b1001: 1 // ld1h / ld1sh
-        case 0b1010, 0b1011, 0b0100: 2 // ld1w / ld1sw
-        default: 3 // ld1d
+        case 0b0000, 0b0001, 0b0010, 0b0011, 0b1100, 0b1101, 0b1110: 0
+        case 0b0101, 0b0110, 0b0111, 0b1000, 0b1001: 1
+        case 0b1010, 0b1011, 0b0100: 2
+        default: 3
         }
     }
 
@@ -163,8 +135,7 @@ extension SVEPermuteMemoryDecode {
         }
     }
 
-    /// The contiguous-store dtype table (`sve_mem_cst_ss_base`). Returns `nil`
-    /// for the reserved dtype values (0100/1001/1100/1101).
+    /// The contiguous-store dtype table (`sve_mem_cst_ss_base`).
     @inline(__always)
     static func storeDtype(_ dtype: UInt8) -> (Mnemonic, ScalarSize)? {
         switch dtype {
@@ -205,9 +176,7 @@ extension SVEPermuteMemoryDecode {
         case .ld1d: .ldnf1d
         case .ld1sb: .ldnf1sb
         case .ld1sh: .ldnf1sh
-        // The caller only ever passes the seven plain LD1 dtypes; the final arm
-        // doubles as the ld1sw case (its domain is dispatch-pinned).
-        default: .ldnf1sw // ld1sw
+        default: .ldnf1sw
         }
     }
 
@@ -221,7 +190,7 @@ extension SVEPermuteMemoryDecode {
         case .ld1d: .ldff1d
         case .ld1sb: .ldff1sb
         case .ld1sh: .ldff1sh
-        default: .ldff1sw // ld1sw
+        default: .ldff1sw
         }
     }
 
@@ -262,10 +231,7 @@ extension SVEPermuteMemoryDecode {
         }
     }
 
-    /// Structured contiguous-load form (imm): (count, element, mnemonic) from
-    /// nregs bits[22:20] (010/100/110 → ×2/×3/×4; 001 → quadword) and sz
-    /// bits[24:23]. Load-only — the store region has its own est_si/_ss
-    /// decoders, and the reg-offset loads inline their count (nregs = bits[22:21]).
+    /// Structured contiguous-load form (imm).
     @inline(__always)
     static func structuredForm(_ e: UInt32) -> (UInt8, ScalarSize, Mnemonic)? {
         let sz = UInt8((e >> 23) & 0b11)
@@ -293,8 +259,7 @@ extension SVEPermuteMemoryDecode {
         return (qCount, .q, structuredName(count: qCount, element: .q, isStore: false))
     }
 
-    /// Structured mnemonic from vector count, element, and load/store — the
-    /// element is baked into the token (`ld2b`/`ld2h`/`ld2w`/`ld2d`/`ld2q`).
+    /// Structured mnemonic from vector count, element, and load/store.
     @inline(__always)
     static func structuredName(count: UInt8, element: ScalarSize, isStore: Bool) -> Mnemonic {
         switch (count, isStore) {
@@ -337,11 +302,7 @@ extension SVEPermuteMemoryDecode {
         switch el { case .b: .st4b; case .h: .st4h; case .s: .st4w; case .d: .st4d; case .q: .st4q }
     }
 
-    // MARK: element scale + sign extends
-
-    /// The `lsl #k` scale for a scalar register offset — log2 of the element
-    /// byte size (B→0, H→1, S→2, D→3, Q→4), which is exactly the element's raw
-    /// value.
+    /// The `lsl #k` scale for a scalar register offset.
     @inline(__always)
     static func elementScale(_ el: ScalarSize) -> UInt8 {
         el.rawValue

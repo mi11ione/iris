@@ -1,16 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// `iris-parity semantic` — run the `IrisValidation` semantic
-// checkers (the per-family expected-attribute tables) over a word set:
-// every row of the family's synthetic TSV corpus plus a seeded random
-// sweep of the family's partitions. Checkers verify the classification
-// fields disassembly text cannot show — register read/write sets,
-// branch class, memory access/ordering, flag effects — so this layer
-// catches semantic regressions that perfect text parity would miss.
-// Issues matching a `check=semantic` known-deviations entry are
-// reported under their catalogue id and do not gate; everything else
-// gates.
 
 import Foundation
 import Iris

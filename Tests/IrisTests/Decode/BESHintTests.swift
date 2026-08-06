@@ -4,18 +4,10 @@
 import Iris
 import Testing
 
-/// Validates HINT decode — the HintTable named-imm7 algorithm.
-/// Every named imm7 (0..31, BTI sub-targets at 32/34/36/38) maps to a
-/// dedicated mnemonic; unrecognized imm7 falls back to `.hint` +
-/// `.unsignedImmediate(value:, width: 7)`. BTI sub-target 1/2/3 carries
-/// a 2-bit immediate operand (none/c/j/jc). Reserved future-feature
-/// slots (19 GCSB, 22 CLRBHB, 40 CHKFEAT) emit `.hint` at v8.7a mattr.
+/// Validates HINT decode.
 @Suite("BES / HINT decode (imm7 = 0..127)")
 struct BESHintTests {
-    /// Helper: build the HINT encoding for a given imm7 (bits 11:5).
     private func enc(_ imm7: UInt8) -> UInt32 {
-        // bits 31:22 = 1101010100, bit 21 = 0, bits 20:12 = 000110010,
-        // bits 11:5 = imm7, bits 4:0 = 11111
         UInt32(0xD503_201F) | (UInt32(imm7) << 5)
     }
 
@@ -44,7 +36,6 @@ struct BESHintTests {
     }
 
     @Test func pac1716Variants() {
-        // HINT 8/10/12/14 = pacia1716/pacib1716/autia1716/autib1716
         #expect(decode(enc(8), at: 0).mnemonic == .pacia1716)
         #expect(decode(enc(10), at: 0).mnemonic == .pacib1716)
         #expect(decode(enc(12), at: 0).mnemonic == .autia1716)
@@ -52,7 +43,6 @@ struct BESHintTests {
     }
 
     @Test func pac1716OddSlotsAreHint() {
-        // HINT 9/11/13/15 are reserved (odd op2 in the 1716 block) → .hint
         for n: UInt8 in [9, 11, 13, 15] {
             let d = decode(enc(n), at: 0)
             #expect(d.mnemonic == .hint)
@@ -68,25 +58,21 @@ struct BESHintTests {
     }
 
     @Test func gcsbHint19IsNamed() {
-        // GCSB DSYNC (HINT 19) — named at the maximal feature set (+gcs).
         let d = decode(enc(19), at: 0)
         #expect(d.mnemonic == .gcsbDsync)
     }
 
     @Test func clrbhbHint22IsNamed() {
-        // CLRBHB (HINT 22) — named at the maximal feature set (+clrbhb).
         let d = decode(enc(22), at: 0)
         #expect(d.mnemonic == .clrbhb)
     }
 
     @Test func chkfeatHint40IsNamed() {
-        // CHKFEAT (HINT 40) — named at the maximal feature set (+chk).
         let d = decode(enc(40), at: 0)
         #expect(d.mnemonic == .chkfeat)
     }
 
     @Test func pacZSpVariants() {
-        // HINT 24..31 = PAC Z/SP variants per corpus mapping.
         let pacZspMap: [(UInt8, Mnemonic)] = [
             (24, .paciaz), (25, .paciasp),
             (26, .pacibz), (27, .pacibsp),
@@ -100,13 +86,6 @@ struct BESHintTests {
     }
 
     @Test func pacHintSpaceImplicitRegisterSets() {
-        // The operand-less HINT-space PAC instructions carry implicit
-        // register effects (the modifier + signing target are fixed in the
-        // encoding, never operands). Exact masks per ARM ARM K1:
-        //   *SP forms  sign/auth X30 using SP  → reads {x30, sp}, writes {x30}
-        //   *Z  forms  sign/auth X30, zero mod → reads {x30},     writes {x30}
-        //   *1716forms sign/auth X17 using X16 → reads {x17, x16}, writes {x17}
-        //   XPACLRI    strip PAC from X30/LR   → reads {x30},     writes {x30}
         let x16: UInt64 = 1 << 16
         let x17: UInt64 = 1 << 17
         let x30: UInt64 = 1 << 30
@@ -131,9 +110,6 @@ struct BESHintTests {
     }
 
     @Test func nonPacHintSpaceSlotsHaveNoRegisterEffects() {
-        // Every non-PAC HINT (NOP, event/sync hints, BTI, CHKFEAT, and the
-        // generic .hint sentinel) touches no general register. Guards the
-        // PAC implicit-register path from leaking onto neighbors.
         for imm7: UInt8 in [0, 1, 2, 3, 4, 5, 6, 16, 17, 18, 19, 20, 22, 32, 34, 40, 64, 127] {
             let d = decode(enc(imm7), at: 0)
             #expect(d.semanticReads.mask == 0, "HINT \(imm7) reads")
@@ -142,39 +118,43 @@ struct BESHintTests {
     }
 
     @Test func btiBareNoSubTarget() {
-        // HINT 32 = bare BTI (no sub-target).
         let d = decode(enc(32), at: 0)
         #expect(d.mnemonic == .bti)
-        #expect(d.operands.isEmpty)
+        #expect(Array(d.operands) == [.unsignedImmediate(value: 0, width: 2)])
     }
 
     @Test func btiCSubTarget() {
-        // HINT 34 = BTI c (sub-target 1)
         let d = decode(enc(34), at: 0)
         #expect(d.mnemonic == .bti)
         #expect(Array(d.operands) == [.unsignedImmediate(value: 1, width: 2)])
     }
 
     @Test func btiJSubTarget() {
-        // HINT 36 = BTI j (sub-target 2)
         let d = decode(enc(36), at: 0)
         #expect(d.mnemonic == .bti)
         #expect(Array(d.operands) == [.unsignedImmediate(value: 2, width: 2)])
     }
 
     @Test func btiJcSubTarget() {
-        // HINT 38 = BTI jc (sub-target 3)
         let d = decode(enc(38), at: 0)
         #expect(d.mnemonic == .bti)
         #expect(Array(d.operands) == [.unsignedImmediate(value: 3, width: 2)])
     }
 
     @Test func btiOddSlotsAreHint() {
-        // HINT 33/35/37/39 in BTI block are reserved → .hint
-        for n: UInt8 in [33, 35, 37, 39] {
+        for n: UInt8 in [33, 35, 37, 41] {
             let d = decode(enc(n), at: 0)
             #expect(d.mnemonic == .hint)
         }
+    }
+
+    @Test func storeSharingAndCoherencyHints() {
+        #expect(decode(enc(39), at: 0).mnemonic == .pacm)
+        #expect(decode(enc(52), at: 0).mnemonic == .stcph)
+        #expect(Array(decode(enc(48), at: 0).operands) == [.unsignedImmediate(value: 0, width: 3)])
+        #expect(Array(decode(enc(51), at: 0).operands) == [.unsignedImmediate(value: 1, width: 3)])
+        #expect(decode(enc(50), at: 0).mnemonic == .shuh)
+        #expect(Array(decode(enc(55), at: 0).operands) == [.unsignedImmediate(value: 7, width: 3)])
     }
 
     @Test func reservedHint64IsGenericHint() {
@@ -190,9 +170,6 @@ struct BESHintTests {
     }
 
     @Test func everyImm7Decodes() {
-        // Exhaustive coverage: every imm7 ∈ 0..127 produces a record
-        // (never .undefined). This proves the 128-entry HintTable is
-        // fully populated.
         for imm7: UInt8 in 0 ..< 128 {
             let d = decode(enc(imm7), at: 0)
             #expect(d.mnemonic != .undefined, "HINT \(imm7)")

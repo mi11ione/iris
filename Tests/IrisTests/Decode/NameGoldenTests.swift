@@ -4,9 +4,7 @@
 import Iris
 import Testing
 
-/// Spot table for `Mnemonic.name` and its CustomStringConvertible
-/// conformance: sentinels, composites, real names from every family
-/// range, and the total `?<raw>` fallback for unallocated values.
+/// Spot table for `Mnemonic.name`.
 @Suite("Mnemonic / name spot table")
 struct MnemonicNameGoldenTests {
     @Test func sentinelNamesAreCensusLabels() {
@@ -24,20 +22,20 @@ struct MnemonicNameGoldenTests {
     }
 
     @Test func everyFamilyRangeResolvesRealNames() {
-        #expect(Mnemonic.add.name == "add") //     DPI
-        #expect(Mnemonic.b.name == "b") //         BES
-        #expect(Mnemonic.ldp.name == "ldp") //     L/S
-        #expect(Mnemonic.csel.name == "csel") //   DPR
-        #expect(Mnemonic.fmov.name == "fmov") //   SIMD/FP
-        #expect(Mnemonic.pacia.name == "pacia") // crypto/PAC
-        #expect(Mnemonic.amxLdx.name == "ldx") //  AMX
+        #expect(Mnemonic.add.name == "add")
+        #expect(Mnemonic.b.name == "b")
+        #expect(Mnemonic.ldp.name == "ldp")
+        #expect(Mnemonic.csel.name == "csel")
+        #expect(Mnemonic.fmov.name == "fmov")
+        #expect(Mnemonic.pacia.name == "pacia")
+        #expect(Mnemonic.amxLdx.name == "ldx")
     }
 
     @Test func unallocatedRawValuesFallBackTotally() {
-        #expect(Mnemonic(rawValue: 200).name == "?200") //     sentinel range, unallocated
-        #expect(Mnemonic(rawValue: 999).name == "?999") //     DPI range, unallocated
-        #expect(Mnemonic(rawValue: 50000).name == "?50000") // future-extensions range
-        #expect(Mnemonic(rawValue: 65535).name == "?65535") // reserved sentinel
+        #expect(Mnemonic(rawValue: 200).name == "?200")
+        #expect(Mnemonic(rawValue: 999).name == "?999")
+        #expect(Mnemonic(rawValue: 50000).name == "?50000")
+        #expect(Mnemonic(rawValue: 65535).name == "?65535")
     }
 
     @Test func descriptionMatchesName() {
@@ -52,9 +50,7 @@ struct MnemonicNameGoldenTests {
     }
 }
 
-/// Spot table for `RegisterRef.name` and its CustomStringConvertible
-/// conformance: the canonical register names, the W-width policy, the
-/// encoding-31 roles, vector names, and the `?<index>` fallback.
+/// Spot table for `RegisterRef.name`.
 @Suite("RegisterRef / name spot table")
 struct RegisterRefNameGoldenTests {
     @Test func generalPurposeNamesFollowWidth() {
@@ -69,9 +65,6 @@ struct RegisterRefNameGoldenTests {
         #expect(RegisterRef.wsp().name == "wsp")
         #expect(RegisterRef.xzr().name == "xzr")
         #expect(RegisterRef.wzr().name == "wzr")
-        // A .general-role reference at the encoding-31 slot names the
-        // zero register — the architectural meaning of encoding 31 in a
-        // register-operand position.
         #expect(RegisterRef.x(31).name == "xzr")
         #expect(RegisterRef.w(31).name == "wzr")
     }

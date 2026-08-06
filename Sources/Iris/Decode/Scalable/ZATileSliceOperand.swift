@@ -1,19 +1,11 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// ZA tile-slice operand — ZAt.<T>[Wv, #imm] (horizontal or vertical,
-// with an optional slice range for SME2). The vector-select register Wv is a
-// GPR (a semantic READ, restricted to W12-W15 for tile slices). Because the
-// slice index derives from Wv (dynamic), the touched ZA storage is the whole
-// tile (a sound over-approximation) — see `zaMask`. Effective-address /
-// slice resolution needs a value analysis the caller owns.
 
-/// An SME `ZA` tile-slice operand — `ZAt.<T>[Wv, #imm]` (horizontal or
-/// vertical), or a slice range `ZAt.<T>[Wv, #lo:hi]`.
+/// An SME `ZA` tile-slice operand — `ZAt.<T>[Wv, #imm]`, horizontal or
+/// vertical, or a slice range.
 ///
-/// Carried by ``Operand/zaTileSlice(_:)``. ``selectRegister`` (`Wv`) is a
-/// GPR read; ``zaMask`` is the whole tile's residue mask (the sound
-/// decode-time ZA touch, since the slice index is dynamic).
+/// ``selectRegister`` is a GPR read; ``zaMask`` is the whole tile's residue
+/// mask, the sound decode-time touch since the slice index is dynamic.
 @frozen
 public struct ZATileSliceOperand: Sendable, Hashable {
     /// Tile number (bounded by ``element``: `B`:0, `H`:0-1, `S`:0-3,

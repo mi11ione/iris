@@ -6,15 +6,9 @@ import Iris
 import IrisCLICore
 import Testing
 
-/// Validates the `stats` verb census: accumulation rules (sentinels in the
-/// totals, not the mnemonic table), extension-site counters, the table
-/// rendering against its golden, and the `stats --json` object. The census
-/// reads a Mach-O file, so the table/JSON-shape unit checks build a
-/// ``Census`` over a synthesized stream directly (the same accumulation the
-/// verb drives) and assert on its rendering.
+/// Validates the `stats` census.
 @Suite("Instruction census")
 struct CensusTests {
-    /// A census accumulated over one little-endian word stream.
     func census(words: [UInt32], features: Features = []) -> Census {
         var bytes: [UInt8] = []
         for word in words {
@@ -24,8 +18,6 @@ struct CensusTests {
         census.add(InstructionStream(bytes: bytes, features: features))
         return census
     }
-
-    // MARK: CLI integration over a file
 
     @Test func tableMatchesGolden() {
         let run = runCLI(["stats", cliFixturePath("hello-arm64e")])
@@ -62,8 +54,6 @@ struct CensusTests {
         let fields = try #require(
             (try? JSONSerialization.jsonObject(with: Data(slim.stdout.utf8))) as? [String: Any],
         )
-        // The two constants are gone; every count survives (a zero count is
-        // the signal a CI gate reads).
         #expect(fields["schemaVersion"] == nil)
         #expect(fields["kind"] == nil)
         #expect(fields["totalWords"] as? Int == 20)
@@ -71,7 +61,6 @@ struct CensusTests {
         let extensions = try #require(fields["extensions"] as? [String: Int])
         #expect(extensions["pointerAuthentication"] == 0)
         #expect(slim.stdout.utf8.count < full.stdout.utf8.count)
-        // The default census stream is untouched by the slim feature.
         #expect(full.stdout == golden("dic-linked.stats.json"))
     }
 
@@ -86,8 +75,6 @@ struct CensusTests {
         #expect(census.mnemonicCounts["pacibsp"] == 2)
         #expect(census.mnemonicCounts["retab"] == 2)
     }
-
-    // MARK: Accumulation rules
 
     @Test func sentinelsCountInTotalsNotMnemonics() {
         var census = Census()
@@ -113,9 +100,16 @@ struct CensusTests {
         #expect(census.mnemonicCounts.isEmpty)
     }
 
+    @Test func undefinedWordsInAnAllocatedTierStillCountAsUndefined() {
+        let census = census(words: [0x80DE_B1FE, 0xEFBE_4786])
+        #expect(census.totalWords == 2)
+        #expect(census.undefinedWords == 2)
+        #expect(census.mnemonicCounts.isEmpty)
+        #expect(census.categoryCounts["sme"] == 1)
+        #expect(census.categoryCounts["undefined"] == 1)
+    }
+
     @Test func extensionSiteCounters() {
-        // pacia x0, x1 / irg x0, x1 / aese v0.16b, v1.16b /
-        // casal x0, x1, [x2] / AMX ldy x0
         let census = census(words: [0xDAC1_0020, 0x9ADF_1020, 0x4E28_4820, 0xC8E0_FC41, 0x0020_1020], features: .arm64e)
         #expect(census.pointerAuthenticationSites == 1)
         #expect(census.memoryTaggingSites == 1)
@@ -125,18 +119,15 @@ struct CensusTests {
         #expect(census.mnemonicCounts["ldy"] == 1)
     }
 
-    // MARK: Table rendering (the rendering the `stats` verb prints)
-
     @Test func amxSiteReachesTheTable() {
         let lines = census(words: [0x0020_1020]).tableLines()
-        // The extension-sites row and the per-category row both carry it.
         #expect(lines.contains("  amx              1"))
         #expect(lines.contains("  amx                       1"))
     }
 
     @Test func tableRendersTruncatedTailRow() {
         var census = Census()
-        census.add(InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5, 0xAA])) // nop + 1-byte tail
+        census.add(InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5, 0xAA]))
         let lines = census.tableLines()
         #expect(lines.contains("truncated tails    1"))
         #expect(lines.contains("total words        2"))
@@ -148,7 +139,6 @@ struct CensusTests {
     }
 
     @Test func tableOrdersByCountThenName() throws {
-        // Two rets, one nop, one mov: ret first, then mov/nop by name.
         let lines = census(words: [0xD65F_03C0, 0xD503_201F, 0xAA01_03E0, 0xD65F_03C0]).tableLines()
         let header = try #require(lines.firstIndex(of: "mnemonics:"))
         let mnemonicRows = lines.suffix(from: header + 1).map { $0.trimmingCharacters(in: .whitespaces) }
@@ -156,8 +146,6 @@ struct CensusTests {
     }
 
     @Test func censusHonorsFeatures() {
-        // ldraa is gated on the arm64e feature set: honest UNDEFINED
-        // without it, a counted PAC site with it.
         let without = census(words: [0xF820_0420])
         #expect(without.tableLines().contains("undefined          1"))
         let with = census(words: [0xF820_0420], features: .arm64e)
@@ -165,10 +153,7 @@ struct CensusTests {
         #expect(with.tableLines().contains("  pointer-auth     1"))
     }
 
-    // MARK: The verb is file-only
-
     @Test func statsRejectsARawWord() {
-        // The census reads a Mach-O file; a raw word routes to decode.
         let run = runCLI(["stats", "0x00201020"])
         #expect(run.status == CLI.exitUsage)
         #expect(run.stderr.contains("iris stats: error: '0x00201020' is a raw word; use 'iris decode 0x00201020'"))

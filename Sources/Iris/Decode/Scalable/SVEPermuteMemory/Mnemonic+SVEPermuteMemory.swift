@@ -1,19 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// mnemonic constants — the SVE / SVE2 permute, memory, and
-// crypto tokens not already declared by earlier families. Raw values continue
-// the SVE slab (16384..<28672) from 16684 (SVE-FP ended at 16683). Shared tokens
-// — ldr, str, rev, rbit, sel, tbl, tbx, zip1/2, uzp1/2, trn1/2, ext (NEON
-// or GPR slabs), aese/aesd/aesmc/aesimc/sm4e/sm4ekey/rax1/pmull (NEON
-// crypto), luti2/luti4 — are reused: the token is the text, and
-// `category == .sve` plus operand shape disambiguate (the SVE-predicate/SVE-integer/SVE-FP
-// precedent). PMULLB/PMULLT are the integer-widening tokens; this decoder emits
-// the multi-vector `pmull`/`pmlal` only.
 
 public extension Mnemonic {
-    // MARK: contiguous / gather / scatter loads and stores
-
     /// SVE LD1B — contiguous / gather load of bytes (zero-extended).
     static let ld1b = Mnemonic(rawValue: 16684)
     /// SVE LD1H — contiguous / gather load of halfwords (zero-extended).
@@ -40,8 +28,6 @@ public extension Mnemonic {
     static let st1d = Mnemonic(rawValue: 16695)
     /// SVE2p1 ST1Q — quadword scatter store.
     static let st1q = Mnemonic(rawValue: 16696)
-
-    // MARK: first-fault / non-fault / non-temporal
 
     /// SVE LDFF1B — first-fault load of bytes (zero-extended).
     static let ldff1b = Mnemonic(rawValue: 16697)
@@ -94,8 +80,6 @@ public extension Mnemonic {
     /// SVE STNT1D — non-temporal store of doublewords.
     static let stnt1d = Mnemonic(rawValue: 16721)
 
-    // MARK: load-and-replicate
-
     /// SVE LD1RB — load and replicate a byte (zero-extended).
     static let ld1rb = Mnemonic(rawValue: 16722)
     /// SVE LD1RH — load and replicate a halfword (zero-extended).
@@ -126,8 +110,6 @@ public extension Mnemonic {
     static let ld1row = Mnemonic(rawValue: 16735)
     /// SVE (F64MM) LD1ROD — load and replicate an octoword (doublewords).
     static let ld1rod = Mnemonic(rawValue: 16736)
-
-    // MARK: structured (2/3/4-vector interleave/deinterleave)
 
     /// SVE LD2B — 2-vector deinterleaving load of bytes.
     static let ld2b = Mnemonic(rawValue: 16737)
@@ -190,8 +172,6 @@ public extension Mnemonic {
     /// SVE2p1 ST4Q — 4-vector interleaving store of quadwords.
     static let st4q = Mnemonic(rawValue: 16766)
 
-    // MARK: prefetch
-
     /// SVE PRFB — prefetch bytes.
     static let prfb = Mnemonic(rawValue: 16767)
     /// SVE PRFH — prefetch halfwords.
@@ -200,8 +180,6 @@ public extension Mnemonic {
     static let prfw = Mnemonic(rawValue: 16769)
     /// SVE PRFD — prefetch doublewords.
     static let prfd = Mnemonic(rawValue: 16770)
-
-    // MARK: permute / move
 
     /// SVE INSR — insert scalar/SIMD&FP register, shifting the vector.
     static let insr = Mnemonic(rawValue: 16771)
@@ -240,8 +218,6 @@ public extension Mnemonic {
     /// SVE2p1 REVD — reverse 128-bit doublewords within elements (predicated).
     static let revd = Mnemonic(rawValue: 16788)
 
-    // MARK: SVE2p1 quadword permute
-
     /// SVE2p1 DUPQ — broadcast an indexed element within each 128-bit segment.
     static let dupq = Mnemonic(rawValue: 16789)
     /// SVE2p1 EXTQ — extract from a pair of 128-bit segments by byte offset.
@@ -261,12 +237,9 @@ public extension Mnemonic {
     /// SVE2p1 PMOV — move between a predicate and a vector (both directions).
     static let pmov = Mnemonic(rawValue: 16797)
 
-    // MARK: SVE2 crypto / LUT
-
     /// SVE2 (SVE-AES2) PMLAL — polynomial multiply-accumulate long, 128-bit
-    /// multi-vector result. (`pmull` and `luti2`/`luti4` are reused from the
-    /// the SIMD slabs — same text, `.sve` category + operand shape
-    /// disambiguate.)
+    /// multi-vector result. `pmull` and `luti2`/`luti4` are reused from the SIMD
+    /// slabs; category and operand shape disambiguate.
     static let pmlal = Mnemonic(rawValue: 16798)
     /// SVE2 (SVE-AES2) AESEMC — AES single-round encrypt then mix-columns,
     /// multi-vector.

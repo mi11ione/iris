@@ -3,16 +3,7 @@
 
 import Iris
 
-/// One non-code, file-backed section of a walked Mach-O slice: the
-/// `__cstring` / `__const` / `__data` content that an address-forming
-/// instruction in the code can point at. Code sections feed the
-/// disassembler; data sections feed the referenced-data annotation,
-/// which resolves a PC-relative target to its containing section, the
-/// C string it lands on, or the data symbol at it.
-///
-/// The walker establishes `fileOffset + byteCount <= slice.size` at
-/// construction (clamping a lying section header), so ``cString(at:)``
-/// is total: an out-of-range read returns `nil`, never a crash.
+/// One non-code, file-backed section of a walked Mach-O slice.
 @frozen
 public struct DataSection: Sendable {
     /// Parent segment name (`__TEXT`, `__DATA`, `__DATA_CONST`).
@@ -56,24 +47,16 @@ public struct DataSection: Sendable {
         "\(segmentName),\(sectionName)"
     }
 
-    /// Whether `address` lies in the section's VM range, evaluated
-    /// modulo 2^64, total even for a hostile section wrapping the top
-    /// of the address space.
+    /// Whether `address` lies in the section's VM range, evaluated modulo
+    /// 2^64, total even for a hostile section wrapping the top of the address
+    /// space.
     @inlinable
     public func containsAddress(_ address: UInt64) -> Bool {
         address &- self.address < byteCount
     }
 
-    /// The NUL-terminated C string at VM address `address`, or `nil` when
-    /// `address` is outside the section or no terminator is found before
-    /// its end. Zero-copy bounds-checked read through the mapped slice.
-    ///
-    /// The walker establishes `fileOffset + byteCount <= slice.size` (an
-    /// `Int`) at construction, and `containsAddress` bounds
-    /// `offsetInSection < byteCount`, so `filePosition` and `remaining`
-    /// both fit an `Int` once the guard passes. `readCString` bounds-checks
-    /// the position against the mapping regardless, so a regressed proof
-    /// degrades to `nil`, never an out-of-range read.
+    /// The NUL-terminated C string at VM address `address`, or `nil` when the
+    /// address is outside the section or no terminator precedes its end.
     public func cString(at address: UInt64) -> String? {
         guard containsAddress(address) else { return nil }
         let offsetInSection = address &- self.address

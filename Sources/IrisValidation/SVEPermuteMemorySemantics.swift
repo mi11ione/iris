@@ -1,17 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// semantic-attribute checker for SVE permute / memory / crypto
-// records. Independently re-derives the expected semantic classification from
-// the mnemonic and the (text-validated) operand list and compares it to what
-// the decoder produced, so a decode that renders the right text but mis-tags a
-// memory-access kind, a fault/temporal flag, an FFR touch, or the streaming
-// blanket is still caught. The checker owns the universal
-// invariants (`.sve` category, `.none` branch/ordering/flag, blanket
-// `readsStreamingMode`) and the SVE-permute/memory-specific memory-access and fault model.
-
-// A semantic mismatch between a decoded record and the independently-derived
-// expectation.
 
 import Iris
 
@@ -27,16 +15,14 @@ public struct SVEPermMemSemanticIssue: Sendable, Hashable {
     }
 }
 
-/// Verifies SVE-permute/memory records against the independently-derived semantic model.
+/// Verifies SVE-permute/memory records against the independently-derived
+/// semantic model.
 public enum SVEPermuteMemorySemanticChecker {
     @_optimize(speed)
     @_effects(readonly)
     public static func verify(draft: Instruction) -> SVEPermMemSemanticIssue? {
-        // UNDEFINED records carry no semantic content to check.
         if draft.mnemonic == .undefined { return nil }
 
-        // Universal invariants: category .sve; no branch, no memory
-        // ordering, no flag effect; streaming blanket set.
         if draft.category != .sve {
             return issue("category", draft.category, Category.sve)
         }
@@ -53,13 +39,11 @@ public enum SVEPermuteMemorySemanticChecker {
             return SVEPermMemSemanticIssue(field: "readsStreamingMode", actual: "unset", expected: "set")
         }
 
-        // Memory-access kind must match the mnemonic family.
         let expectedAccess = expectedMemoryAccess(draft.mnemonic)
         if draft.memoryAccess != expectedAccess {
             return issue("memoryAccess", draft.memoryAccess, expectedAccess)
         }
 
-        // Fault / temporal flags must match the mnemonic.
         let family = faultFamily(draft.mnemonic)
         if draft.scalableEffect.contains(.firstFaulting) != (family == .firstFault) {
             return flagIssue("firstFaulting", family == .firstFault)
@@ -71,7 +55,6 @@ public enum SVEPermuteMemorySemanticChecker {
             return flagIssue("nonTemporal", family == .nonTemporal)
         }
 
-        // Fault-suppressing loads read+write FFR; nothing else touches it.
         let touchesFFR = family == .firstFault || family == .nonFault
         if draft.scalableReads.containsFFR != touchesFFR {
             return flagIssue("scalableReads.FFR", touchesFFR)
@@ -80,7 +63,6 @@ public enum SVEPermuteMemorySemanticChecker {
             return flagIssue("scalableWrites.FFR", touchesFFR)
         }
 
-        // No SVE-permute/memory instruction writes streaming mode or ZA-enable.
         if draft.scalableEffect.contains(.writesStreamingMode) {
             return flagIssue("writesStreamingMode", false)
         }
@@ -89,8 +71,6 @@ public enum SVEPermuteMemorySemanticChecker {
         }
         return nil
     }
-
-    // MARK: derivation
 
     /// The expected base memory-access kind for a mnemonic.
     @_effects(readonly)
@@ -152,8 +132,6 @@ public enum SVEPermuteMemorySemanticChecker {
     public static func isPrefetch(_ m: Mnemonic) -> Bool {
         m == .prfb || m == .prfh || m == .prfw || m == .prfd
     }
-
-    // MARK: issue builders
 
     @inline(__always)
     public static func issue(_ field: String, _ actual: some RawRepresentable<UInt8>, _ expected: some RawRepresentable<UInt8>) -> SVEPermMemSemanticIssue {

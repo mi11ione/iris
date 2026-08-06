@@ -1,15 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
 
-/// Address-keyed view of a Mach-O symbol table, holding exactly what the
-/// listing needs: defined symbols' names at their VM addresses, indexed
-/// for O(log n) exact and closest-preceding lookup.
-///
-/// Built from `LC_SYMTAB`'s `nlist_64` entries: debug stabs and undefined
-/// symbols are excluded (they carry no in-image address), section-defined
-/// and absolute symbols are kept — local and external alike, since both
-/// label functions in a listing. When several symbols share an address
-/// the first in `nlist_64` order wins, matching `nm`-order conventions.
+/// Address-keyed view of a Mach-O symbol table.
 @frozen
 public struct SymbolIndex: Sendable {
     @usableFromInline let addresses: [UInt64]
@@ -46,7 +38,6 @@ public struct SymbolIndex: Sendable {
     }
 
     /// O(log n) exact-address lookup.
-    /// - Returns: the symbol name at exactly `address`, or `nil`.
     @inlinable
     public func name(at address: UInt64) -> String? {
         let i = lowerBound(of: address)
@@ -54,10 +45,7 @@ public struct SymbolIndex: Sendable {
         return names[i]
     }
 
-    /// O(log n) closest-preceding lookup: the symbol with the largest
-    /// address `<= address`.
-    /// - Returns: the `(address, name)` pair, or `nil` when `address`
-    ///   precedes every indexed symbol.
+    /// O(log n) closest-preceding lookup.
     @inlinable
     public func nearest(atOrBefore address: UInt64) -> (address: UInt64, name: String)? {
         var lo = 0
@@ -71,7 +59,7 @@ public struct SymbolIndex: Sendable {
     }
 
     /// All indexed symbols with `range.lowerBound <= address <
-    /// range.upperBound`, ascending. O(log n + k).
+    /// range.upperBound`, ascending.
     public func symbols(in range: Range<UInt64>) -> [(address: UInt64, name: String)] {
         let start = lowerBound(of: range.lowerBound)
         var result: [(UInt64, String)] = []

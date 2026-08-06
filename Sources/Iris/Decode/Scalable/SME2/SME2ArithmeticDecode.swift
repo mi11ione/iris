@@ -1,44 +1,23 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// the cell-110|1|x (top byte 0xC1) dispatcher and the
-// ZA-accumulating multi-vector families. bits[15:13] partition the cell
-// 000 and 100 are the ZA-array accumulators (add/sub, dots,
-// fmla/fmls, the widening L and quad-widening LL mla families, and vertical
-// dots), which this file owns; 101/110/111 (destructive elementwise, clamp/
-// narrow/permute, convert/fmul/frint/unpk) and the SEL exception in the 100
-// group route to `SME2VectorOpsDecode`. Every ZA-array access reads+writes
-// the whole-ZA mask (dynamic row selection) and the W8+Rv select register.
-// The accumulate/single-Zm/multi-Zm/indexed shapes are all decoded from the
-// generated (mask,value) table below (transcribed from the investigation
-// tblgen records, tightest-mask-first), the indexed forms via the per-element
-// index-field kinds in `accumIndex`.
 
 /// SME2 0xC1 dispatcher + ZA-accumulate decoders.
 enum SME2ArithmeticDecode {
-    /// Decode a cell-`110|1|x` word (top byte 0xC1). The ZA-array accumulators
-    /// hold `Rv` in bits[14:13], so bits[15:13] is not a stable discriminator
-    /// for them — the accumulate table (whose masks fix the full opcode) is
-    /// tried first, and the non-ZA remainder ({Zd}-targeting) then routes by
-    /// bits[15:13] (100 SEL, 101 destructive, 110 clamp/narrow/permute, 111
-    /// convert/fmul/frint/unpk).
+    /// Decode a cell-`110|1|x` word (top byte 0xC1).
     @_optimize(speed)
     static func decode(_ e: UInt32, _ a: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
         if let spec = accumulateSpec(e) {
             return buildAccumulate(e, a, spec, &sink)
         }
-        // The accumulate table above already claimed every ZA-targeting form
-        // (including the indexed ones); the remainder is {Zd}-targeting, routed
-        // by bits[15:13], with SEL peeled out of the 100 group.
         return switch (e >> 13) & 0x7 {
         case 0b100:
             e & 0xFF21_E021 == 0xC120_8000 || e & 0xFF23_E063 == 0xC121_8000
                 ? SME2VectorOpsDecode.decodeSel(e, a, &sink)
-                : SME2Decode.undefined(e, a) // 100-group hole
+                : SME2Decode.undefined(e, a)
         case 0b101: SME2VectorOpsDecode.decodeDestructive(e, a, &sink)
         case 0b110: SME2VectorOpsDecode.decodeClampNarrowPermute(e, a, &sink)
         case 0b111: SME2VectorOpsDecode.decodeConvertMisc(e, a, &sink)
-        default: SME2Decode.undefined(e, a) // 000-group hole (accumulates matched above)
+        default: SME2Decode.undefined(e, a)
         }
     }
 
@@ -50,10 +29,7 @@ enum SME2ArithmeticDecode {
         case i1, i2, i2vt, i3s, i3L1, i3L2, i3LLd2, i4LL1, i4LL2, i4f8L1, i4f8L2
     }
 
-    /// A decoded ZA-accumulate record identity — mnemonic, vector-group
-    /// width, source shape, tile/source element sizes, offset tier (1 =
-    /// single slot, 2 = widening `L` range, 4 = quad-widening `LL` range),
-    /// and (for indexed forms) the `Zm` index layout.
+    /// A decoded ZA-accumulate record identity.
     private struct AccumSpec {
         let mnemonic: Mnemonic
         let vg: UInt8
@@ -63,8 +39,6 @@ enum SME2ArithmeticDecode {
         let tier: UInt8
         let index: IndexKind
         init(
-            // `index` is meaningful only for indexed (`.idx`) shapes; other
-            // shapes take the placeholder default, which is never read.
             _ mnemonic: Mnemonic, vg: UInt8, shape: AccumShape, tile: ScalarSize,
             src: ScalarSize, tier: UInt8, index: IndexKind = .i1,
         ) {
@@ -90,14 +64,12 @@ enum SME2ArithmeticDecode {
             sink.append(SME2Decode.group(zn, spec.vg, spec.src))
             sourceReads = SME2Decode.groupMask(zn, spec.vg)
         case .single where spec.vg == 1:
-            // Single-vector widening form: `za.<T>[Wv, lo:hi], Zn.<Ts>, Zm.<Ts>`.
             let zn = UInt8((e >> 5) & 0x1F)
             let zm = SME2Decode.zm4(e)
             sink.append(SME2Decode.vec(zn, spec.src))
             sink.append(SME2Decode.vec(zm, spec.src))
             sourceReads = SME2Decode.vecMask(zn).union(SME2Decode.vecMask(zm))
         case .single:
-            // {Zn} (5-bit wrapping group) then a single broadcast Zm (z0-z15).
             let zn = UInt8((e >> 5) & 0x1F)
             let zm = SME2Decode.zm4(e)
             sink.append(SME2Decode.group(zn, spec.vg, spec.src))
@@ -110,14 +82,12 @@ enum SME2ArithmeticDecode {
             sink.append(SME2Decode.group(zm, spec.vg, spec.src))
             sourceReads = SME2Decode.groupMask(zn, spec.vg).union(SME2Decode.groupMask(zm, spec.vg))
         case .idx where spec.vg == 1:
-            // Single-vector indexed widening: `za[...], Zn.<Ts>, Zm.<Ts>[i]`.
             let zn = UInt8((e >> 5) & 0x1F)
             let zm = SME2Decode.zm4(e)
             sink.append(SME2Decode.vec(zn, spec.src))
             sink.append(SME2Decode.vec(zm, spec.src, index: accumIndex(e, spec.index)))
             sourceReads = SME2Decode.vecMask(zn).union(SME2Decode.vecMask(zm))
         case .idx:
-            // FVDOTB/FVDOTT have vgx4 ZA semantics but a 2-register Zn list.
             let znCount: UInt8 = spec.index == .i2vt ? 2 : spec.vg
             let zn = znGroupFirst(e, znCount)
             let zm = SME2Decode.zm4(e)
@@ -128,9 +98,7 @@ enum SME2ArithmeticDecode {
         return SME2Decode.zaAccumulate(e, a, spec.mnemonic, operandCount: sink.count(since: operandMark), sourceReads: sourceReads)
     }
 
-    /// The ZA slice offset (and range high end) for an accumulate record. The
-    /// offset field is the low bits below `Zn`; single-slot forms print the
-    /// value plain, `L`/`LL` forms print an `off*tier : off*tier+tier-1` range.
+    /// The ZA slice offset (and range high end) for an accumulate record.
     @inline(__always)
     private static func accumOffset(_ e: UInt32, _ spec: AccumSpec) -> (UInt8, UInt8?) {
         let width: UInt32 = spec.tier == 1 ? 3 : (spec.vg == 1 ? (spec.tier == 2 ? 3 : 2) : (spec.tier == 2 ? 2 : 1))
@@ -146,18 +114,14 @@ enum SME2ArithmeticDecode {
         vg == 4 ? UInt8((e >> 7) & 0x7) &* 4 : UInt8((e >> 6) & 0xF) &* 2
     }
 
-    /// The first register of a multi-`Zm` group (bits[20:17] pair / [20:18] quad).
+    /// The first register of a multi-`Zm` group (bits[20:17] pair / [20:18]
+    /// quad).
     @inline(__always)
     private static func zmGroupFirst(_ e: UInt32, _ vg: UInt8) -> UInt8 {
         vg == 4 ? UInt8((e >> 18) & 0x7) &* 4 : UInt8((e >> 17) & 0xF) &* 2
     }
 
     /// The `Zm` element index for an indexed accumulate form, per its layout.
-    ///
-    /// The arms are pinned to `UInt32` and narrowed once at the end. Left
-    /// as a switch of bare `UInt8(…)` conversions, the whole expression is
-    /// one constraint system over every integer type at once, which the
-    /// type checker solves slowly enough to time out on a cold CI host.
     @inline(__always)
     private static func accumIndex(_ e: UInt32, _ kind: IndexKind) -> UInt8 {
         let bits: UInt32 = switch kind {
@@ -176,8 +140,8 @@ enum SME2ArithmeticDecode {
         return UInt8(bits)
     }
 
-    /// Look up a ZA-accumulate record identity by its (mask,value),
-    /// tightest mask first. Generated from the investigation tblgen records.
+    /// Look up a ZA-accumulate record identity by its (mask,value), tightest
+    /// mask first.
     @inline(__always)
     private static func accumulateSpec(_ e: UInt32) -> AccumSpec? {
         switch e & 0xFFFF_9C78 {

@@ -1,23 +1,7 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// AMX sub-decoder for the op0 = 0 reserved tier — Apple's AMX coprocessor
-// occupies parts of the formally-unallocated encoding space, and the
-// dispatcher explicitly permits a decoder there. Reached from
-// `Op0ZeroDecoder` once `isAMXEncoding` holds (the canonical mask
-// `(encoding & 0xFFFFFC00) == 0x00201000`), so every word arriving here is
-// already an AMX word; it dispatches the 5-bit opcode field (bits[9:5])
-// through the corsix/amx-documented 23-opcode table. Encodings whose top mask
-// matches but whose opcode is outside [0..22] — or opcode 17 with operand
-// outside {0, 1} — are surfaced as `.amxUnknownOp` with an
-// `.amxUnknown(rawFields:)` operand carrying the full 32-bit word for
-// downstream analysis.
 
 /// Decodes one Apple AMX word.
-///
-/// Not a registered ``FamilyDecoder``: the composite ``Op0ZeroDecoder`` holds
-/// the `op0=0` slot and delegates here after ``isAMXEncoding(_:)`` holds,
-/// which is this decoder's precondition.
 struct AMXDecoder: Sendable {
     init() {}
 
@@ -49,8 +33,6 @@ struct AMXDecoder: Sendable {
         case 15: (mnemonic, useAmxField) = (.amxFma16, true)
         case 16: (mnemonic, useAmxField) = (.amxFms16, true)
         case 17:
-            // set / clr — operand is a 5-bit immediate; 0 = set, 1 = clr;
-            // other values are reserved → surface as amxUnknownOp.
             switch operandField {
             case 0: (mnemonic, useAmxField) = (.amxSet, true)
             case 1: (mnemonic, useAmxField) = (.amxClr, true)
@@ -62,15 +44,9 @@ struct AMXDecoder: Sendable {
         case 21: (mnemonic, useAmxField) = (.amxMatfp, true)
         case 22: (mnemonic, useAmxField) = (.amxGenlut, true)
         default:
-            // Opcode ≥ 23: outside documented set. Hardware faults; the
-            // decoder surfaces the encoding as amxUnknownOp with raw payload.
             (mnemonic, useAmxField) = (.amxUnknownOp, false)
         }
 
-        // Non-opcode-17 documented ops use the 5-bit operand field as an
-        // X-register index whose runtime value carries the structured AMX
-        // payload. The decoder doesn't model the payload but it DOES model
-        // the GPR read so downstream dataflow can track the dependency.
         var reads: RegisterSet = .empty
         let writes: RegisterSet = .empty
         if useAmxField, opcode != 17 {

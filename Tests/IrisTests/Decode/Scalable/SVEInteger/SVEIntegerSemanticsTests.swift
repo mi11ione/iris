@@ -13,72 +13,66 @@ private func verify(_ draft: Instruction) -> SVEIntSemanticIssue? {
     SVEIntegerSemanticChecker.verify(draft: draft)
 }
 
-/// Validates the semantic-attribute checker. Disassembly text carries the
-/// mnemonic and operands and nothing else — it says nothing about NZCV,
-/// partial writes, streaming-mode dependence, or the read/write masks, which
-/// are exactly what a dataflow consumer runs on. The checker derives each
-/// attribute independently from the text-validated operand list, so its own
-/// detection has to be exercised field by field: a checker that silently
-/// returned nil would leave the whole semantic model unvalidated.
+/// Validates the semantic-attribute checker field by field.
 @Suite("SVE integer / semantic-attribute checker")
 struct SVEIntegerSemanticCheckerTests {
     @Test func aWellFormedRecordFromEveryGroupPasses() {
         let representatives: [UInt32] = [
-            0x0400_0000, // add predicated
-            0x0494_0443, // sdiv
-            0x0400_8100, // asr immediate
-            0x0418_8020, // asr wide
-            0x0456_A820, // abs /m
-            0x0446_A820, // abs /z
-            0x0482_4020, // mla
-            0x0481_E040, // msb
-            0x0400_2443, // saddv
-            0x0405_2443, // addqv
-            0x0422_0020, // add unpredicated
-            0x0461_3020, // mov from orr
-            0x0422_A820, // adr
-            0x0421_3840, // eor3
-            0x042F_3420, // xar
-            0x2402_0020, // cmphs vector
-            0x2402_C030, // cmphi wide
-            0x243F_C020, // cmphs immediate
-            0x2510_8030, // cmpne signed immediate
-            0x2560_E000, // add immediate with the unfolded shift
-            0x2530_D000, // mul immediate
-            0x2538_D000, // mov immediate
-            0x0520_3BE0, // mov from wsp
-            0x05E8_A3E0, // mov merging from sp
-            0x0570_2000, // mov indexed quadword
-            0x0510_4000, // mov immediate merging
-            0x0502_0000, // orr bitmask
-            0x05C0_8020, // mov from dupm
-            0x05C0_0620, // dupm
-            0x4418_8020, // sqadd predicated
-            0x4411_A020, // addp
-            0x4482_4020, // smlalb
-            0x4482_7020, // sqrdmlah
-            0x4482_1C20, // cdot rotated
-            0x4402_C020, // sclamp
-            0x4408_A020, // sqabs /m
-            0x4444_A020, // sadalp
-            0x44C1_D840, // madpt
-            0x44A2_0020, // sdot indexed
-            0x447A_0820, // mla indexed
-            0x4502_6820, // pmullb quadword
-            0x4502_9020, // eorbt
-            0x4502_D020, // adclb
-            0x4522_8030, // nmatch
-            0x45A2_C020, // histcnt
-            0x4522_A020, // histseg
-            0x4508_E020, // ssra
-            0x4508_F420, // sli
-            0x4540_A020, // sshllb
-            0x4500_D820, // cadd
-            0x4562_6420, // addhnt
-            0x4528_4020, // sqxtnb
-            0x4528_3C20, // uqrshrnt
-            0x4531_4040, // sqcvtn
-            0x45B0_0040, // sqshrn multi-vector
+            0x0400_0000,
+            0x0494_0443,
+            0x0400_8100,
+            0x0418_8020,
+            0x0456_A820,
+            0x0446_A820,
+            0x0482_4020,
+            0x0481_E040,
+            0x0400_2443,
+            0x0405_2443,
+            0x0422_0020,
+            0x0461_3020,
+            0x0422_A820,
+            0x0421_3840,
+            0x042F_3420,
+            0x2402_0020,
+            0x2402_C030,
+            0x243F_C020,
+            0x2510_8030,
+            0x2560_E000,
+            0x2530_D000,
+            0x2538_D000,
+            0x0520_3BE0,
+            0x05E8_A3E0,
+            0x0570_2000,
+            0x0510_4000,
+            0x0502_0000,
+            0x05C0_8020,
+            0x05C0_0620,
+            0x4418_8020,
+            0x4411_A020,
+            0x4482_4020,
+            0x4482_7020,
+            0x4482_1C20,
+            0x4402_C020,
+            0x4408_A020,
+            0x4444_A020,
+            0x44C1_D840,
+            0x44A2_0020,
+            0x447A_0820,
+            0x4502_6820,
+            0x4502_9020,
+            0x4502_D020,
+            0x4522_8030,
+            0x45A2_C020,
+            0x4522_A020,
+            0x4508_E020,
+            0x4508_F420,
+            0x4540_A020,
+            0x4500_D820,
+            0x4562_6420,
+            0x4528_4020,
+            0x4528_3C20,
+            0x4531_4040,
+            0x45B0_0040,
         ]
         for encoding in representatives {
             #expect(verify(decode(encoding)) == nil, "0x\(String(encoding, radix: 16))")
@@ -104,7 +98,6 @@ struct SVEIntegerSemanticCheckerTests {
     }
 
     @Test func aRecordClaimingToTouchMemoryIsRejected() {
-        // ADR computes an address but never loads
         let d = perturbing(decode(0x0422_A020)) {
             $0.memoryAccess = .load
         }
@@ -129,12 +122,10 @@ struct SVEIntegerSemanticCheckerTests {
     }
 
     @Test func aWrongPartialWriteIsRejectedInBothDirections() {
-        // add …/m is partial
         let merged = perturbing(decode(0x0400_0000)) {
             $0.scalableEffect = .readsStreamingMode
         }
         #expect(verify(merged)?.field == "scalableEffect")
-        // add z,z,z is a full write
         let fresh = perturbing(decode(0x0422_0020)) {
             $0.scalableEffect = [.readsStreamingMode, .partialWrite]
         }
@@ -154,8 +145,6 @@ struct SVEIntegerSemanticCheckerTests {
             $0.scalableReads = $0.scalableReads.insertingPredicate(9)
         }
         #expect(verify(reads)?.field == "predicateReads")
-        // The comparison spans the WHOLE scalable set, so a stray bit above
-        // the predicate field (an FFR/ZA-style claim) must also be caught.
         let high = perturbing(decode(0x0400_0000)) {
             $0.scalableWrites = ScalableRegisterSet(bits: 1 << 40)
         }
@@ -186,12 +175,7 @@ struct SVEIntegerSemanticCheckerTests {
     }
 }
 
-/// Validates the per-mnemonic and per-operand attribute lookups directly —
-/// the pure functions the checker composes. The flag set must be exactly the
-/// compares plus MATCH/NMATCH; the preserving set exactly the nineteen
-/// statically-preserving mnemonics; the destination-read set the accumulators
-/// and clamps on top of those; and the register-mask walk must weigh every
-/// operand kind the decoders emit, dropping the zero register and keeping SP.
+/// Validates the per-mnemonic and per-operand attribute lookups directly.
 @Suite("SVE integer / semantic-attribute lookups")
 struct SVEIntegerSemanticAttributesTests {
     @Test func theFlagWritersAreExactlyTheComparesAndMatches() {
@@ -218,8 +202,6 @@ struct SVEIntegerSemanticAttributesTests {
         for m in preserving {
             #expect(SVEIntegerSemanticAttributes.preservesDestination(m), "\(m.rawValue)")
         }
-        // The bottoms, the accumulators and the widening tops all rewrite
-        // every lane — none of them preserve.
         for m in [Mnemonic.addhnb, .shrnb, .sqxtnb, .ssra, .smlalt, .ushllt, .sclamp, .add] {
             #expect(!SVEIntegerSemanticAttributes.preservesDestination(m), "\(m.rawValue)")
         }
@@ -236,8 +218,6 @@ struct SVEIntegerSemanticAttributesTests {
         for m in readers {
             #expect(SVEIntegerSemanticAttributes.readsDestination(m), "\(m.rawValue)")
         }
-        // The destructive two-address forms are deliberately absent: their
-        // destination already appears among the source operands.
         for m in [Mnemonic.add, .and, .asr, .mul, .sub, .xar, .eor3, .mov, .saddlb] {
             #expect(!SVEIntegerSemanticAttributes.readsDestination(m), "\(m.rawValue)")
         }
@@ -279,18 +259,12 @@ struct SVEIntegerSemanticAttributesTests {
         #expect(SVEIntegerSemanticAttributes.expectedPredicateWrites([result, zeroing]) == 0b1000)
         #expect(SVEIntegerSemanticAttributes.expectedPredicateWrites([zeroing]) == 0)
         #expect(SVEIntegerSemanticAttributes.expectedPredicateReads([result, zeroing]) == 0b0010)
-        // Under a merging predicate the result predicate is an RMW source —
-        // the structural invariant, even though no current integer form
-        // combines the two.
         #expect(SVEIntegerSemanticAttributes.expectedPredicateReads([result, merging]) == 0b1010)
         #expect(SVEIntegerSemanticAttributes.hasMergingGoverning([merging]))
         #expect(!SVEIntegerSemanticAttributes.hasMergingGoverning([zeroing, result]))
     }
 
     @Test func theMaskDerivationsSurviveAnOperandlessRecord() {
-        // A decoder bug that emitted a named mnemonic with no operands must
-        // be reported as the mismatch it is, not trap the sweep on an empty
-        // operand range.
         let empty = Instruction(
             address: 0, encoding: 0, mnemonic: .add, category: .sve,
             scalableEffect: .readsStreamingMode,
@@ -301,7 +275,6 @@ struct SVEIntegerSemanticAttributesTests {
     }
 
     @Test func theExpectedMasksMatchAHandComputedForm() {
-        // smlalb z3.s, z5.h, z9.h — accumulator: writes Z3, reads Z3+Z5+Z9.
         let draft = Instruction(
             address: 0, encoding: 0, mnemonic: .smlalb, category: .sve,
             operands: [

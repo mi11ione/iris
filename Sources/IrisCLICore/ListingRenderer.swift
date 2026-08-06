@@ -3,42 +3,15 @@
 
 import Iris
 
-/// Renders instruction streams as human-grade listings: address / raw
-/// word / canonical text columns, function labels, branch-target
-/// symbolication, data-in-code annotations, optional per-line semantics,
-/// and TTY-aware color.
-///
-/// Layout, by line kind (alignment is computed on plain text; color is
-/// applied after padding, so escapes never disturb columns):
-///
-///     <path> (<arch>):
-///
-///     __TEXT,__text:
-///
-///     _main:
-///     100003f70: a9be7bfd   stp x29, x30, [sp, #-32]!
-///     100003f80: 94000005   bl 0x100003f94 ; _helper
-///     100003f88: 0000002a   .long 0x2a ; data-in-code (jump-table-32)
-///
-/// Addresses are lowercase hex zero-padded to the width of the
-/// section's last address; raw words are 8 hex digits (a truncated
-/// tail shows its residual bytes' value at its natural width,
-/// space-padded). Direct branches render their absolute target (the
-/// library's relative `#offset` form rewritten at presentation level)
-/// and gain a `; symbol` annotation when the target resolves, exactly
-/// at a symbol, or past one in the same code section (`; _name+0x8`).
-/// Labels come from `LC_FUNCTION_STARTS` and the symbol table; a
-/// function start without a symbol is labeled `sub_<hex>:`. With
-/// semantics enabled, each line is padded to a fixed column and
-/// annotated per ``SemanticsAnnotation``.
+/// Renders instruction streams as human-grade listings.
 @frozen
 public struct ListingRenderer: Sendable {
-    /// Column at which the `; reads=… writes=…` annotation starts,
-    /// measured from the start of the text column.
+    /// Column at which the `; reads=… writes=…` annotation starts, measured
+    /// from the start of the text column.
     public static let semanticsColumn = 44
 
-    /// Symbolication context for file-mode listings; direct-decode
-    /// streams render without one.
+    /// Symbolication context for file-mode listings; direct-decode streams
+    /// render without one.
     @frozen
     public struct Context: Sendable {
         /// The section the rendered instructions belong to.
@@ -47,12 +20,11 @@ public struct ListingRenderer: Sendable {
         public let symbols: SymbolIndex
         /// Every code section of the binary (for same-section checks).
         public let sections: [CodeSection]
-        /// Imported-symbol name keyed by stub VM address; a branch to one
-        /// of these annotates `symbol stub for: <name>`.
+        /// Imported-symbol name keyed by stub VM address; a branch to one of
+        /// these annotates `symbol stub for: <name>`.
         public let stubTargets: [UInt64: String]
         /// Resolver for the referenced-data annotation (the string /
-        /// data-symbol / section an address-forming instruction points
-        /// at). Empty in the direct-decode modes.
+        /// data-symbol / section an address-forming instruction points at).
         public let referencedData: ReferencedDataResolver
 
         @inlinable
@@ -88,15 +60,8 @@ public struct ListingRenderer: Sendable {
         self.includeSemantics = includeSemantics
     }
 
-    /// Emit the full listing for a walked binary, line by line (no
-    /// whole-listing accumulation). Stream-level diagnostics of each
-    /// section's decode are forwarded to `onStreamDiagnostic` so the
-    /// CLI can route them to stderr.
-    /// Emit the full listing, optionally scoped by `addressFilter` (the
-    /// `disasm --function` / `--range` window). The path header always
-    /// prints; a section's header and its function labels print lazily,
-    /// only once that section has an in-scope instruction, so a scope that
-    /// selects nothing in a section prints no empty block for it.
+    /// Emit the full listing line by line, optionally scoped by
+    /// `addressFilter` (`disasm --function` / `--range`).
     public func emitListing(
         for binary: WalkedBinary,
         emit: (String) -> Void,
@@ -112,11 +77,7 @@ public struct ListingRenderer: Sendable {
         }
     }
 
-    /// Emit one section's lines: a label line at every function start
-    /// and symbol address, one instruction line per record. The section
-    /// header is emitted lazily through `emitSectionHeader` (so a fully
-    /// filtered-out section contributes nothing), and only in-scope
-    /// instructions (and the labels sitting on them) are printed.
+    /// Emit one section's lines.
     func emitSection(
         _ section: CodeSection,
         of binary: WalkedBinary,
@@ -136,8 +97,6 @@ public struct ListingRenderer: Sendable {
         for (address, name) in sectionSymbols(of: binary.symbols, in: section) where labels[address] == nil {
             labels[address] = name
         }
-        // A section wrapping the top of the address space (hostile vmaddr)
-        // holds 16-digit addresses; otherwise the width of the last one.
         let width = sectionEnd > section.address ? String(sectionEnd &- 1, radix: 16).count : 16
         let context = Context(
             section: section,
@@ -146,13 +105,7 @@ public struct ListingRenderer: Sendable {
             stubTargets: binary.stubTargets,
             referencedData: binary.referencedDataResolver,
         )
-        // The section header prints once, right before its first in-scope
-        // line, so a scope that lands in no part of this section leaves it
-        // out of the listing entirely.
         var headerEmitted = false
-        // One buffer for the whole section: every line appends into it and
-        // exactly one `String` is constructed at the end, in place of one
-        // per line plus one per token within each line.
         var out = TextBytes(capacity: Swift.max(4096, stream.records.count * 48))
         func emitSectionHeader() {
             guard !headerEmitted else { return }
@@ -164,17 +117,11 @@ public struct ListingRenderer: Sendable {
             palette.close(into: &out)
             out.put(UInt8(ascii: "\n"))
         }
-        // The referenced-data idiom (adrp + add/ldr) reads the line before
-        // the current one, so the previous record is carried forward (it is
-        // tracked across filtered-out lines too, so the idiom still resolves
-        // when only the completing instruction is in scope).
         var preceding: Instruction?
         for instruction in stream {
             defer { preceding = instruction }
             guard addressFilter(instruction.address) else { continue }
             emitSectionHeader()
-            // Word-aligned labels only: a label can only attach to a
-            // line, and lines sit at record addresses.
             if let label = labels[instruction.address] {
                 out.put(UInt8(ascii: "\n"))
                 palette.open("1", into: &out)
@@ -192,8 +139,7 @@ public struct ListingRenderer: Sendable {
         if out.count > 0 { emit(out.makeString()) }
     }
 
-    /// Emit a bare stream (the direct-decode modes): no labels, no
-    /// symbolication context.
+    /// Emit a bare stream (the direct-decode modes).
     public func emitStream(_ stream: InstructionStream, emit: (String) -> Void) {
         let last = stream.baseAddress &+ (stream.byteCount > 0 ? stream.byteCount &- 1 : 0)
         let width = String(last, radix: 16).count
@@ -208,10 +154,7 @@ public struct ListingRenderer: Sendable {
         if out.count > 0 { emit(out.makeString()) }
     }
 
-    /// Render one instruction line (no trailing newline). `preceding` is
-    /// the instruction before this one in the stream (the local idiom's
-    /// first half), `nil` at a section's start and in the direct-decode
-    /// modes.
+    /// Render one instruction line (no trailing newline).
     public func line(
         for instruction: Instruction,
         addressWidth: Int,
@@ -226,14 +169,18 @@ public struct ListingRenderer: Sendable {
         return out.makeString()
     }
 
-    /// The text column: canonical text with branch targets made
-    /// absolute, plus symbolication / data-in-code annotation. Returned
-    /// in plain and colored forms so callers can pad on plain text.
+    /// The text column.
     func bodyText(
         for instruction: Instruction,
         context: Context?,
         preceding: Instruction? = nil,
     ) -> (plain: String, colored: String) {
+        if instruction.isUndefined {
+            return (
+                instruction.text + " ; undefined",
+                palette.data(instruction.text) + palette.annotation(" ; undefined"),
+            )
+        }
         switch instruction.category {
         case .dataInCodeMarker:
             let kindSuffix = dataInCodeKindName(for: instruction, in: context?.section)
@@ -241,13 +188,6 @@ public struct ListingRenderer: Sendable {
             return (
                 instruction.text + kindSuffix,
                 palette.data(instruction.text) + palette.annotation(kindSuffix),
-            )
-        case .undefined:
-            // Without the note, an UNDEFINED `.long` is indistinguishable
-            // from a data-in-code `.long` at a glance.
-            return (
-                instruction.text + " ; undefined",
-                palette.data(instruction.text) + palette.annotation(" ; undefined"),
             )
         case .truncatedTail:
             return (
@@ -266,14 +206,7 @@ public struct ListingRenderer: Sendable {
         }
     }
 
-    /// The trailing comment for a non-sentinel line, in priority order:
-    /// branch-target symbolication when the record branches; the
-    /// referenced datum (a quoted string, a data symbol, or a section
-    /// name) an address-forming instruction points at, including the
-    /// local `adrp`+`add`/`ldr` idiom completed with `preceding`; the
-    /// formed absolute PC-relative address (a bare `adrp` page, or a
-    /// target in no data section) so the page/offset math still shows;
-    /// then a printable-ASCII character hint for an immediate.
+    /// The trailing comment for a non-sentinel line, in priority order.
     func targetAnnotation(for instruction: Instruction, context: Context?, preceding: Instruction?) -> String? {
         if let symbol = symbolAnnotation(for: instruction, context: context) {
             return symbol
@@ -290,11 +223,7 @@ public struct ListingRenderer: Sendable {
         return nil
     }
 
-    /// The trailing-comment text for a resolved ``ReferencedData``: the
-    /// quoted string when one was read, else the data symbol when one
-    /// names the target, else the bare section name. String wins because
-    /// it is the most specific (the actual bytes), symbol next, section
-    /// last, the same specificity order `otool` annotates with.
+    /// The trailing-comment text for a resolved ``ReferencedData``.
     func referencedDataComment(_ data: ReferencedData) -> String {
         if let string = data.string {
             return InstructionText.quotedString(string)
@@ -305,8 +234,8 @@ public struct ListingRenderer: Sendable {
         return data.section
     }
 
-    /// The data-in-code kind covering this word, rendered in the
-    /// listing's fixed vocabulary.
+    /// The data-in-code kind covering this word, rendered in the listing's
+    /// fixed vocabulary.
     func dataInCodeKindName(for instruction: Instruction, in section: CodeSection?) -> String? {
         guard let section else { return nil }
         let offset = instruction.address &- section.address
@@ -326,22 +255,20 @@ public struct ListingRenderer: Sendable {
         }
     }
 
-    /// Branch-target symbolication: a stub forwarding to an import
-    /// (`symbol stub for: _name`) takes precedence; otherwise the symbol
-    /// exactly at the target, or the closest preceding symbol as
-    /// `name+0x<delta>`, the latter only when target and symbol lie in
-    /// the same code section (cross-section deltas would fabricate
-    /// locality).
+    /// Branch-target symbolication: a stub forwarding to an import (`symbol
+    /// stub for: _name`) takes precedence; otherwise the symbol exactly at the
+    /// target, or the closest preceding symbol as `name+0x<delta>`, the latter
+    /// only when target and symbol lie in the same code section (cross-section
+    /// deltas would fabricate locality).
     func symbolAnnotation(for instruction: Instruction, context: Context?) -> String? {
         guard let context, let target = instruction.branchTarget else { return nil }
         guard let resolution = context.symbolizer.resolve(target: target) else { return nil }
         return resolution.isStub ? "symbol stub for: " + resolution.name : resolution.name
     }
 
-    /// All symbols inside the section's address range, split into two
-    /// queries when the range wraps the top of the address space
-    /// (`Range` cannot express the wrap, and a hostile vmaddr must not
-    /// crash the listing).
+    /// All symbols inside the section's address range, split into two queries
+    /// when the range wraps the top of the address space (`Range` cannot
+    /// express the wrap, and a hostile vmaddr must not crash the listing).
     func sectionSymbols(of symbols: SymbolIndex, in section: CodeSection) -> [(address: UInt64, name: String)] {
         let end = section.address &+ section.byteCount
         if end > section.address {
@@ -355,17 +282,6 @@ public struct ListingRenderer: Sendable {
         return result
     }
 }
-
-// MARK: - Byte-path line assembly
-
-// A listing line is an address column, a raw word, canonical text and an
-// annotation. Building that per line through `String` costs a `String`
-// per token plus one per concatenation — for a large binary that is over
-// a million short-lived allocations, and it dwarfs the decode it is
-// presenting: walking and decoding dyld is 18 ms, rendering it was 372.
-//
-// These append into a caller-owned `TextBytes`, so one buffer serves a
-// whole section and exactly one `String` is constructed from it.
 
 extension Palette {
     /// Open an escape sequence, or nothing when color is off.
@@ -409,10 +325,6 @@ extension InstructionText {
 
 public extension ListingRenderer {
     /// Append one rendered line (no trailing newline) to `out`.
-    ///
-    /// The `String`-returning ``line(for:addressWidth:context:preceding:)``
-    /// is this, plus one `String` construction; callers building a whole
-    /// listing use this and construct once at the end.
     func putLine(
         for instruction: Instruction,
         addressWidth: Int,
@@ -428,10 +340,6 @@ public extension ListingRenderer {
         putWordColumn(for: instruction, into: &out)
         out.put("  ")
 
-        // The body still arrives as a pair of `String`s: its annotations
-        // come from symbolication and referenced-data lookups that are
-        // `String`-valued at their source. The plain form is what the
-        // semantics column pads against.
         let body = bodyText(for: instruction, context: context, preceding: preceding)
         out.putString(body.colored)
         guard includeSemantics else { return }

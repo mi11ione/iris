@@ -1,24 +1,10 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// FEAT_CMPBR compare-and-branch (register / immediate / byte / halfword).
-//
-// CB<cc> register : sf 1110100 cc Rm  0 0 imm9 Rt   (bits 15:14 = 00)
-// CBB<cc>         : 0  1110100 cc Rm  1 0 imm9 Rt   (bits 15:14 = 10, byte)
-// CBH<cc>         : 0  1110100 cc Rm  1 1 imm9 Rt   (bits 15:14 = 11, half)
-// CB<cc> immediate: sf 1110101 cc imm6 0 imm9 Rt    (bit 14 = 0)
-//
-// cc selects the comparison + signedness. The register/byte/halfword forms
-// map cc → {gt, ge, hi, hs, eq, ne}; the immediate form maps cc →
-// {gt, lt, hi, lo, eq, ne} (no ge/hs; lt/lo instead). cc ∈ {100, 101}
-// are UNDEFINED in every form. imm9 is signed, scaled by 4 (byte offset).
-// Byte/halfword forms always use W registers (no sf field). Reads Rt and
-// (register forms) Rm; writes nothing. Branch class is .conditional.
 
 enum CompareBranchRegDecode {
     @inline(__always)
     static func decode(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        let bits24 = UInt8((encoding >> 24) & 1) // 0 → register class, 1 → immediate
+        let bits24 = UInt8((encoding >> 24) & 1)
         return bits24 == 0
             ? decodeRegisterClass(encoding: encoding, address: address, &sink)
             : decodeImmediate(encoding: encoding, address: address, &sink)
@@ -38,28 +24,24 @@ enum CompareBranchRegDecode {
         let width: Width
         switch bits15_14 {
         case 0b00:
-            // CB<cc> register — sf selects W/X.
             guard let m = registerMnemonic(cc) else {
                 return .undefined(at: address, encoding: encoding)
             }
             mnemonic = m
             width = (sf == 1) ? .x : .w
         case 0b10:
-            // CBB<cc> byte — requires sf == 0; always W registers.
             guard sf == 0, let m = byteMnemonic(cc) else {
                 return .undefined(at: address, encoding: encoding)
             }
             mnemonic = m
             width = .w
         case 0b11:
-            // CBH<cc> halfword — requires sf == 0; always W registers.
             guard sf == 0, let m = halfwordMnemonic(cc) else {
                 return .undefined(at: address, encoding: encoding)
             }
             mnemonic = m
             width = .w
         default:
-            // bits 15:14 == 01 is reserved.
             return .undefined(at: address, encoding: encoding)
         }
 
@@ -79,7 +61,6 @@ enum CompareBranchRegDecode {
     /// Immediate form (bits 31:24 ∈ {0x75, 0xF5}).
     @inline(__always)
     private static func decodeImmediate(encoding: UInt32, address: UInt64, _ sink: inout OperandSink) -> DecodedDraft {
-        // Bit 14 is a fixed 0 in the immediate encoding.
         if (encoding >> 14) & 1 != 0 {
             return .undefined(at: address, encoding: encoding)
         }
@@ -103,15 +84,13 @@ enum CompareBranchRegDecode {
         )
     }
 
-    // MARK: helpers
-
     private enum Width { case w, x }
 
     /// imm9 (bits 13:5) sign-extended and scaled by 4.
     @inline(__always)
     private static func imm9ByteOffset(_ encoding: UInt32) -> Int64 {
         let imm9 = Int32(bitPattern: (encoding >> 5) & 0x1FF)
-        let signed = (imm9 &<< 23) &>> 23 // sign-extend 9 → 32
+        let signed = (imm9 &<< 23) &>> 23
         return Int64(signed) &<< 2
     }
 

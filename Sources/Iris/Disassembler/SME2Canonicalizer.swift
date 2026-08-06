@@ -1,37 +1,15 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Canonical llvm-mc-parity text for SME2 multi-vector
-// records. Mirrors the SVE/SME canonicalizer conventions: lowercase,
-// `, `-joined operands. A scalable-tier hole never reaches here — the text
-// router renders it as `.long` before dispatching. The SME2-specific rules (spec,
-// probe-pinned against llvm-mc 22.1.4): multi-vector groups render
-// `{ z0.s, z1.s }` (pair, comma), `{ z0.s - z3.s }` (4-way consecutive, dash)
-// or fully-listed strided/wrapping; ZA-array operands carry an optional
-// `off:hi` range and `, vgx2`/`, vgx4` group suffix; predicate-as-counter
-// registers render `pn<n>`; the vector-length multiplier renders `vlx2`/
-// `vlx4`; ZT0 renders `zt0` (bare or `zt0[off]`); memory index register
-// `xzr` is printed (unlike SME-core's tile loads).
 
 /// Formats SME2 records exactly as llvm-mc renders them.
 enum SME2Canonicalizer {
-    /// The byte path — rendered straight into a UTF-8 buffer.
-    ///
-    /// The two special cases below sit ABOVE the generic operand loop and
-    /// have to be carried into any re-implementation: dropping them renders
-    /// `zero { zt0 }` as `zero zt0` and the LUTv2 `movt` without its
-    /// `, mul vl`.
+    /// The byte path.
     static func format(_ instruction: Instruction, into out: inout TextBytes) {
         let ops = instruction.operands
-        // ZERO of the ZT0 register renders a braced list; the ZA-array ZERO
-        // forms render their operand normally.
         if instruction.mnemonic == .zero, ops.count == 1, case .zt0 = ops[0] {
             out.put("zero { zt0 }")
             return
         }
-        // The LUTv2 vector MOVT renders its ZT0 index with `, mul vl`
-        // (distinct from the scalar MOVT's `zt0[off]`); it is the movt form
-        // with a Z source.
         if instruction.mnemonic == .movt, ops.count == 2,
            case let .zt0(index) = ops[0],
            case let .scalableVector(v) = ops[1]
@@ -48,8 +26,6 @@ enum SME2Canonicalizer {
             out.putDecimal(UInt64(v.registerIndex))
             return
         }
-        // This family's own table: a mnemonic from outside the group
-        // renders nothing rather than the spelling another family owns.
         if let spelling = name(instruction.mnemonic) { out.put(spelling) }
         if ops.isEmpty { return }
         out.put(UInt8(ascii: " "))
@@ -58,8 +34,6 @@ enum SME2Canonicalizer {
             put(ops[i], into: &out)
         }
     }
-
-    // MARK: per-operand rendering
 
     private static func put(_ op: Operand, into out: inout TextBytes) {
         switch op {
@@ -92,8 +66,6 @@ enum SME2Canonicalizer {
         default: out.put("?")
         }
     }
-
-    // MARK: groups
 
     private static func putGroup(_ g: ScalableVectorGroup, into out: inout TextBytes) {
         if g.count >= 3, g.layout == .consecutive, Int(g.firstIndex) + Int(g.count) - 1 <= 31 {
@@ -135,8 +107,6 @@ enum SME2Canonicalizer {
         }
         out.put(" }")
     }
-
-    // MARK: ZA operands
 
     private static func putZAArray(_ v: ZAArrayVectorOperand, into out: inout TextBytes) {
         out.put("za")
@@ -184,8 +154,6 @@ enum SME2Canonicalizer {
         }
         out.put(UInt8(ascii: "]"))
     }
-
-    // MARK: predicates / vectors
 
     private static func putPredicate(_ p: ScalablePredicateRef, into out: inout TextBytes) {
         out.put(p.isCounter ? "pn" : "p")
@@ -245,8 +213,6 @@ enum SME2Canonicalizer {
         }
         out.put(UInt8(ascii: "]"))
     }
-
-    // MARK: register text
 
     @inline(__always)
     private static func putSelect(_ r: RegisterRef, into out: inout TextBytes) {

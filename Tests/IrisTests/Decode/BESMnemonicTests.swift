@@ -4,15 +4,9 @@
 import Iris
 import Testing
 
-/// Validates the BES mnemonic allocation against its declared table:
-/// every static constant has the declared raw value, every raw value
-/// falls within the BES reservation (1024..2047 per Mnemonic.swift's
-/// `allocations`), and no two BES mnemonics share a raw value.
+/// Validates BES mnemonic allocation.
 @Suite("BES / Mnemonic constants")
 struct BESMnemonicTests {
-    /// Source-of-truth mapping — every named BES mnemonic
-    /// + its declared raw value. Used by the uniqueness + range tests
-    /// below; also pins every constant individually.
     private static let besMnemonics: [(String, Mnemonic, UInt16)] = [
         ("b", .b, 1024), ("bl", .bl, 1025),
         ("cbz", .cbz, 1026), ("cbnz", .cbnz, 1027),
@@ -75,20 +69,16 @@ struct BESMnemonicTests {
     }
 
     @Test func mnemonicCountMatchesTheCommittedTable() {
-        // The BES family commits to 79 mnemonics (slots 1024..1102
-        // inclusive); this table mirrors the declarations one-for-one.
         #expect(Self.besMnemonics.count == 79)
     }
 
     @Test func mnemonicAllocationTableContainsBes() {
-        // Mnemonic.allocations includes the BES entry.
         let bes = Mnemonic.allocations.first { $0.label == "Branches, Exception, System" }
         #expect(bes != nil)
         #expect(bes?.range == (1024 ... 2047))
     }
 
     @Test func mnemonicEquality() {
-        // Same raw value → equal.
         #expect(Mnemonic.b == Mnemonic(rawValue: 1024))
         #expect(Mnemonic.ret != Mnemonic.retaa)
     }

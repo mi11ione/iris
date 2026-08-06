@@ -4,8 +4,8 @@
 import Iris
 import Testing
 
-/// Validates InstructionStream — memberwise init, lookups,
-/// and the bytes-in decoding init's edge paths.
+/// Validates InstructionStream — memberwise init, lookups, and the bytes-in
+/// decoding init's edge paths.
 @Suite("InstructionStream / memberwise init and lookup")
 struct InstructionStreamMemberwiseTests {
     @Test func emptyStreamHasNoRecords() {
@@ -101,10 +101,6 @@ struct InstructionStreamMemberwiseTests {
     }
 
     @Test func recordAtReturnsNilWhenRecordsArrayIsShorterThanByteCount() {
-        // Manually-built stream with mismatched bookkeeping —
-        // sectionByteCount says 16 bytes (4 words) but records has
-        // only 1 entry. `record(at:)` must still return nil for words
-        // 2..4 rather than crash on an out-of-bounds index.
         let r0 = makeUndefinedRecord(address: 0x5000, operandStart: 0, operandCount: 0)
         let stream = InstructionStream(
             baseAddress: 0x5000,
@@ -134,9 +130,7 @@ struct InstructionStreamMemberwiseTests {
     }
 }
 
-/// Validates the bytes-in `InstructionStream.init` edge paths —
-/// empty buffer, per-word address wrap near 2^64, and bulk decode of
-/// real instruction words with lookup parity.
+/// Validates the bytes-in initializer's edges.
 @Suite("InstructionStream / bytes-in init edge paths")
 struct InstructionStreamInitTests {
     @Test func emptyBufferProducesEmptyStream() {
@@ -148,12 +142,6 @@ struct InstructionStreamInitTests {
     }
 
     @Test func baseAddressNearMaxWrapsPerWordAddresses() {
-        // The bytes-in init is total: per-word addresses are
-        // baseAddress + offset modulo 2^64, lookup uses the same modular
-        // arithmetic (every record is reachable at exactly the address
-        // it carries), and the wrap is surfaced once as a diagnostic
-        // carrying the first wrapped record's buffer offset.
-        // Pathological input only; pinned so drift is visible.
         let base = UInt64.max - 2
         let stream = InstructionStream(
             bytes: undefinedFiller(byteCount: 16),
@@ -161,33 +149,24 @@ struct InstructionStreamInitTests {
         )
         #expect(stream.records.count == 4)
         #expect(stream.records[0].address == base)
-        // base &+ 4 wraps past 2^64 to 1.
         #expect(stream.records[1].address == 1)
         #expect(stream.records[2].address == 5)
         #expect(stream.records[3].address == 9)
-        // Modular lookup: wrapped records resolve at their own addresses.
         #expect(stream[address: base]?.record == stream.records[0])
         #expect(stream[address: 1]?.record == stream.records[1])
         #expect(stream.instruction(containing: 5)?.record == stream.records[2])
         #expect(stream[address: 9]?.record == stream.records[3])
-        // One diagnostic marks the wrap at the first wrapped offset.
         #expect(stream.diagnostics == [Diagnostic(kind: .addressSpaceWrapped(offset: 4))])
     }
 
     @Test func realInstructionWordsDecodeWithLookupParity() {
-        // A real AArch64 function shape (prologue, call, epilogue) fed
-        // through the bytes-in init with the standard family set. Every
-        // word is a genuine instruction, so no record falls back to the
-        // decoder sentinels, and lookup by address matches sequential
-        // order — the bulk-decode bookkeeping the old Mach-O __text test
-        // proved, minus the Mach-O vehicle.
         let words: [UInt32] = [
-            0xA9BF_7BFD, // stp x29, x30, [sp, #-16]!
-            0x9100_03FD, // mov x29, sp
-            0x9400_0001, // bl +4
-            0xD503_201F, // nop
-            0xA8C1_7BFD, // ldp x29, x30, [sp], #16
-            0xD65F_03C0, // ret
+            0xA9BF_7BFD,
+            0x9100_03FD,
+            0x9400_0001,
+            0xD503_201F,
+            0xA8C1_7BFD,
+            0xD65F_03C0,
         ]
         let base: UInt64 = 0x1_0000_4000
         let stream = InstructionStream(bytes: bytes(of: words), at: base)
@@ -203,23 +182,13 @@ struct InstructionStreamInitTests {
     }
 }
 
-/// Validates InstructionStream behavior on synthetic byte
-/// buffers with controlled contents, data-in-code spans, and
-/// truncated tails.
+/// Validates stream behavior on synthetic buffers with controlled contents,
+/// data-in-code spans, and truncated tails.
 @Suite("InstructionStream / synthetic byte buffers")
 struct InstructionStreamSyntheticTests {
-    /// Base address standing in for a typical __TEXT vmaddr.
     private static let base: UInt64 = 0x1_0000_0000
 
     @Test func sectionWithTwoWordsProducesTwoUndefinedRecords() {
-        // Two reserved-op0 words (bits[28:25] = 0 in both): byte[3]=0x00
-        // and byte[3]=0x40 keep bits[28:25] in the reserved tier {0..3}
-        // where no FamilyDecoder is registered. Previously the test used
-        // 0xFFFFFFFF which now decodes as a valid FNMSUB under the
-        // SIMD/FP family's coverage.
-        // word 0 = 0x0200_0000 (op0 = 1, unallocated → UNDEFINED); word 1 =
-        // 0x40FF_FFFF (op0 = 0, non-UDF, non-AMX → UNDEFINED). Avoids the
-        // UDF encoding (0x0000_NNNN) so both words are genuinely undefined.
         let stream = InstructionStream(
             bytes: [0x00, 0x00, 0x00, 0x02, 0xFF, 0xFF, 0xFF, 0x40],
             at: Self.base,
@@ -227,7 +196,6 @@ struct InstructionStreamSyntheticTests {
         #expect(stream.records.count == 2)
         #expect(stream.records[0].address == Self.base)
         #expect(stream.records[1].address == Self.base &+ 4)
-        // ARM64 is little-endian; record.encoding reads bytes as LE u32.
         #expect(stream.records[0].encoding == 0x0200_0000)
         #expect(stream.records[1].encoding == 0x40FF_FFFF)
         for record in stream.records {
@@ -244,19 +212,13 @@ struct InstructionStreamSyntheticTests {
         let tail = stream.records[1]
         #expect(tail.category == .truncatedTail)
         #expect(tail.mnemonic == .truncatedTail)
-        // Residual bytes 0xEE 0xFF 0x11 packed LE-low.
         #expect(tail.encoding == 0x0011_FFEE)
-        // operandCount carries the residual byte count on tails; the
-        // operand window itself is still empty.
         #expect(tail.operandCount == 3)
         #expect(tail.tailByteCount == 3)
         #expect(stream.operands(for: tail).isEmpty)
     }
 
     @Test func truncationProducesCorrectTailForEverySectionSizeOneThroughSeven() throws {
-        // Stream-level truncation across every interesting residual
-        // length, not just the 3-byte case. Sizes 1/2/3 (no prefix
-        // words), 5/6/7 (one prefix word + tail).
         struct Expectation {
             let size: Int
             let recordCount: Int
@@ -287,12 +249,9 @@ struct InstructionStreamSyntheticTests {
             #expect(tail.category == .truncatedTail, "size=\(exp.size)")
             #expect(tail.encoding == exp.tailEncoding, "size=\(exp.size)")
             #expect(tail.address == Self.base &+ exp.tailRelativeAddress, "size=\(exp.size)")
-            // operandCount carries the residual byte count on tails; the
-            // operand window itself is still empty.
             #expect(tail.operandCount == UInt8(exp.size % 4), "size=\(exp.size)")
             #expect(tail.tailByteCount == exp.size % 4, "size=\(exp.size)")
             #expect(stream.operands(for: tail).isEmpty, "size=\(exp.size)")
-            // High bits beyond residual must be zero.
             let residualBytes = exp.size % 4
             let highMask: UInt32 = (residualBytes == 3) ? 0xFF00_0000 : (residualBytes == 2 ? 0xFFFF_0000 : 0xFFFF_FF00)
             #expect((tail.encoding & highMask) == 0, "high bits non-zero size=\(exp.size)")
@@ -300,22 +259,16 @@ struct InstructionStreamSyntheticTests {
     }
 
     @Test func streamInitCommitsOperandBufferAndClassBits() {
-        // End-to-end stream construction over real instructions with
-        // operands. Verifies operand-buffer commit, the
-        // operandStart/operandCount accounting across consecutive
-        // records, and the class-bit round-trip through commit.
-        // ADD x0, x0, #1 (3 operands) ×2, then ADDS x1, x2, #2 (NZCV).
         let bytes: [UInt8] = [
-            0x00, 0x04, 0x00, 0x91, // add x0, x0, #1
-            0x00, 0x04, 0x00, 0x91, // add x0, x0, #1
-            0x41, 0x08, 0x00, 0xB1, // adds x1, x2, #2
+            0x00, 0x04, 0x00, 0x91,
+            0x00, 0x04, 0x00, 0x91,
+            0x41, 0x08, 0x00, 0xB1,
         ]
         let stream = InstructionStream(bytes: bytes, at: Self.base)
         #expect(stream.records.count == 3)
         for record in stream.records {
             #expect(record.category == .dataProcessingImmediate)
         }
-        // operandStart progresses by each record's operandCount.
         #expect(stream.records[0].operandStart == 0)
         #expect(stream.records[0].operandCount == 3)
         #expect(stream.records[1].operandStart == 3)
@@ -323,23 +276,17 @@ struct InstructionStreamSyntheticTests {
         #expect(stream.records[2].operandStart == 6)
         #expect(stream.records[2].operandCount == 3)
         #expect(stream.operands.count == 9)
-        // Per-record operand slices land on each record's own window.
         #expect(stream.operands(for: stream.records[0]).first == .register(.x(0)))
         #expect(stream.operands(for: stream.records[2]).first == .register(.x(1)))
-        // Class bits round-tripped through commit.
         #expect(stream.records[2].flagEffect == .nzcv)
         #expect(stream.records[2].mnemonic == .adds)
     }
 
     @Test func dataInCodeSpanProducesDataMarkerRecords() {
-        // Word 2 (0x40BBAA99) uses byte[3]=0x40 so bits[28:25] = 0000 =
-        // op0=0 (reserved tier, no decoder registered) — the
-        // dispatcher emits UNDEFINED. (Was 0xCC=op0=6, but with the
-        // L/S→SIMD/FP delegation that encoding decodes as a NEON ST1.)
         let bytes: [UInt8] = [
-            0x11, 0x22, 0x33, 0x44, // word 0 — will be inside DIC span
-            0x55, 0x66, 0x77, 0x88, // word 1 — will be inside DIC span
-            0x99, 0xAA, 0xBB, 0x40, // word 2 — outside DIC span; reserved op0=0
+            0x11, 0x22, 0x33, 0x44,
+            0x55, 0x66, 0x77, 0x88,
+            0x99, 0xAA, 0xBB, 0x40,
         ]
         let stream = InstructionStream(
             bytes: bytes,
@@ -351,19 +298,15 @@ struct InstructionStreamSyntheticTests {
         #expect(stream.records[0].mnemonic == .dataMarker)
         #expect(stream.records[1].category == .dataInCodeMarker)
         #expect(stream.records[2].category == .undefined)
-        // Encoding must preserve the original word bytes even on a
-        // dataMarker record — the stream doesn't reinterpret data bytes.
         #expect(stream.records[0].encoding == 0x4433_2211)
         #expect(stream.records[1].encoding == 0x8877_6655)
         #expect(stream.records[2].encoding == 0x40BB_AA99)
     }
 
     @Test func dataInCodeSpanWithOverflowingLengthClampsToTheBufferEnd() {
-        // offset + length overflowing UInt64 saturates the span end; the
-        // span still marks every word from its start to the buffer end.
         let bytes: [UInt8] = [
-            0x1F, 0x20, 0x03, 0xD5, // word 0 — nop, outside the span
-            0x11, 0x22, 0x33, 0x44, // word 1 — inside the overflowing span
+            0x1F, 0x20, 0x03, 0xD5,
+            0x11, 0x22, 0x33, 0x44,
         ]
         let stream = InstructionStream(
             bytes: bytes,
@@ -381,9 +324,6 @@ struct InstructionStreamSyntheticTests {
             at: Self.base,
             dataInCode: [DataInCodeSpan(offset: 4, length: 4, kind: .jumpTable16)],
         )
-        // The stream emits exactly one diagnostic kind, so assert
-        // the expected payload directly rather than pattern-matching
-        // (which would generate a dead nil-return branch).
         let expectedKind: Diagnostic.Kind = .dataInCodeSpanEncountered(
             kind: .jumpTable16,
             offset: 4,
@@ -393,10 +333,6 @@ struct InstructionStreamSyntheticTests {
     }
 
     @Test func dicDiagnosticCarriesEveryKindWithOffsetAndLength() {
-        // Parameterize over every documented kind plus an unknown raw
-        // value, asserting the diagnostic preserves offset and
-        // length as well as kind. Each stream uses a single span so
-        // the test is per-kind atomic.
         let kindRaws: [(raw: UInt16, expected: DataInCodeSpan.Kind)] = [
             (0x0001, .data),
             (0x0002, .jumpTable8),
@@ -411,8 +347,6 @@ struct InstructionStreamSyntheticTests {
                 at: Self.base,
                 dataInCode: [DataInCodeSpan(offset: 4, length: 4, kind: .init(rawValue: kindRaw))],
             )
-            // Same shape as the single-kind test: direct equality on
-            // the diagnostic's `kind`, no pattern-match closures.
             let expected: Diagnostic.Kind = .dataInCodeSpanEncountered(
                 kind: expectedKind,
                 offset: 4,
@@ -431,15 +365,11 @@ struct InstructionStreamSyntheticTests {
             dataInCode: [DataInCodeSpan(offset: 4, length: 0, kind: .data)],
         )
         #expect(stream.records.count == 2)
-        // Zero-length span: spanEnd == spanStart, so `wordStart
-        // < spanEnd` is never true. No marker.
         #expect(stream.records[0].category == .undefined)
         #expect(stream.records[1].category == .undefined)
     }
 
     @Test func dataInCodeSpanStartingAtSectionEndDoesNotMark() {
-        // Span starts at offset 8 (== bytes.count, == buffer end);
-        // does not intersect any in-buffer word.
         let stream = InstructionStream(
             bytes: undefinedFiller(byteCount: 8),
             at: Self.base,
@@ -451,9 +381,6 @@ struct InstructionStreamSyntheticTests {
     }
 
     @Test func dataInCodeSpanStraddlingSectionEndMarksOnlyInSectionWords() {
-        // Span starts at offset 6, length 8 → covers bytes 6..13.
-        // Buffer ends at byte 8, so the span intersects bytes 6..7
-        // (inside word 1) — that one word should be marked.
         let stream = InstructionStream(
             bytes: undefinedFiller(byteCount: 8),
             at: Self.base,
@@ -465,8 +392,6 @@ struct InstructionStreamSyntheticTests {
     }
 
     @Test func overlappingDataInCodeSpansBothMarkTheirWords() {
-        // Two spans both covering word 1 (bytes 4..7) — overlap test.
-        // First span also covers word 0; second also covers word 2.
         let stream = InstructionStream(
             bytes: undefinedFiller(byteCount: 16),
             at: Self.base,
@@ -483,16 +408,12 @@ struct InstructionStreamSyntheticTests {
     }
 
     @Test func multipleUnsortedDataInCodeSpansAreCorrectlyOrdered() {
-        // Two DIC spans deliberately listed in reverse-offset order to
-        // force the sort comparator inside `filteredIntersectingSpans`
-        // to fire. The stream must classify each intersecting word
-        // correctly regardless of input order.
         let stream = InstructionStream(
             bytes: undefinedFiller(byteCount: 16),
             at: Self.base,
             dataInCode: [
-                DataInCodeSpan(offset: 12, length: 4, kind: .jumpTable8), // word 3 — listed FIRST (high offset)
-                DataInCodeSpan(offset: 0, length: 4, kind: .data), // word 0 — listed SECOND (low offset)
+                DataInCodeSpan(offset: 12, length: 4, kind: .jumpTable8),
+                DataInCodeSpan(offset: 0, length: 4, kind: .data),
             ],
         )
         #expect(stream.records[0].category == .dataInCodeMarker)
@@ -502,37 +423,27 @@ struct InstructionStreamSyntheticTests {
     }
 
     @Test func midWordDataInCodeSpanMarksTheWholeWord() {
-        // Span starts at byte 6, length 4 → covers bytes 6..9, which
-        // intersects word at offset 4 (bytes 4..7) AND word at offset 8
-        // (bytes 8..11).
         let stream = InstructionStream(
             bytes: undefinedFiller(byteCount: 16),
             at: Self.base,
             dataInCode: [DataInCodeSpan(offset: 6, length: 4, kind: .data)],
         )
         #expect(stream.records.count == 4)
-        // Word 0 (bytes 0..3) — outside the span.
         #expect(stream.records[0].category == .undefined)
-        // Word 1 (bytes 4..7) — intersects span (span starts at 6).
         #expect(stream.records[1].category == .dataInCodeMarker)
-        // Word 2 (bytes 8..11) — intersects span (span ends at 10).
         #expect(stream.records[2].category == .dataInCodeMarker)
-        // Word 3 (bytes 12..15) — outside the span.
         #expect(stream.records[3].category == .undefined)
     }
 }
 
-/// Validates InstructionStream's RandomAccessCollection conformance —
-/// Element is Instruction, Index is Int, the truncated-tail record is
-/// an ordinary element, and the labeled address subscript coexists with
-/// the element-index subscript without ambiguity.
+/// Validates the `RandomAccessCollection` conformance.
 @Suite("InstructionStream / collection of Instruction values")
 struct InstructionStreamCollectionTests {
     @Test func streamIteratesAsInstructions() {
         let bytes: [UInt8] = [
-            0x1F, 0x20, 0x03, 0xD5, // nop
-            0x00, 0x04, 0x00, 0x91, // add x0, x0, #1
-            0xC0, 0x03, 0x5F, 0xD6, // ret
+            0x1F, 0x20, 0x03, 0xD5,
+            0x00, 0x04, 0x00, 0x91,
+            0xC0, 0x03, 0x5F, 0xD6,
         ]
         let stream = InstructionStream(bytes: bytes, at: 0x1000)
         #expect(stream.count == 3)
@@ -542,19 +453,14 @@ struct InstructionStreamCollectionTests {
             mnemonics.append(instruction.mnemonic)
         }
         #expect(mnemonics == [.nop, .add, .ret])
-        // Element-index subscript and record array agree.
         #expect(stream[1].record == stream.records[1])
         #expect(stream[1].operands.count == 3)
-        // map / filter behave like any collection.
         #expect(stream.map(\.address) == [0x1000, 0x1004, 0x1008])
         #expect(stream.count(where: { $0.mnemonic == .add }) == 1)
     }
 
     @Test func indexAndAddressSubscriptsAreDistinct() {
         let stream = InstructionStream(bytes: [0x1F, 0x20, 0x03, 0xD5], at: 0x1000)
-        // Element index 0 vs address 0x1000 resolve the same instruction
-        // through different doors; an address literal cannot reach the
-        // Int subscript because the address form is labeled.
         #expect(stream[0] == stream[address: 0x1000])
         #expect(stream.startIndex == 0)
         #expect(stream.endIndex == 1)
@@ -567,7 +473,6 @@ struct InstructionStreamCollectionTests {
         #expect(tail.category == .truncatedTail)
         #expect(tail.operands.isEmpty)
         #expect(tail.record.tailByteCount == 2)
-        // n/4 + 1 element shape: 6 bytes -> 1 word + 1 tail.
         #expect(stream.last?.category == .truncatedTail)
     }
 
@@ -618,16 +523,11 @@ private func makeUndefinedRecord(address: UInt64, operandStart: UInt32, operandC
     )
 }
 
-/// Buffer filler whose every 4-byte word is `0x0200_0000` (op0 = 1,
-/// architecturally unallocated → UNDEFINED), so data-in-code tests can assert
-/// non-marked words are `.undefined` without colliding with UDF
-/// (`0x0000_NNNN`), which the decoder recognizes as a real instruction.
 private func undefinedFiller(byteCount: Int) -> [UInt8] {
-    let word: [UInt8] = [0x00, 0x00, 0x00, 0x02] // 0x0200_0000 little-endian
+    let word: [UInt8] = [0x00, 0x00, 0x00, 0x02]
     return (0 ..< byteCount).map { word[$0 % 4] }
 }
 
-/// Little-endian byte serialization of instruction words.
 private func bytes(of words: [UInt32]) -> [UInt8] {
     var out: [UInt8] = []
     out.reserveCapacity(words.count * 4)

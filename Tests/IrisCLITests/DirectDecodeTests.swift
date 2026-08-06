@@ -4,10 +4,7 @@
 import IrisCLICore
 import Testing
 
-/// Validates the `decode` verb (`iris 0x<word>`, `iris --bytes`, and the
-/// explicit `iris decode …`): little-endian word assembly, multi-word
-/// sequences, and how its flags (`--features`, `--semantics`, `--json`)
-/// compose with the input. `--arch` belongs to the file verbs, not decode.
+/// Validates the `decode` verb.
 @Suite("Decode verb")
 struct DirectDecodeTests {
     @Test func singleWordDecodes() {
@@ -18,8 +15,6 @@ struct DirectDecodeTests {
     }
 
     @Test func shortWordIsZeroExtended() {
-        // 0x91421 zero-extends to 0x00091421 (reserved-tier UNDEFINED);
-        // the word column still shows all 8 digits.
         let run = runCLI(["0x91421"])
         #expect(run.stdout == "0: 00091421  .long 0x91421 ; undefined\n")
     }
@@ -43,13 +38,9 @@ struct DirectDecodeTests {
     }
 
     @Test func archIsRejectedByDecode() {
-        // --arch selects a Mach-O slice and belongs to the file verbs;
-        // decode unlocks extensions with --features instead.
         let explicit = runCLI(["decode", "--arch", "arm64", "0xf8200420"])
         #expect(explicit.status == CLI.exitUsage)
         #expect(explicit.stderr.contains("iris decode: error: unknown option '--arch'"))
-        // Inferred decode (0x token, no verb word) scopes the error to
-        // plain `iris:`.
         let inferred = runCLI(["--arch", "arm64e", "0xf8200420"])
         #expect(inferred.status == CLI.exitUsage)
         #expect(inferred.stderr.contains("iris: error: unknown option '--arch'"))
@@ -74,15 +65,30 @@ struct DirectDecodeTests {
     }
 
     @Test func addressColumnGrowsWithSequenceLength() {
-        // 5 words: addresses 0..0x10, width 2.
         let run = runCLI(["--bytes", "1f 20 03 d5 1f 20 03 d5 1f 20 03 d5 1f 20 03 d5 c0 03 5f d6"])
         #expect(run.stdout.hasPrefix("00: d503201f  nop\n"))
         #expect(run.stdout.contains("\n10: d65f03c0  ret\n"))
     }
 
+    @Test func baseAddressResolvesRelativeBranches() {
+        let atZero = runCLI(["--bytes", "0d fe ff 17"])
+        #expect(atZero.stdout == "0: 17fffe0d  b 0xfffffffffffff834\n")
+        let based = runCLI(["--bytes", "0d fe ff 17", "--at", "0xfffffe0007b3c000"])
+        #expect(based.status == CLI.exitSuccess)
+        #expect(based.stdout == "fffffe0007b3c000: 17fffe0d  b 0xfffffe0007b3b834\n")
+    }
+
+    @Test func baseAddressCarriesEveryWordAndTheJSONAddress() {
+        let listing = runCLI(["decode", "--at", "0xfffffe0007b3c000", "--bytes", "1f 20 03 d5 c0 03 5f d6"])
+        #expect(listing.stdout == "fffffe0007b3c000: d503201f  nop\nfffffe0007b3c004: d65f03c0  ret\n")
+        let decimal = runCLI(["--bytes", "1f 20 03 d5", "--at", "4096"])
+        #expect(decimal.stdout == "1000: d503201f  nop\n")
+        let json = runCLI(["--json", "--at", "0x1000", "0xd503201f"])
+        #expect(json.stdout.contains("\"address\":\"0x1000\""))
+    }
+
     @Test func longestInputsStayAligned() {
         let run = runCLI(["--bytes", "ff ff ff ff 00 00 00 04"])
-        // Both lines render the 8-digit word column then two spaces.
         for line in run.stdout.split(separator: "\n") {
             #expect(line.count > 13)
             #expect(line.prefix(3).hasSuffix(": "))

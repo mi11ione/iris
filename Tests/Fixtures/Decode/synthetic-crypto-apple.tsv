@@ -1,4 +1,4 @@
-# encoding_hex_be	expected_text  (-mattr=+aes,+sha2,+sha3,+sm4,+pauth,+mte)
+# encoding_hex_be	expected_text  (-mattr=+all,+v9.6a)
 4e284800	aese v0.16b, v0.16b
 4e284be0	aese v0.16b, v31.16b
 4e28481e	aese v30.16b, v0.16b

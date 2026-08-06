@@ -1,17 +1,9 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// BranchClass. Mutually exclusive values by design, with a
-// hierarchical precedence (most-specific applies):
-// exception > return > call > conditional > indirect > direct > none.
 
-/// Control-flow classification of an instruction.
-///
-/// Every ``InstructionRecord`` carries exactly one of these values. The
-/// classification is single-valued because the ARM64 base ISA has no
-/// orthogonal indirect-conditional or direct-call-with-fallthrough
-/// combinations; the value loss versus an `OptionSet` representation is
-/// recoverable from the instruction's ``Mnemonic``.
+/// Control-flow classification; every record carries exactly one value.
+/// Single-valued because the base ISA has no orthogonal combinations, and
+/// what an `OptionSet` would add is recoverable from the ``Mnemonic``.
 @frozen
 public enum BranchClass: UInt8, Sendable, Hashable {
     /// Not a branch. The instruction's execution falls through to the

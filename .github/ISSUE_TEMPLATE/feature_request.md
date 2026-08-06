@@ -13,8 +13,8 @@ CI", "get ZA tile writes out of the JSON stream". -->
 
 <!-- Which API or flag you tried, and what is missing or awkward. -->
 
-## Scope check
+## Before you file
 
-iris is a disassembler: ARM64 only, decode only, one direction, no Mach-O parsing as library API (see the *Scope & guarantees* documentation page). Requests inside those walls are welcome.
+iris decodes ARM64, one direction, and ships no Mach-O parsing as library API.
 
-ISA coverage is complete through the v9.6-era extensions llvm-mc recognizes, SVE/SVE2 and SME/SME2 included, so a coverage report is most useful as a specific encoding that decodes wrong or not at all. New decode work must arrive with the full trust battery — [`CONTRIBUTING.md`](../../CONTRIBUTING.md) lists exactly what a new family decoder brings.
+ISA coverage is complete through the v9.6-era extensions llvm-mc recognizes, SVE/SVE2 and SME/SME2 included, so a coverage report is most useful as a specific encoding that decodes wrong or not at all. New decode work arrives with the full trust battery — [`CONTRIBUTING.md`](../../CONTRIBUTING.md) lists what a new family decoder brings.

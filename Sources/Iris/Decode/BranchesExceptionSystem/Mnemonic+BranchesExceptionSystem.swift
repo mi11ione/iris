@@ -1,32 +1,19 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// Mnemonic constants for the Branches, Exception, System
-// family. Raw values 1024..1102 within the family's reserved 1024..2047
-// slab. Mnemonics are grouped contiguously per sub-family so the
-// per-family classification helpers (BESMnemonicAttributes) become
-// branch-predictable table lookups. 79 mnemonics populate
-// 1024..1102 inclusive; slots 1103..2047 stay free for future expansion.
 
 public extension Mnemonic {
-    // Branch immediate (1024..1025)
     static let b = Mnemonic(rawValue: 1024)
     static let bl = Mnemonic(rawValue: 1025)
 
-    // Compare-and-branch (1026..1027)
     static let cbz = Mnemonic(rawValue: 1026)
     static let cbnz = Mnemonic(rawValue: 1027)
 
-    // Test-and-branch (1028..1029)
     static let tbz = Mnemonic(rawValue: 1028)
     static let tbnz = Mnemonic(rawValue: 1029)
 
-    // Conditional branch (1030..1031). bCond carries the condition code as
-    // the first operand; bcCond is the FEAT_HBC variant (BC.cond).
     static let bCond = Mnemonic(rawValue: 1030)
     static let bcCond = Mnemonic(rawValue: 1031)
 
-    // Exception generation (1032..1039)
     static let svc = Mnemonic(rawValue: 1032)
     static let hvc = Mnemonic(rawValue: 1033)
     static let smc = Mnemonic(rawValue: 1034)
@@ -36,14 +23,12 @@ public extension Mnemonic {
     static let dcps2 = Mnemonic(rawValue: 1038)
     static let dcps3 = Mnemonic(rawValue: 1039)
 
-    // Branch register — regular (1040..1044)
     static let br = Mnemonic(rawValue: 1040)
     static let blr = Mnemonic(rawValue: 1041)
     static let ret = Mnemonic(rawValue: 1042)
     static let eret = Mnemonic(rawValue: 1043)
     static let drps = Mnemonic(rawValue: 1044)
 
-    // Branch register — ARM64E auth (1045..1056)
     static let braa = Mnemonic(rawValue: 1045)
     static let brab = Mnemonic(rawValue: 1046)
     static let braaz = Mnemonic(rawValue: 1047)
@@ -57,17 +42,14 @@ public extension Mnemonic {
     static let eretaa = Mnemonic(rawValue: 1055)
     static let eretab = Mnemonic(rawValue: 1056)
 
-    // Named-NOP hints (1057..1058)
     static let nop = Mnemonic(rawValue: 1057)
     static let yield = Mnemonic(rawValue: 1058)
 
-    // Event waits (1059..1062)
     static let wfe = Mnemonic(rawValue: 1059)
     static let wfi = Mnemonic(rawValue: 1060)
     static let sev = Mnemonic(rawValue: 1061)
     static let sevl = Mnemonic(rawValue: 1062)
 
-    // Sync hints (1063..1068)
     static let dgh = Mnemonic(rawValue: 1063)
     static let csdb = Mnemonic(rawValue: 1064)
     static let esb = Mnemonic(rawValue: 1065)
@@ -78,13 +60,11 @@ public extension Mnemonic {
     /// Implicit-LR PAC strip (1069)
     static let xpaclri = Mnemonic(rawValue: 1069)
 
-    // PAC HINT-space (1716 variants) (1070..1073)
     static let pacia1716 = Mnemonic(rawValue: 1070)
     static let pacib1716 = Mnemonic(rawValue: 1071)
     static let autia1716 = Mnemonic(rawValue: 1072)
     static let autib1716 = Mnemonic(rawValue: 1073)
 
-    // PAC HINT-space (Z/SP variants) (1074..1081)
     static let paciaz = Mnemonic(rawValue: 1074)
     static let paciasp = Mnemonic(rawValue: 1075)
     static let pacibz = Mnemonic(rawValue: 1076)
@@ -97,7 +77,6 @@ public extension Mnemonic {
     /// BTI — single mnemonic; sub-target lives in operand[0].
     static let bti = Mnemonic(rawValue: 1082)
 
-    // CHKFEAT (FEAT_CHK) / CLRBHB (FEAT_CLRBHB) — HINT-space instructions.
     static let chkfeat = Mnemonic(rawValue: 1083)
     static let clrbhb = Mnemonic(rawValue: 1084)
 
@@ -105,7 +84,6 @@ public extension Mnemonic {
     /// raw imm7 as `.unsignedImmediate(value:, width: 7)`.
     static let hint = Mnemonic(rawValue: 1085)
 
-    // Barriers (1086..1092)
     static let clrex = Mnemonic(rawValue: 1086)
     static let dsb = Mnemonic(rawValue: 1087)
     static let dmb = Mnemonic(rawValue: 1088)
@@ -114,33 +92,20 @@ public extension Mnemonic {
     static let ssbb = Mnemonic(rawValue: 1091)
     static let pssbb = Mnemonic(rawValue: 1092)
 
-    // System register move (1093..1094)
     static let msr = Mnemonic(rawValue: 1093)
     static let mrs = Mnemonic(rawValue: 1094)
 
-    // Standalone PSTATE writes (1095..1097)
     static let cfinv = Mnemonic(rawValue: 1095)
     static let xaflag = Mnemonic(rawValue: 1096)
     static let axflag = Mnemonic(rawValue: 1097)
 
-    // SYS-family (1098..1100). `.sys`/`.sysl` carry a single
-    // `.systemOp(SystemOp(rawEncoding:))` operand; the canonicalizer
-    // extracts op1/CRn/CRm/op2/Rt. `.msrImm` is MSR-immediate to a named
-    // PSTATE field — distinct from `.msr` (register form) so downstream
-    // consumers can filter on the operand-shape difference without parsing
-    // operands.
     static let sys = Mnemonic(rawValue: 1098)
     static let sysl = Mnemonic(rawValue: 1099)
     static let msrImm = Mnemonic(rawValue: 1100)
 
-    // Wait with timeout — FEAT_WFxT (1101..1102)
     static let wfet = Mnemonic(rawValue: 1101)
     static let wfit = Mnemonic(rawValue: 1102)
 
-    // FEAT_CMPBR compare-and-branch — word/dword register + immediate forms
-    // (1103..1110). cbgt/cbhi/cbeq/cbne are shared by register and
-    // immediate (operand shape disambiguates); cbge/cbhs are register-only
-    // and cblt/cblo are immediate-only (per the cc → CmpOp tables).
     static let cbgt = Mnemonic(rawValue: 1103)
     static let cbge = Mnemonic(rawValue: 1104)
     static let cbhi = Mnemonic(rawValue: 1105)
@@ -150,7 +115,6 @@ public extension Mnemonic {
     static let cblt = Mnemonic(rawValue: 1109)
     static let cblo = Mnemonic(rawValue: 1110)
 
-    // FEAT_CMPBR compare-and-branch — byte register form (1111..1116)
     static let cbbgt = Mnemonic(rawValue: 1111)
     static let cbbge = Mnemonic(rawValue: 1112)
     static let cbbhi = Mnemonic(rawValue: 1113)
@@ -158,7 +122,6 @@ public extension Mnemonic {
     static let cbbeq = Mnemonic(rawValue: 1115)
     static let cbbne = Mnemonic(rawValue: 1116)
 
-    // FEAT_CMPBR compare-and-branch — halfword register form (1117..1122)
     static let cbhgt = Mnemonic(rawValue: 1117)
     static let cbhge = Mnemonic(rawValue: 1118)
     static let cbhhi = Mnemonic(rawValue: 1119)
@@ -166,25 +129,43 @@ public extension Mnemonic {
     static let cbheq = Mnemonic(rawValue: 1121)
     static let cbhne = Mnemonic(rawValue: 1122)
 
-    // FEAT_D128 128-bit system moves + SYS pair (1123..1125). `.mrrs`/`.msrr`
-    // read/write a consecutive X-register pair; `.sysp` carries the whole
-    // encoding via `.systemOp` like `.sys`/`.sysl`.
     static let mrrs = Mnemonic(rawValue: 1123)
     static let msrr = Mnemonic(rawValue: 1124)
     static let sysp = Mnemonic(rawValue: 1125)
 
-    // FEAT_SME PSTATE.SM/ZA enable/disable (MSR-immediate special forms)
-    // (1126..1127). The selected field (sm / za / both) is carried as the
-    // sole `.pstateField` operand via the `.unknown` round-trip slot.
     static let smstart = Mnemonic(rawValue: 1126)
     static let smstop = Mnemonic(rawValue: 1127)
+
+    static let pacm = Mnemonic(rawValue: 1128)
+    static let stshh = Mnemonic(rawValue: 1129)
+    static let shuh = Mnemonic(rawValue: 1130)
+    static let stcph = Mnemonic(rawValue: 1131)
+
+    static let dfb = Mnemonic(rawValue: 1132)
+
+    static let retaasppc = Mnemonic(rawValue: 1133)
+    static let retabsppc = Mnemonic(rawValue: 1134)
+    static let retaasppcr = Mnemonic(rawValue: 1135)
+    static let retabsppcr = Mnemonic(rawValue: 1136)
+
+    /// Apple TIndex `TENTER` (1137) and its no-branch form (1138).
+    static let tenter = Mnemonic(rawValue: 1137)
+    static let tenterNb = Mnemonic(rawValue: 1138)
+
+    /// Apple TIndex `TEXIT` (1139) and its no-branch form (1140).
+    static let texit = Mnemonic(rawValue: 1139)
+    static let texitNb = Mnemonic(rawValue: 1140)
+
+    /// Apple TIndex `TCHANGEF` / `TCHANGEB` and their no-branch forms.
+    static let tchangef = Mnemonic(rawValue: 1141)
+    static let tchangefNb = Mnemonic(rawValue: 1142)
+    static let tchangeb = Mnemonic(rawValue: 1143)
+    static let tchangebNb = Mnemonic(rawValue: 1144)
 }
 
 extension Mnemonic {
-    /// Canonical lowercase name for every Branches, Exception, System mnemonic constant —
-    /// the family's slice of ``Mnemonic/name``, declared beside the
-    /// constants it names so the two cannot drift. Unallocated raw
-    /// values in the family's range return `"?<raw>"`.
+    /// Canonical lowercase name for every Branches, Exception, System
+    /// mnemonic; unallocated raw values in the range return `"?<raw>"`.
     static func branchesExceptionSystemName(_ m: Mnemonic) -> StaticString? {
         switch m {
         case .b: "b"
@@ -291,6 +272,20 @@ extension Mnemonic {
         case .smstop: "smstop"
         case .bCond: "b.cond"
         case .bcCond: "bc.cond"
+        case .pacm: "pacm"
+        case .stshh: "stshh"
+        case .shuh: "shuh"
+        case .stcph: "stcph"
+        case .dfb: "dfb"
+        case .retaasppc: "retaasppc"
+        case .retabsppc: "retabsppc"
+        case .retaasppcr: "retaasppcr"
+        case .retabsppcr: "retabsppcr"
+        case .tenter, .tenterNb: "tenter"
+        case .texit: "texit"
+        case .texitNb: "texit nb"
+        case .tchangef, .tchangefNb: "tchangef"
+        case .tchangeb, .tchangebNb: "tchangeb"
         default: nil
         }
     }

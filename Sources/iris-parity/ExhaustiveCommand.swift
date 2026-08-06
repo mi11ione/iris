@@ -1,28 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// `iris-parity exhaustive` — the layer-3 trust sweep. Decodes the
-// full 2^32 word space (or one op0 partition) asserting TOTALITY (every
-// word yields a well-formed record, no crash) and DETERMINISM (two
-// independent passes produce identical digests).
-//
-// Digest: FNV-1a 64 over the per-word tuple (mnemonic raw, category
-// raw, branchClass raw, operand count, text hash) — text included for
-// EVERY word, no subsampling — accumulated per fixed-size chunk, then
-// folded over the ordered chunk digests. Order is fixed, so any
-// difference in instruction IDENTITY or RENDERING between passes (or
-// between runs on the same library version) changes the digest.
-//
-// The tuple is deliberately identity-and-text: the semantic attributes
-// (register sets, flag effects, memory class and ordering, scalable
-// state) are owned by the `semantic` subcommand's per-mnemonic checkers,
-// which validate them against expectation tables rather than against a
-// digest that could only prove two runs agreed. A semantic-only change
-// therefore leaves this digest untouched by design.
-//
-// Decode runs at `.arm64e` features — the superset surface (the only
-// feature-gated tier is LDRAA/LDRAB, which plain features would leave
-// UNDEFINED).
 
 import Foundation
 import Iris
@@ -181,9 +158,7 @@ private func sweepPass(label: String, partition: UInt8?, jobs: Int) async -> Pas
     )
 }
 
-/// Decode one contiguous chunk. For a single-partition sweep the 28
-/// free bits map to a word as (high3 << 29) | (op0 << 25) | low25 —
-/// the partition's full encoding space in a fixed enumeration order.
+/// Decode one contiguous chunk.
 private func sweepChunk(index: Int, words: UInt64, partition: UInt8?) -> ChunkOutcome {
     var hasher = FNV1a()
     var defined = 0

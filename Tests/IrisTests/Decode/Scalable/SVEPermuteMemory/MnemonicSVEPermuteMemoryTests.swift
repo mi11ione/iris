@@ -4,15 +4,9 @@
 import Iris
 import Testing
 
-/// Validates the 2s.5 mnemonic slab — the SVE / SVE2 permute, memory, and
-/// crypto tokens. Their raw values continue the SVE slab from 16684 (2s.4 ended
-/// at 16683) as a contiguous, collision-free run: a downstream consumer keys off
-/// these integers, so a renumbering or a gap would silently re-interpret every
-/// record. Shared tokens (ldr/str/rev/sel/tbl/zip1/aese/pmull/luti2…) are reused
-/// from earlier slabs and are validated where they decode, not here.
+/// Validates the 2s.5 mnemonic slab.
 @Suite("SVE permute/memory/crypto / mnemonic slab")
 struct MnemonicSVEPermuteMemoryTests {
-    /// Every token 2s.5 introduces, in encoding order, with its pinned raw value.
     private static let slab: [(Mnemonic, UInt16, String)] = [
         (.ld1b, 16684, "ld1b"), (.ld1h, 16685, "ld1h"), (.ld1w, 16686, "ld1w"), (.ld1d, 16687, "ld1d"),
         (.ld1sb, 16688, "ld1sb"), (.ld1sh, 16689, "ld1sh"), (.ld1sw, 16690, "ld1sw"), (.ld1q, 16691, "ld1q"),
@@ -53,7 +47,6 @@ struct MnemonicSVEPermuteMemoryTests {
     }
 
     @Test func theSlabIsContiguousFrom16684() {
-        // 118 tokens filling 16684...16801 with no gap and no repeat.
         let values = Self.slab.map(\.1)
         #expect(values == Array(16684 ... 16801))
         #expect(values.count == 118)
@@ -64,7 +57,6 @@ struct MnemonicSVEPermuteMemoryTests {
     }
 
     @Test func theWholeSlabSitsAboveTheEarlierSVESubpieces() {
-        // 2s.2-2s.4 ended at 16683; 2s.5 continues from 16684 without overlap.
         for (_, raw, name) in Self.slab {
             #expect(raw > 16683, "\(name) collides with an earlier subpiece")
             #expect(raw < 28672, "\(name) leaves the SVE slab")

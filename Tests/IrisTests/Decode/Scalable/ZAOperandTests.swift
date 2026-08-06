@@ -4,12 +4,8 @@
 import Iris
 import Testing
 
-/// Validates ZATileSliceOperand — `ZAt.<T>[Wv, #imm]` (horizontal or
-/// vertical), the SME operand that names a single row or column of a tile.
-/// The slice index comes from `Wv` and is unknown at decode time, so the
-/// operand's ZA touch is the whole tile — a sound over-approximation. The
-/// full `(tile, direction, Wv, imm)` descriptor is retained so Piece 4 can
-/// refine to slice precision once it resolves `Wv`.
+/// Validates `ZATileSliceOperand`, the SME operand naming one row or column of
+/// a tile.
 @Suite("ZATileSliceOperand / tile slice and its sound ZA touch")
 struct ZATileSliceOperandTests {
     @Test func horizontalSliceCarriesEveryField() {
@@ -34,7 +30,6 @@ struct ZATileSliceOperandTests {
     }
 
     @Test func sliceRangeCarriesItsHighEnd() {
-        // SME2 slice ranges are `ZAt.<T>[Wv, #lo:hi]`.
         let range = ZATileSliceOperand(
             tileIndex: 1, element: .h, direction: .horizontal,
             selectRegister: .w(13), offset: 0, offsetHigh: 1,
@@ -44,8 +39,6 @@ struct ZATileSliceOperandTests {
     }
 
     @Test func zaTouchIsTheWholeTileBecauseTheSliceIndexIsDynamic() {
-        // The slice comes from Wv (a runtime value), so the decode-time ZA
-        // touch must cover every position the tile owns.
         for element in [ScalarSize.b, .h, .s, .d, .q] {
             let slice = ZATileSliceOperand(
                 tileIndex: 1, element: element, direction: .horizontal,
@@ -56,8 +49,6 @@ struct ZATileSliceOperandTests {
     }
 
     @Test func horizontalAndVerticalSlicesTouchTheSameTileStorage() {
-        // H and V slices of one tile address the same bytes transposed, so
-        // both touch the whole tile.
         let horizontal = ZATileSliceOperand(
             tileIndex: 3, element: .s, direction: .horizontal,
             selectRegister: .w(12), offset: 0,
@@ -71,8 +62,6 @@ struct ZATileSliceOperandTests {
     }
 
     @Test func slicesOfOverlappingTilesReportOverlappingTouches() {
-        // ZA0.S's storage lives inside ZA0.B: a write to one may clobber the
-        // other, and the masks must say so.
         let wordSlice = ZATileSliceOperand(
             tileIndex: 0, element: .s, direction: .horizontal,
             selectRegister: .w(12), offset: 0,
@@ -85,7 +74,6 @@ struct ZATileSliceOperandTests {
     }
 
     @Test func selectRegisterIsAGprSemanticRead() {
-        // Wv is an ordinary GPR read and belongs in the main register mask.
         let slice = ZATileSliceOperand(
             tileIndex: 0, element: .s, direction: .horizontal,
             selectRegister: .w(14), offset: 2,
@@ -113,10 +101,8 @@ struct ZATileSliceOperandTests {
     }
 }
 
-/// Validates ZAArrayVectorOperand — the SME2 tile-agnostic
-/// `za.<T>[Wv, #imm{:hi}{, vgx2|vgx4}]` view of `ZA` as an array of SVL-bit
-/// vectors. Because the row index is dynamic and no tile is named, the touched
-/// storage is the whole array.
+/// Validates `ZAArrayVectorOperand`, the SME2 tile-agnostic view of `ZA` as an
+/// array of SVL-bit vectors.
 @Suite("ZAArrayVectorOperand / tile-agnostic array access")
 struct ZAArrayVectorOperandTests {
     @Test func singleVectorAccessCarriesEveryField() {
@@ -146,8 +132,6 @@ struct ZAArrayVectorOperandTests {
     }
 
     @Test func zaTouchIsTheWholeArrayRegardlessOfElementOrGroup() {
-        // No tile is named and the row index is dynamic — nothing can be
-        // narrowed at decode time.
         for element in [ScalarSize.b, .h, .s, .d, .q] {
             for group in [ZAArrayVectorOperand.VectorGroup.none, .vgx2, .vgx4] {
                 let vector = ZAArrayVectorOperand(element: element, selectRegister: .w(8),
@@ -175,7 +159,6 @@ struct ZAArrayVectorOperandTests {
         #expect(ZAArrayVectorOperand.VectorGroup.none.rawValue == 0)
         #expect(ZAArrayVectorOperand.VectorGroup.vgx2.rawValue == 1)
         #expect(ZAArrayVectorOperand.VectorGroup.vgx4.rawValue == 2)
-        // Spelled out: a bare `.none` here would resolve to Optional.none.
         #expect(ZAArrayVectorOperand.VectorGroup(rawValue: 0) == ZAArrayVectorOperand.VectorGroup.none)
         #expect(ZAArrayVectorOperand.VectorGroup(rawValue: 1) == ZAArrayVectorOperand.VectorGroup.vgx2)
         #expect(ZAArrayVectorOperand.VectorGroup(rawValue: 3) == nil)
@@ -190,9 +173,7 @@ struct ZAArrayVectorOperandTests {
 }
 
 /// Validates that a ZA access expressed as an operand round-trips into the
-/// ``ScalableRegisterSet`` a decoder would record — the path from operand
-/// grammar to dataflow state. An FMOPA accumulating into a tile is the shape
-/// the SME decoder will emit: the tile appears in BOTH the scalable reads and
+/// ``ScalableRegisterSet`` a decoder would record.
 @Suite("ZA operands / recording a tile access as scalable dataflow state")
 struct ZAOperandDataflowTests {
     @Test func accumulatingTileAccessAppearsInBothReadsAndWrites() {
@@ -208,8 +189,6 @@ struct ZAOperandDataflowTests {
     }
 
     @Test func writingOneTileDoesNotKillADisjointTile() {
-        // A write to ZA0.S must not kill ZA1.S's storage — the two tiles
-        // interleave and never share a Q position.
         let live = ScalableRegisterSet.empty.inserting(ZATileMask(tile: 1, element: .s))
         let written = ScalableRegisterSet.empty
             .inserting(ZATileSliceOperand(tileIndex: 0, element: .s, direction: .horizontal,
@@ -218,7 +197,6 @@ struct ZAOperandDataflowTests {
     }
 
     @Test func writingTheArrayVectorKillsEveryTile() {
-        // A tile-agnostic za[Wv] write touches the whole array.
         let live = ScalableRegisterSet.empty
             .inserting(ZATileMask(tile: 0, element: .s))
             .inserting(ZATileMask(tile: 2, element: .d))

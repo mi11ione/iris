@@ -1,15 +1,5 @@
 // Copyright (c) 2026 Roman Zhuzhgov
 // Licensed under the Apache License, Version 2.0
-//
-// SME2 multi-vector mnemonic tokens, continuing the SME/SME2
-// slab (28672..<40960) at 28689. Shared architectural mnemonics (`mov`,
-// `ldr`, `str`, `zero`, `add`, `sub`, the dot/mla/minmax/shift/convert/
-// narrow families, the SVE-tier B16B16/FP8 tokens, `luti2`/`luti4`/`luti6`,
-// the `ld1*`/`st1*`/`ldnt1*`/`stnt1*` loads, the `while*` conditions,
-// `ptrue`, `cntp`, `sel`, and the SME-core outer-product tokens) are reused
-// verbatim — the record's mnemonic is the preferred-alias-resolved identity,
-// and the operand shape plus category disambiguate the SME2 forms from their
-// same-named peers. Only the tokens no earlier family declared live here.
 
 public extension Mnemonic {
     /// SME2p1 `MOVAZ` — move `ZA` slices to vectors, zeroing the source.
